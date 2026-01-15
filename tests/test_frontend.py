@@ -14,7 +14,24 @@ from playwright.sync_api import Page, expect
 
 
 # Get base URL from environment or use default
-BASE_URL = os.environ.get("PYTEST_BASE_URL", "http://localhost:8000")
+# Use Vite dev server (port 3000) which transpiles TypeScript and proxies API to FastAPI (8000)
+BASE_URL = os.environ.get("PYTEST_BASE_URL", "http://localhost:3000")
+
+
+def wait_for_cytoscape(page: Page, timeout: int = 10000) -> None:
+    """
+    Wait for Cytoscape to be fully initialized.
+
+    Checks that window.cy exists and has the nodes() method,
+    confirming it's a fully functional Cytoscape instance.
+    """
+    page.wait_for_function(
+        """() => {
+            const cy = window.cy || (window.getCy ? window.getCy() : null);
+            return cy && typeof cy.nodes === 'function' && cy.nodes().length > 0;
+        }""",
+        timeout=timeout
+    )
 
 
 @pytest.fixture(scope="session")
@@ -122,8 +139,8 @@ class TestNodeSelection:
     def test_hover_shows_tooltip(self, page: Page):
         """Hovering over a node should show tooltip with details."""
         page.goto(BASE_URL)
-        page.wait_for_timeout(2000)
-        
+        wait_for_cytoscape(page)
+
         # Trigger hover on a node via JavaScript
         tooltip_content = page.evaluate("""
             () => {
@@ -148,8 +165,8 @@ class TestNodeSelection:
     def test_node_click_highlights_neighbors(self, page: Page):
         """Clicking a node should highlight its connected neighbors."""
         page.goto(BASE_URL)
-        page.wait_for_timeout(2000)
-        
+        wait_for_cytoscape(page)
+
         # Click on a node and check for faded class on non-neighbors
         has_highlights = page.evaluate("""
             () => {
@@ -257,13 +274,13 @@ class TestSettingsModal:
     def test_open_settings_modal(self, page: Page):
         """Clicking Settings should open modal."""
         page.goto(BASE_URL)
-        
+        wait_for_cytoscape(page)
+
         settings_btn = page.get_by_role("button", name="Settings")
         settings_btn.click()
-        page.wait_for_timeout(300)
-        
+
         modal = page.locator("#settings-modal")
-        expect(modal).to_be_visible()
+        expect(modal).to_be_visible(timeout=5000)
     
     def test_settings_has_node_types(self, page: Page):
         """Settings modal should list all node types."""
@@ -283,17 +300,17 @@ class TestSettingsModal:
     def test_close_settings_modal(self, page: Page):
         """Should be able to close settings modal."""
         page.goto(BASE_URL)
-        
+        wait_for_cytoscape(page)
+
         page.get_by_role("button", name="Settings").click()
-        page.wait_for_timeout(300)
-        
+        page.locator("#settings-modal").wait_for(state="visible", timeout=5000)
+
         close_btn = page.locator(".close-btn")
         close_btn.click()
-        page.wait_for_timeout(300)
-        
+
         # Modal should be hidden
         modal = page.locator("#settings-modal")
-        expect(modal).to_be_hidden()
+        expect(modal).to_be_hidden(timeout=5000)
 
 
 class TestHideRestore:
@@ -316,16 +333,16 @@ class TestHideRestore:
     def test_hide_without_selection_shows_alert(self, page: Page):
         """Hide without selection should show alert."""
         page.goto(BASE_URL)
-        page.wait_for_timeout(2000)
-        
+        wait_for_cytoscape(page)
+
         # Set up dialog handler
         dialog_message = []
         page.on("dialog", lambda dialog: (dialog_message.append(dialog.message), dialog.accept()))
-        
+
         hide_btn = page.locator("#hide-btn")
         hide_btn.click()
-        page.wait_for_timeout(300)
-        
+        page.wait_for_timeout(500)  # Brief wait for dialog to appear
+
         # Should show alert about selecting nodes first
         assert len(dialog_message) > 0
         assert "Select" in dialog_message[0] or "select" in dialog_message[0]
@@ -359,25 +376,22 @@ class TestReachabilityFiltering:
     
     def test_reachability_log_appears(self, page: Page):
         """Console should log reachable hosts."""
-        page.goto(BASE_URL)
-        
-        # Capture console logs
+        # Capture console logs before navigation
         console_messages = []
         page.on("console", lambda msg: console_messages.append(msg.text))
-        
-        # Reload to capture initial log
-        page.reload()
-        page.wait_for_timeout(3000)
-        
+
+        page.goto(BASE_URL)
+        wait_for_cytoscape(page)
+
         # Check for reachable hosts log
         log_found = any("Reachable hosts:" in msg for msg in console_messages)
-        assert log_found, "Expected 'Reachable hosts:' log message"
+        assert log_found, f"Expected 'Reachable hosts:' log message, got: {console_messages[:5]}"
     
     def test_unreachable_class_applied(self, page: Page):
         """Unreachable hosts should have 'unreachable' class."""
         page.goto(BASE_URL)
-        page.wait_for_timeout(3000)
-        
+        wait_for_cytoscape(page)
+
         # Check that some nodes have unreachable class via JavaScript
         has_unreachable = page.evaluate("""
             () => {
@@ -391,8 +405,8 @@ class TestReachabilityFiltering:
     def test_reachable_hosts_not_dimmed(self, page: Page):
         """Reachable hosts should NOT have unreachable class."""
         page.goto(BASE_URL)
-        page.wait_for_timeout(3000)
-        
+        wait_for_cytoscape(page)
+
         # Check specific reachable hosts (host-001, host-002)
         reachable_not_dimmed = page.evaluate("""
             () => {
@@ -408,8 +422,8 @@ class TestReachabilityFiltering:
     def test_unreachable_hosts_are_dimmed(self, page: Page):
         """Unreachable hosts should have unreachable class."""
         page.goto(BASE_URL)
-        page.wait_for_timeout(3000)
-        
+        wait_for_cytoscape(page)
+
         # Check that host-003 through host-006 are dimmed
         unreachable_dimmed = page.evaluate("""
             () => {
@@ -427,13 +441,13 @@ class TestReachabilityFiltering:
     def test_filter_preserves_unreachable(self, page: Page):
         """Type filter should preserve unreachable styling."""
         page.goto(BASE_URL)
-        page.wait_for_timeout(3000)
-        
+        wait_for_cytoscape(page)
+
         # Click CWE filter
         cwe_btn = page.locator(".filter-btn[data-type='CWE']")
         cwe_btn.click()
-        page.wait_for_timeout(500)
-        
+        page.wait_for_timeout(500)  # Brief wait for filter to apply
+
         # Check unreachable nodes have faded-unreachable class
         has_faded_unreachable = page.evaluate("""
             () => {
@@ -449,18 +463,18 @@ class TestReachabilityFiltering:
     def test_reset_filter_restores_unreachable(self, page: Page):
         """Clicking 'All' should restore original unreachable styling."""
         page.goto(BASE_URL)
-        page.wait_for_timeout(3000)
-        
+        wait_for_cytoscape(page)
+
         # Click CWE filter
         cwe_btn = page.locator(".filter-btn[data-type='CWE']")
         cwe_btn.click()
-        page.wait_for_timeout(500)
-        
+        page.wait_for_timeout(500)  # Brief wait for filter to apply
+
         # Click All filter
         all_btn = page.locator(".filter-btn[data-type='all']")
         all_btn.click()
-        page.wait_for_timeout(500)
-        
+        page.wait_for_timeout(500)  # Brief wait for filter to apply
+
         # Check unreachable class is still present
         has_unreachable = page.evaluate("""
             () => {
@@ -475,8 +489,8 @@ class TestReachabilityFiltering:
     def test_downstream_cves_of_unreachable_host_are_dimmed(self, page: Page):
         """CVE nodes downstream of unreachable L1 hosts should be marked unreachable."""
         page.goto(BASE_URL)
-        page.wait_for_timeout(3000)
-        
+        wait_for_cytoscape(page)
+
         # Check that CVEs connected to L1 host-005 (not :INSIDE_NETWORK) are unreachable
         downstream_dimmed = page.evaluate("""
             () => {
@@ -507,8 +521,8 @@ class TestReachabilityFiltering:
     def test_multi_predecessor_nodes_correctly_marked(self, page: Page):
         """L1 CVE nodes with multiple predecessors should be unreachable if ALL predecessors are unreachable."""
         page.goto(BASE_URL)
-        page.wait_for_timeout(3000)
-        
+        wait_for_cytoscape(page)
+
         # Check CVEs on L1 host-005 (excluding L2 :INSIDE_NETWORK versions)
         result = page.evaluate("""
             () => {
@@ -535,8 +549,8 @@ class TestReachabilityFiltering:
     def test_l2_hosts_remain_reachable(self, page: Page):
         """L2 hosts (via INSIDE_NETWORK bridge) should remain reachable."""
         page.goto(BASE_URL)
-        page.wait_for_timeout(3000)
-        
+        wait_for_cytoscape(page)
+
         l2_reachable = page.evaluate("""
             () => {
                 const cy = window.cy || (window.getCy ? window.getCy() : null);
