@@ -1,0 +1,444 @@
+/**
+ * PAGDrawer - Main Styles
+ * Knowledge Graph Visualization
+ */
+
+/* Reset */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: linear-gradient(135deg, #0a0a1a 0%, #1a1a3a 50%, #0a0a1a 100%);
+    color: #e0e0e0;
+    min-height: 100vh;
+    overflow: hidden;
+}
+
+.container {
+    display: flex;
+    height: 100vh;
+}
+
+/* =============================================================================
+   SIDEBAR
+   ============================================================================= */
+
+.sidebar {
+    width: 320px;
+    background: rgba(20, 20, 40, 0.95);
+    border-right: 1px solid rgba(100, 100, 200, 0.3);
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    overflow-y: auto;
+}
+
+.logo {
+    font-size: 24px;
+    font-weight: 700;
+    background: linear-gradient(90deg, #6366f1, #a855f7, #ec4899);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    text-align: center;
+    padding: 10px 0;
+}
+
+.logo-subtitle {
+    font-size: 11px;
+    color: #888;
+    text-align: center;
+    margin-top: -10px;
+}
+
+/* =============================================================================
+   STATS PANEL
+   ============================================================================= */
+
+.stats-panel {
+    background: rgba(40, 40, 80, 0.5);
+    border-radius: 12px;
+    padding: 16px;
+    border: 1px solid rgba(100, 100, 200, 0.2);
+}
+
+.stats-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #a0a0ff;
+    margin-bottom: 12px;
+}
+
+.stat-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 6px 0;
+    font-size: 13px;
+    border-bottom: 1px solid rgba(100, 100, 200, 0.1);
+}
+
+.stat-value {
+    color: #6ee7b7;
+    font-weight: 600;
+}
+
+/* =============================================================================
+   LEGEND
+   ============================================================================= */
+
+.legend {
+    background: rgba(40, 40, 80, 0.5);
+    border-radius: 12px;
+    padding: 16px;
+    border: 1px solid rgba(100, 100, 200, 0.2);
+}
+
+.legend-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #a0a0ff;
+    margin-bottom: 12px;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 0;
+    font-size: 12px;
+}
+
+.legend-dot {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+}
+
+/* =============================================================================
+   NODE DETAILS
+   ============================================================================= */
+
+.node-details {
+    background: rgba(40, 40, 80, 0.5);
+    border-radius: 12px;
+    padding: 16px;
+    border: 1px solid rgba(100, 100, 200, 0.2);
+    flex: 1;
+}
+
+.details-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #a0a0ff;
+    margin-bottom: 12px;
+}
+
+.detail-row {
+    font-size: 12px;
+    padding: 4px 0;
+    word-break: break-all;
+}
+
+.detail-key {
+    color: #888;
+}
+
+.detail-value {
+    color: #e0e0e0;
+}
+
+/* =============================================================================
+   GRAPH CONTAINER
+   ============================================================================= */
+
+.graph-container {
+    flex: 1;
+    position: relative;
+}
+
+#cy {
+    width: 100%;
+    height: 100%;
+}
+
+/* =============================================================================
+   CONTROLS
+   ============================================================================= */
+
+.controls {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    display: flex;
+    gap: 10px;
+}
+
+.control-btn {
+    background: rgba(40, 40, 80, 0.9);
+    border: 1px solid rgba(100, 100, 200, 0.3);
+    color: #e0e0e0;
+    padding: 10px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: all 0.2s;
+}
+
+.control-btn:hover {
+    background: rgba(60, 60, 100, 0.9);
+    border-color: rgba(100, 100, 200, 0.6);
+}
+
+/* =============================================================================
+   FILTER BUTTONS
+   ============================================================================= */
+
+.filter-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 10px;
+}
+
+.filter-btn {
+    padding: 6px 12px;
+    border-radius: 20px;
+    border: 1px solid rgba(100, 100, 200, 0.3);
+    background: rgba(40, 40, 80, 0.5);
+    color: #e0e0e0;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.filter-btn.active {
+    background: rgba(100, 100, 200, 0.5);
+    border-color: rgba(100, 100, 200, 0.8);
+}
+
+.filter-btn:hover {
+    border-color: rgba(100, 100, 200, 0.6);
+}
+
+/* =============================================================================
+   LOADING
+   ============================================================================= */
+
+.loading {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 18px;
+    color: #6366f1;
+}
+
+/* =============================================================================
+   MODAL
+   ============================================================================= */
+
+.modal-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.7);
+    z-index: 1000;
+    justify-content: center;
+    align-items: center;
+    backdrop-filter: blur(3px);
+}
+
+.modal-content {
+    background: #1e1e2f;
+    border: 1px solid rgba(100, 100, 200, 0.4);
+    border-radius: 12px;
+    padding: 24px;
+    width: 420px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    border-bottom: 1px solid rgba(100, 100, 200, 0.2);
+    padding-bottom: 12px;
+}
+
+.modal-title {
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: #fff;
+}
+
+.close-btn {
+    background: none;
+    border: none;
+    color: #888;
+    font-size: 1.5rem;
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+}
+
+.close-btn:hover {
+    color: #fff;
+}
+
+.setting-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid rgba(100, 100, 200, 0.1);
+}
+
+.setting-label {
+    color: #e0e0e0;
+    font-size: 0.95rem;
+}
+
+.setting-select {
+    background: rgba(40, 40, 80, 0.6);
+    border: 1px solid rgba(100, 100, 200, 0.4);
+    color: #fff;
+    padding: 6px 12px;
+    border-radius: 6px;
+    outline: none;
+    min-width: 150px;
+}
+
+.save-btn {
+    width: 100%;
+    margin-top: 16px;
+    background: #6366f1;
+    color: white;
+    border: none;
+    padding: 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 14px;
+    transition: background 0.2s;
+}
+
+.save-btn:hover {
+    background: #4f46e5;
+}
+
+/* =============================================================================
+   NODE TOOLTIP
+   ============================================================================= */
+
+/* Container for all tooltips */
+.node-tooltip {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 10000;
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+
+.node-tooltip.visible {
+    opacity: 1;
+}
+
+/* Individual tooltip box */
+.node-tooltip .tooltip-box {
+    position: fixed;
+    background: rgba(30, 30, 50, 0.98);
+    border: 1px solid rgba(100, 100, 200, 0.5);
+    border-radius: 10px;
+    padding: 12px 16px;
+    color: #e0e0e0;
+    font-size: 12px;
+    max-width: 360px;
+    min-width: 200px;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+    cursor: grab;
+    pointer-events: auto;
+    z-index: 10000;
+    transition: box-shadow 0.15s ease;
+}
+
+.node-tooltip .tooltip-box:hover {
+    z-index: 10100;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.7);
+    border-color: rgba(130, 130, 255, 0.7);
+}
+
+.node-tooltip .tooltip-box:active {
+    cursor: grabbing;
+}
+
+/* Drag handle indicator */
+.node-tooltip .tooltip-header {
+    height: 4px;
+    background: rgba(100, 100, 200, 0.3);
+    border-radius: 2px;
+    margin: -4px -8px 8px -8px;
+}
+
+/* Node details section */
+.node-tooltip .tooltip-details {
+    margin-bottom: 4px;
+}
+
+.node-tooltip .tooltip-detail-row {
+    padding: 3px 0;
+    word-break: break-all;
+    line-height: 1.4;
+}
+
+.node-tooltip .tooltip-detail-key {
+    color: #888;
+    margin-right: 4px;
+}
+
+.node-tooltip .tooltip-detail-value {
+    color: #e0e0e0;
+}
+
+/* Warning section for dimmed nodes */
+.node-tooltip .tooltip-warning {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(255, 100, 100, 0.3);
+}
+
+.node-tooltip .tooltip-title {
+    font-weight: 600;
+    color: #ff6666;
+    margin-bottom: 6px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.node-tooltip .tooltip-reason {
+    margin: 4px 0;
+    padding-left: 12px;
+    position: relative;
+    color: #ffcccc;
+}
+
+.node-tooltip .tooltip-reason::before {
+    content: "•";
+    position: absolute;
+    left: 0;
+    color: #ff6666;
+}
