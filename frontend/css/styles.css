@@ -105,17 +105,43 @@ body {
     margin-bottom: 12px;
 }
 
-.legend-item {
+.legend-hint {
+    font-size: 10px;
+    color: #666;
+    font-weight: normal;
+}
+
+.legend-filter-btn {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 6px 0;
-    font-size: 12px;
+    width: 100%;
+    text-align: left;
+    padding: 8px 12px;
+    margin-bottom: 4px;
+    border-radius: 8px;
+}
+
+.legend-filter-btn .legend-dot {
+    flex-shrink: 0;
+}
+
+.legend-filter-btn span {
+    flex: 1;
+}
+
+.legend-filter-btn.active {
+    background: rgba(100, 100, 200, 0.4);
+    border-color: rgba(100, 100, 200, 0.8);
+}
+
+.legend-filter-btn:hover {
+    background: rgba(80, 80, 150, 0.5);
 }
 
 .legend-dot {
-    width: 16px;
-    height: 16px;
+    width: 14px;
+    height: 14px;
     border-radius: 50%;
 }
 
