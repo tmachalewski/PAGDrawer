@@ -7,8 +7,11 @@ Constructs the full graph with:
 - Dynamic VC edges (ALLOWS_EXPLOIT, YIELDS_STATE)
 """
 
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, TYPE_CHECKING
 import networkx as nx
+
+if TYPE_CHECKING:
+    from src.data.loaders import LoadedData
 
 from src.core.schema import (
     NodeType, EdgeType, VCType,
@@ -32,6 +35,7 @@ class KnowledgeGraphBuilder:
         self._node_registry: Dict[str, Any] = {}
         self._vc_nodes: Dict[str, VCNode] = {}
         self.config = config or DEFAULT_CONFIG
+        self._loaded_data: Optional["LoadedData"] = None
     
     # =========================================================================
     # NODE ADDITION METHODS
@@ -312,55 +316,96 @@ class KnowledgeGraphBuilder:
     def load_from_mock_data(self):
         """
         Load the complete graph from mock data using 2-layer model.
-        
+
         Layer 1 (External): Initial attack from outside using AV:N CVEs
         INSIDE_NETWORK: Bridge state achieved after any compromise
         Layer 2 (Internal): Post-compromise using AV:A CVEs (full mesh)
         """
         # Build Layer 1 (external attack surface)
         self._build_layer(layer_suffix="")
-        
+
         # Add Attacker entry point (connects to Layer 1 only)
         self._add_attacker_node()
-        
+
         # Build Layer 2 (internal network, post-compromise)
         self._build_layer(layer_suffix=":INSIDE_NETWORK")
-        
+
         # Create INSIDE_NETWORK bridge connecting Layer 1 EX:Y to Layer 2 hosts
         self._create_inside_network_bridge()
-        
-        # Wire multi-stage attacks: VC outcomes → CVE prerequisites  
+
+        # Wire multi-stage attacks: VC outcomes → CVE prerequisites
         # e.g., CVE1 yields PR:L → ENABLES → CVE2 requires PR:L
+        self._wire_multistage_attacks()
+
+    def load_from_data(self, data: "LoadedData"):
+        """
+        Load the complete graph from a LoadedData instance using 2-layer model.
+
+        This method accepts data from any DataLoader implementation, enabling
+        integration with real vulnerability scanners like Trivy.
+
+        Args:
+            data: LoadedData instance containing hosts, cpes, cves, cwes, etc.
+        """
+        # Store the data for use by layer building methods
+        self._loaded_data = data
+
+        # Build Layer 1 (external attack surface)
+        self._build_layer(layer_suffix="")
+
+        # Add Attacker entry point (connects to Layer 1 only)
+        self._add_attacker_node()
+
+        # Build Layer 2 (internal network, post-compromise)
+        self._build_layer(layer_suffix=":INSIDE_NETWORK")
+
+        # Create INSIDE_NETWORK bridge connecting Layer 1 EX:Y to Layer 2 hosts
+        self._create_inside_network_bridge()
+
+        # Wire multi-stage attacks: VC outcomes → CVE prerequisites
         self._wire_multistage_attacks()
     
     def _build_layer(self, layer_suffix: str = ""):
         """
         Build a layer of the attack graph.
-        
+
         Args:
             layer_suffix: Suffix to add to node IDs (empty for Layer 1, ":INSIDE_NETWORK" for Layer 2)
         """
-        from src.data.mock_data import (
-            MOCK_HOSTS, MOCK_CPES, MOCK_CVES, MOCK_CWES,
-            MOCK_HOST_CPE_MAP, MOCK_NETWORK_EDGES
-        )
-        
+        # Use loaded data if available, otherwise fall back to mock data
+        if self._loaded_data is not None:
+            hosts = self._loaded_data.hosts
+            cpes = self._loaded_data.cpes
+            cves = self._loaded_data.cves
+            cwes = self._loaded_data.cwes
+            host_cpe_map = self._loaded_data.host_cpe_map
+        else:
+            from src.data.mock_data import (
+                MOCK_HOSTS, MOCK_CPES, MOCK_CVES, MOCK_CWES,
+                MOCK_HOST_CPE_MAP,
+            )
+            hosts = MOCK_HOSTS
+            cpes = MOCK_CPES
+            cves = MOCK_CVES
+            cwes = MOCK_CWES
+            host_cpe_map = MOCK_HOST_CPE_MAP
+
         is_layer_2 = layer_suffix != ""
-        
+
         # Build lookup tables
         cpe_to_cves = {}
-        for cve_data in MOCK_CVES:
+        for cve_data in cves:
             cpe_id = cve_data.get("cpe_id")
             if cpe_id:
                 if cpe_id not in cpe_to_cves:
                     cpe_to_cves[cpe_id] = []
                 cpe_to_cves[cpe_id].append(cve_data)
-        
-        cwe_lookup = {c["id"]: c for c in MOCK_CWES}
-        cpe_lookup = {c["id"]: c for c in MOCK_CPES}
-        
+
+        cwe_lookup = {c["id"]: c for c in cwes}
+        cpe_lookup = {c["id"]: c for c in cpes}
+
         # Add Hosts for this layer
-        for host_data in MOCK_HOSTS:
+        for host_data in hosts:
             host_id = f"{host_data['id']}{layer_suffix}"
             self.graph.add_node(
                 host_id,
@@ -372,7 +417,7 @@ class KnowledgeGraphBuilder:
             )
         
         # Process each host's software stack
-        for original_host_id, cpe_ids in MOCK_HOST_CPE_MAP.items():
+        for original_host_id, cpe_ids in host_cpe_map.items():
             host_id = f"{original_host_id}{layer_suffix}"
             
             for cpe_id in cpe_ids:
@@ -469,12 +514,17 @@ class KnowledgeGraphBuilder:
     def _create_inside_network_bridge(self):
         """
         Create INSIDE_NETWORK bridge connecting Layer 1 EX:Y nodes to Layer 2 hosts.
-        
+
         Once any host is compromised (EX:Y in Layer 1), attacker is "inside the network"
         and can reach all hosts in Layer 2 with AV:A access.
         """
-        from src.data.mock_data import MOCK_HOSTS
-        
+        # Use loaded data if available, otherwise fall back to mock data
+        if self._loaded_data is not None:
+            hosts = self._loaded_data.hosts
+        else:
+            from src.data.mock_data import MOCK_HOSTS
+            hosts = MOCK_HOSTS
+
         # Create the central INSIDE_NETWORK node
         self.graph.add_node(
             "INSIDE_NETWORK",
@@ -497,7 +547,7 @@ class KnowledgeGraphBuilder:
                 )
         
         # Connect INSIDE_NETWORK to all Layer 2 hosts (full mesh)
-        for host_data in MOCK_HOSTS:
+        for host_data in hosts:
             layer2_host_id = f"{host_data['id']}:INSIDE_NETWORK"
             if self.graph.has_node(layer2_host_id):
                 self.graph.add_edge(

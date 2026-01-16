@@ -1,0 +1,2 @@
+# This directory stores cached CWE/NVD data
+# Cache files are gitignored but this file ensures the directory exists
