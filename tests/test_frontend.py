@@ -312,6 +312,68 @@ class TestSettingsModal:
         modal = page.locator("#settings-modal")
         expect(modal).to_be_hidden(timeout=5000)
 
+    def test_slider_positions_persist_after_save(self, page: Page):
+        """Slider positions should be remembered after save and reopen."""
+        page.goto(BASE_URL)
+        wait_for_cytoscape(page)
+
+        # Open settings modal
+        page.get_by_role("button", name="Settings").click()
+        page.locator("#settings-modal").wait_for(state="visible", timeout=5000)
+
+        # Get CPE and CVE sliders
+        cpe_slider = page.locator("#config-CPE")
+        cve_slider = page.locator("#config-CVE")
+
+        # Change slider positions (CPE to 0, CVE to 1)
+        cpe_slider.fill("0")
+        cpe_slider.dispatch_event("input")
+        cve_slider.fill("1")
+        cve_slider.dispatch_event("input")
+
+        # Save settings
+        page.get_by_role("button", name="Save").click()
+
+        # Wait for graph rebuild
+        wait_for_cytoscape(page, timeout=10000)
+
+        # Reopen settings modal
+        page.get_by_role("button", name="Settings").click()
+        page.locator("#settings-modal").wait_for(state="visible", timeout=5000)
+
+        # Verify slider positions persisted
+        final_cpe = cpe_slider.input_value()
+        final_cve = cve_slider.input_value()
+
+        assert final_cpe == "0", f"CPE slider should be 0, got {final_cpe}"
+        assert final_cve == "1", f"CVE slider should be 1, got {final_cve}"
+
+    def test_slider_affects_graph_node_count(self, page: Page):
+        """Changing slider to universal should reduce node count."""
+        page.goto(BASE_URL)
+        wait_for_cytoscape(page)
+
+        # Get initial node count
+        initial_count = page.locator("#total-nodes").inner_text()
+
+        # Open settings and set CPE to universal (position 0)
+        page.get_by_role("button", name="Settings").click()
+        page.locator("#settings-modal").wait_for(state="visible", timeout=5000)
+
+        cpe_slider = page.locator("#config-CPE")
+        cpe_slider.fill("0")
+        cpe_slider.dispatch_event("input")
+
+        # Save settings
+        page.get_by_role("button", name="Save").click()
+        wait_for_cytoscape(page, timeout=10000)
+
+        # Get new node count
+        final_count = page.locator("#total-nodes").inner_text()
+
+        # Universal mode should have fewer or equal nodes
+        assert int(final_count) <= int(initial_count)
+
 
 class TestHideRestore:
     """Tests for Hide/Restore functionality."""

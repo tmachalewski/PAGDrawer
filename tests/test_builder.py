@@ -521,7 +521,134 @@ class TestSingularUniversalMode:
             config.node_modes[node_type] = "universal"
         
         builder = build_knowledge_graph(config)
-        
+
         assert builder.config.is_universal("TI")
         assert builder.config.is_universal("VC")
         assert builder.config.is_universal("CVE")
+
+
+class TestIntermediateGranularity:
+    """Tests for intermediate granularity levels (between universal and most granular)."""
+
+    def test_ti_grouped_by_host_reduces_nodes(self):
+        """TI grouped by HOST should have fewer nodes than grouped by CWE."""
+        # Most granular: TI per CWE
+        cwe_config = GraphConfig()
+        cwe_config.set_mode("TI", "CWE")
+        cwe_builder = build_knowledge_graph(cwe_config)
+        cwe_ti_count = cwe_builder.get_stats()["node_counts"].get("TI", 0)
+
+        # Intermediate: TI per HOST
+        host_config = GraphConfig()
+        host_config.set_mode("TI", "HOST")
+        host_builder = build_knowledge_graph(host_config)
+        host_ti_count = host_builder.get_stats()["node_counts"].get("TI", 0)
+
+        # Universal: TI shared globally
+        universal_config = GraphConfig()
+        universal_config.set_mode("TI", "ATTACKER")
+        universal_builder = build_knowledge_graph(universal_config)
+        universal_ti_count = universal_builder.get_stats()["node_counts"].get("TI", 0)
+
+        # Should have: universal < host < cwe
+        assert universal_ti_count <= host_ti_count <= cwe_ti_count
+        assert universal_ti_count < cwe_ti_count  # At least some difference
+
+    def test_cve_grouped_by_host_vs_cpe(self):
+        """CVE grouped by HOST should have fewer nodes than grouped by CPE."""
+        # Most granular: CVE per CPE
+        cpe_config = GraphConfig()
+        cpe_config.set_mode("CVE", "CPE")
+        cpe_builder = build_knowledge_graph(cpe_config)
+        cpe_cve_count = cpe_builder.get_stats()["node_counts"].get("CVE", 0)
+
+        # Intermediate: CVE per HOST
+        host_config = GraphConfig()
+        host_config.set_mode("CVE", "HOST")
+        host_builder = build_knowledge_graph(host_config)
+        host_cve_count = host_builder.get_stats()["node_counts"].get("CVE", 0)
+
+        # Universal: CVE shared globally
+        universal_config = GraphConfig()
+        universal_config.set_mode("CVE", "ATTACKER")
+        universal_builder = build_knowledge_graph(universal_config)
+        universal_cve_count = universal_builder.get_stats()["node_counts"].get("CVE", 0)
+
+        # Should have: universal <= host <= cpe
+        assert universal_cve_count <= host_cve_count <= cpe_cve_count
+
+    def test_ti_host_grouping_includes_host_id(self):
+        """TI grouped by HOST should have host_id but not cwe_id."""
+        config = GraphConfig()
+        config.set_mode("TI", "HOST")
+        builder = build_knowledge_graph(config)
+
+        ti_nodes = [
+            (node_id, data) for node_id, data
+            in builder.graph.nodes(data=True)
+            if data.get("node_type") == "TI"
+        ]
+
+        # Should have host_id set
+        ti_with_host = [n for n_id, n in ti_nodes if n.get("host_id") is not None]
+        assert len(ti_with_host) > 0
+
+        # Should NOT have cwe_id set (since grouping by HOST, not CWE)
+        ti_with_cwe = [n for n_id, n in ti_nodes if n.get("cwe_id") is not None]
+        assert len(ti_with_cwe) == 0
+
+    def test_ti_cwe_grouping_includes_both_ids(self):
+        """TI grouped by CWE should have both host_id and cwe_id."""
+        config = GraphConfig()
+        config.set_mode("TI", "CWE")
+        builder = build_knowledge_graph(config)
+
+        ti_nodes = [
+            (node_id, data) for node_id, data
+            in builder.graph.nodes(data=True)
+            if data.get("node_type") == "TI"
+        ]
+
+        # Should have host_id set
+        ti_with_host = [n for n_id, n in ti_nodes if n.get("host_id") is not None]
+        assert len(ti_with_host) > 0
+
+        # Should have cwe_id set
+        ti_with_cwe = [n for n_id, n in ti_nodes if n.get("cwe_id") is not None]
+        assert len(ti_with_cwe) > 0
+
+    def test_cwe_grouped_by_cpe_node_ids(self):
+        """CWE grouped by CPE should have CPE in node ID but not CVE."""
+        config = GraphConfig()
+        config.set_mode("CWE", "CPE")
+        builder = build_knowledge_graph(config)
+
+        cwe_nodes = [
+            node_id for node_id, data
+            in builder.graph.nodes(data=True)
+            if data.get("node_type") == "CWE"
+        ]
+
+        # Node IDs should contain @ (indicating they have context)
+        cwe_with_context = [n for n in cwe_nodes if "@" in n]
+        assert len(cwe_with_context) > 0
+
+        # Should NOT contain @CVE (since we're grouping by CPE, not CVE)
+        cwe_with_cve = [n for n in cwe_nodes if "@CVE" in n]
+        assert len(cwe_with_cve) == 0
+
+    def test_intermediate_granularity_affects_edge_count(self):
+        """Different granularity levels should affect edge counts."""
+        # More granular = more nodes = potentially more edges
+        universal_config = GraphConfig()
+        universal_config.set_mode("TI", "ATTACKER")
+        universal_builder = build_knowledge_graph(universal_config)
+        universal_edges = universal_builder.get_stats()["total_edges"]
+
+        granular_config = GraphConfig()
+        granular_config.set_mode("TI", "CWE")
+        granular_builder = build_knowledge_graph(granular_config)
+        granular_edges = granular_builder.get_stats()["total_edges"]
+
+        # More granular config should have at least as many edges
+        assert granular_edges >= universal_edges
