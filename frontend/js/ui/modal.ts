@@ -3,6 +3,7 @@
  */
 
 import { updateConfig, fetchGraph, fetchStats } from '../services/api';
+import { reapplyHiddenTypes } from '../features/filter';
 import { initCytoscape, destroyCytoscape } from '../graph/core';
 import { runLayout } from '../graph/layout';
 import { setupEventHandlers } from '../graph/events';
@@ -152,6 +153,9 @@ export async function saveSettings(): Promise<void> {
         destroyCytoscape();
         initCytoscape(graphData.elements);
         setupEventHandlers();
+
+        // Reapply hidden types from before rebuild
+        reapplyHiddenTypes();
 
         setTimeout(() => runLayout(), 100);
         hideLoading();

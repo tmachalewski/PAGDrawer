@@ -410,9 +410,303 @@ class TestHideRestore:
         assert "Select" in dialog_message[0] or "select" in dialog_message[0]
 
 
+class TestVisibilityToggle:
+    """Tests for node type visibility toggle (👁 buttons)."""
+
+    def test_visibility_toggles_exist(self, page: Page):
+        """Visibility toggle buttons should exist for each node type."""
+        page.goto(BASE_URL)
+        wait_for_cytoscape(page)
+
+        toggles = page.locator(".visibility-toggle")
+        assert toggles.count() == 7  # ATTACKER, HOST, CPE, CVE, CWE, TI, VC
+
+    def test_single_toggle_hide_show(self, page: Page):
+        """Hiding and showing a single type should preserve node count."""
+        page.goto(BASE_URL)
+        wait_for_cytoscape(page)
+
+        # Get initial counts
+        initial_nodes = int(page.evaluate("getCy().nodes().length"))
+        initial_edges = int(page.evaluate("getCy().edges().length"))
+
+        # Hide CVE nodes
+        page.locator('.visibility-toggle[data-type="CVE"]').click()
+        page.wait_for_timeout(300)
+
+        # Verify some nodes are hidden (bridges created)
+        after_hide_nodes = int(page.evaluate("getCy().nodes().length"))
+        assert after_hide_nodes < initial_nodes
+
+        # Show CVE nodes
+        page.locator('.visibility-toggle[data-type="CVE"]').click()
+        page.wait_for_timeout(300)
+
+        # Verify counts restored
+        final_nodes = int(page.evaluate("getCy().nodes().length"))
+        final_edges = int(page.evaluate("getCy().edges().length"))
+
+        assert final_nodes == initial_nodes, f"Nodes: expected {initial_nodes}, got {final_nodes}"
+        assert final_edges == initial_edges, f"Edges: expected {initial_edges}, got {final_edges}"
+
+    def test_toggle_same_type_multiple_times(self, page: Page):
+        """Toggling the same type multiple times should preserve node count."""
+        page.goto(BASE_URL)
+        wait_for_cytoscape(page)
+
+        initial_nodes = int(page.evaluate("getCy().nodes().length"))
+        initial_edges = int(page.evaluate("getCy().edges().length"))
+
+        toggle = page.locator('.visibility-toggle[data-type="CWE"]')
+
+        # Toggle 5 times
+        for i in range(5):
+            toggle.click()
+            page.wait_for_timeout(200)
+
+        # After odd number of clicks, should be hidden
+        # Click once more to show
+        toggle.click()
+        page.wait_for_timeout(300)
+
+        final_nodes = int(page.evaluate("getCy().nodes().length"))
+        final_edges = int(page.evaluate("getCy().edges().length"))
+
+        assert final_nodes == initial_nodes, f"Nodes: expected {initial_nodes}, got {final_nodes}"
+        assert final_edges == initial_edges, f"Edges: expected {initial_edges}, got {final_edges}"
+
+    def test_toggle_multiple_types_then_restore(self, page: Page):
+        """Hiding multiple types then using Restore All should preserve counts."""
+        page.goto(BASE_URL)
+        wait_for_cytoscape(page)
+
+        initial_nodes = int(page.evaluate("getCy().nodes().length"))
+        initial_edges = int(page.evaluate("getCy().edges().length"))
+
+        # Hide CVE, CWE, and TI
+        page.locator('.visibility-toggle[data-type="CVE"]').click()
+        page.wait_for_timeout(200)
+        page.locator('.visibility-toggle[data-type="CWE"]').click()
+        page.wait_for_timeout(200)
+        page.locator('.visibility-toggle[data-type="TI"]').click()
+        page.wait_for_timeout(300)
+
+        # Click Restore All
+        page.get_by_role("button", name="Restore All").click()
+        page.wait_for_timeout(500)
+
+        final_nodes = int(page.evaluate("getCy().nodes().length"))
+        final_edges = int(page.evaluate("getCy().edges().length"))
+
+        assert final_nodes == initial_nodes, f"Nodes: expected {initial_nodes}, got {final_nodes}"
+        assert final_edges == initial_edges, f"Edges: expected {initial_edges}, got {final_edges}"
+
+    def test_toggle_multiple_types_individually_restore(self, page: Page):
+        """Hiding then showing multiple types individually should preserve counts."""
+        page.goto(BASE_URL)
+        wait_for_cytoscape(page)
+
+        initial_nodes = int(page.evaluate("getCy().nodes().length"))
+        initial_edges = int(page.evaluate("getCy().edges().length"))
+
+        # Hide CVE, CWE, TI in sequence
+        page.locator('.visibility-toggle[data-type="CVE"]').click()
+        page.wait_for_timeout(200)
+        page.locator('.visibility-toggle[data-type="CWE"]').click()
+        page.wait_for_timeout(200)
+        page.locator('.visibility-toggle[data-type="TI"]').click()
+        page.wait_for_timeout(300)
+
+        # Show them in reverse order
+        page.locator('.visibility-toggle[data-type="TI"]').click()
+        page.wait_for_timeout(200)
+        page.locator('.visibility-toggle[data-type="CWE"]').click()
+        page.wait_for_timeout(200)
+        page.locator('.visibility-toggle[data-type="CVE"]').click()
+        page.wait_for_timeout(300)
+
+        final_nodes = int(page.evaluate("getCy().nodes().length"))
+        final_edges = int(page.evaluate("getCy().edges().length"))
+
+        assert final_nodes == initial_nodes, f"Nodes: expected {initial_nodes}, got {final_nodes}"
+        assert final_edges == initial_edges, f"Edges: expected {initial_edges}, got {final_edges}"
+
+    def test_toggle_adjacent_types(self, page: Page):
+        """Hiding adjacent types in the graph hierarchy should work correctly."""
+        page.goto(BASE_URL)
+        wait_for_cytoscape(page)
+
+        initial_nodes = int(page.evaluate("getCy().nodes().length"))
+        initial_edges = int(page.evaluate("getCy().edges().length"))
+
+        # Hide CPE then CVE (adjacent in hierarchy)
+        page.locator('.visibility-toggle[data-type="CPE"]').click()
+        page.wait_for_timeout(200)
+        page.locator('.visibility-toggle[data-type="CVE"]').click()
+        page.wait_for_timeout(300)
+
+        # Show CVE then CPE
+        page.locator('.visibility-toggle[data-type="CVE"]').click()
+        page.wait_for_timeout(200)
+        page.locator('.visibility-toggle[data-type="CPE"]').click()
+        page.wait_for_timeout(300)
+
+        final_nodes = int(page.evaluate("getCy().nodes().length"))
+        final_edges = int(page.evaluate("getCy().edges().length"))
+
+        assert final_nodes == initial_nodes, f"Nodes: expected {initial_nodes}, got {final_nodes}"
+        assert final_edges == initial_edges, f"Edges: expected {initial_edges}, got {final_edges}"
+
+    def test_no_bridge_edges_after_full_restore(self, page: Page):
+        """After restoring all, no bridge edges should remain."""
+        page.goto(BASE_URL)
+        wait_for_cytoscape(page)
+
+        # Hide a few types
+        page.locator('.visibility-toggle[data-type="CVE"]').click()
+        page.wait_for_timeout(200)
+        page.locator('.visibility-toggle[data-type="TI"]').click()
+        page.wait_for_timeout(300)
+
+        # Verify bridges exist
+        bridges_during = int(page.evaluate('getCy().edges("[isBridge]").length'))
+        assert bridges_during > 0, "Should have bridge edges while types are hidden"
+
+        # Restore all
+        page.get_by_role("button", name="Restore All").click()
+        page.wait_for_timeout(500)
+
+        # Verify no bridges remain
+        bridges_after = int(page.evaluate('getCy().edges("[isBridge]").length'))
+        assert bridges_after == 0, f"Should have no bridge edges after restore, got {bridges_after}"
+
+    def test_hidden_types_preserved_after_settings_save(self, page: Page):
+        """Hidden types should be preserved when settings are saved."""
+        page.goto(BASE_URL)
+        wait_for_cytoscape(page)
+
+        # Hide CVE nodes
+        page.locator('.visibility-toggle[data-type="CVE"]').click()
+        page.wait_for_timeout(300)
+
+        # Verify CVE is hidden
+        cve_before = int(page.evaluate('getCy().nodes().filter(n => n.data("type") === "CVE").length'))
+        assert cve_before == 0, "CVE should be hidden"
+
+        # Open settings and save (triggers graph rebuild)
+        page.get_by_role("button", name="Settings").click()
+        page.locator("#settings-modal").wait_for(state="visible", timeout=5000)
+        page.get_by_role("button", name="Save").click()
+
+        # Wait for graph rebuild
+        wait_for_cytoscape(page, timeout=10000)
+
+        # Verify CVE is still hidden
+        cve_after = int(page.evaluate('getCy().nodes().filter(n => n.data("type") === "CVE").length'))
+        assert cve_after == 0, f"CVE should still be hidden after settings save, got {cve_after}"
+
+        # Verify toggle button still shows hidden state
+        toggle_hidden = page.locator('.visibility-toggle[data-type="CVE"]').evaluate(
+            'el => el.classList.contains("hidden")'
+        )
+        assert toggle_hidden, "Toggle button should still have 'hidden' class"
+
+    def test_multiple_hidden_types_preserved_after_settings_save(self, page: Page):
+        """Multiple hidden types should be preserved with correct edges after settings save."""
+        page.goto(BASE_URL)
+        wait_for_cytoscape(page)
+
+        # Get initial counts
+        initial_nodes = int(page.evaluate("getCy().nodes().length"))
+        initial_edges = int(page.evaluate("getCy().edges().length"))
+
+        # Hide CVE, CWE, and TI
+        page.locator('.visibility-toggle[data-type="CVE"]').click()
+        page.wait_for_timeout(200)
+        page.locator('.visibility-toggle[data-type="CWE"]').click()
+        page.wait_for_timeout(200)
+        page.locator('.visibility-toggle[data-type="TI"]').click()
+        page.wait_for_timeout(300)
+
+        # Record counts after hiding
+        after_hide_nodes = int(page.evaluate("getCy().nodes().length"))
+
+        # Open settings and save (triggers graph rebuild)
+        page.get_by_role("button", name="Settings").click()
+        page.locator("#settings-modal").wait_for(state="visible", timeout=5000)
+        page.get_by_role("button", name="Save").click()
+
+        # Wait for graph rebuild
+        wait_for_cytoscape(page, timeout=10000)
+
+        # Verify same node count as before save
+        after_save_nodes = int(page.evaluate("getCy().nodes().length"))
+        assert after_save_nodes == after_hide_nodes, \
+            f"Node count should be same after save: expected {after_hide_nodes}, got {after_save_nodes}"
+
+        # Verify all three types still hidden
+        for node_type in ["CVE", "CWE", "TI"]:
+            count = int(page.evaluate(f'getCy().nodes().filter(n => n.data("type") === "{node_type}").length'))
+            assert count == 0, f"{node_type} should still be hidden, got {count}"
+
+        # Now restore all and verify original counts
+        page.get_by_role("button", name="Restore All").click()
+        page.wait_for_timeout(500)
+
+        final_nodes = int(page.evaluate("getCy().nodes().length"))
+        final_edges = int(page.evaluate("getCy().edges().length"))
+
+        assert final_nodes == initial_nodes, f"Nodes after restore: expected {initial_nodes}, got {final_nodes}"
+        assert final_edges == initial_edges, f"Edges after restore: expected {initial_edges}, got {final_edges}"
+
+    def test_visibility_toggle_with_hide_selected(self, page: Page):
+        """Visibility toggle and Hide Selected should work independently."""
+        page.goto(BASE_URL)
+        wait_for_cytoscape(page)
+
+        initial_nodes = int(page.evaluate("getCy().nodes().length"))
+        initial_edges = int(page.evaluate("getCy().edges().length"))
+
+        # Hide CVE type using visibility toggle
+        page.locator('.visibility-toggle[data-type="CVE"]').click()
+        page.wait_for_timeout(300)
+
+        after_toggle_nodes = int(page.evaluate("getCy().nodes().length"))
+        cve_count = int(page.evaluate('getCy().nodes().filter(n => n.data("type") === "CVE").length'))
+        assert cve_count == 0, "CVE should be hidden by toggle"
+
+        # Select and hide a HOST node using Hide Selected
+        page.evaluate('getCy().nodes().filter(n => n.data("type") === "HOST").first().select()')
+        page.wait_for_timeout(100)
+
+        page.locator("#hide-btn").click()
+        page.wait_for_timeout(300)
+
+        after_hide_nodes = int(page.evaluate("getCy().nodes().length"))
+        assert after_hide_nodes < after_toggle_nodes, "Hide Selected should hide additional nodes"
+
+        # Show CVE using visibility toggle
+        page.locator('.visibility-toggle[data-type="CVE"]').click()
+        page.wait_for_timeout(300)
+
+        # CVE should be visible now, but HOST still hidden
+        cve_after = int(page.evaluate('getCy().nodes().filter(n => n.data("type") === "CVE").length'))
+        assert cve_after > 0, "CVE should be visible after toggle"
+
+        # Restore All should restore everything
+        page.get_by_role("button", name="Restore All").click()
+        page.wait_for_timeout(500)
+
+        final_nodes = int(page.evaluate("getCy().nodes().length"))
+        final_edges = int(page.evaluate("getCy().edges().length"))
+
+        assert final_nodes == initial_nodes, f"Nodes: expected {initial_nodes}, got {final_nodes}"
+        assert final_edges == initial_edges, f"Edges: expected {initial_edges}, got {final_edges}"
+
+
 class TestFilterButtons:
     """Tests for node type filter buttons."""
-    
+
     def test_filter_buttons_exist(self, page: Page):
         """Filter buttons should exist for each type."""
         page.goto(BASE_URL)

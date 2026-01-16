@@ -11,6 +11,7 @@ describe('Types Module', () => {
             const stats: Stats = {
                 total_nodes: 100,
                 total_edges: 150,
+                nodes_by_type: { HOST: 10, CVE: 50, CWE: 40 },
             };
 
             expect(stats.total_nodes).toBe(100);

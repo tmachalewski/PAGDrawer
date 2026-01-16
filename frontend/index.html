@@ -38,39 +38,60 @@
             </div>
 
             <div class="legend">
-                <div class="legend-title">🔗 Node Types <span class="legend-hint">(click to filter)</span></div>
+                <div class="legend-title">🔗 Node Types <span class="legend-hint">(click to filter, 👁 to hide)</span></div>
                 <button class="filter-btn legend-filter-btn active" data-type="all">
                     <div class="legend-dot" style="background: linear-gradient(135deg, #ef4444, #6366f1);"></div>
                     <span>All Types</span>
                 </button>
-                <button class="filter-btn legend-filter-btn" data-type="ATTACKER">
-                    <div class="legend-dot" style="background: #ff0066;"></div>
-                    <span>ATTACKER</span>
-                </button>
-                <button class="filter-btn legend-filter-btn" data-type="HOST">
-                    <div class="legend-dot" style="background: #ef4444;"></div>
-                    <span>HOST</span>
-                </button>
-                <button class="filter-btn legend-filter-btn" data-type="CPE">
-                    <div class="legend-dot" style="background: #f97316;"></div>
-                    <span>CPE</span>
-                </button>
-                <button class="filter-btn legend-filter-btn" data-type="CVE">
-                    <div class="legend-dot" style="background: #eab308;"></div>
-                    <span>CVE</span>
-                </button>
-                <button class="filter-btn legend-filter-btn" data-type="CWE">
-                    <div class="legend-dot" style="background: #22c55e;"></div>
-                    <span>CWE</span>
-                </button>
-                <button class="filter-btn legend-filter-btn" data-type="TI">
-                    <div class="legend-dot" style="background: #00bfff;"></div>
-                    <span>TI</span>
-                </button>
-                <button class="filter-btn legend-filter-btn" data-type="VC">
-                    <div class="legend-dot" style="background: #6366f1;"></div>
-                    <span>VC</span>
-                </button>
+                <div class="node-type-row">
+                    <button class="filter-btn legend-filter-btn" data-type="ATTACKER">
+                        <div class="legend-dot" style="background: #ff0066;"></div>
+                        <span>ATTACKER</span>
+                    </button>
+                    <button class="visibility-toggle" data-type="ATTACKER" title="Hide/Show ATTACKER nodes">👁</button>
+                </div>
+                <div class="node-type-row">
+                    <button class="filter-btn legend-filter-btn" data-type="HOST">
+                        <div class="legend-dot" style="background: #ef4444;"></div>
+                        <span>HOST</span>
+                    </button>
+                    <button class="visibility-toggle" data-type="HOST" title="Hide/Show HOST nodes">👁</button>
+                </div>
+                <div class="node-type-row">
+                    <button class="filter-btn legend-filter-btn" data-type="CPE">
+                        <div class="legend-dot" style="background: #f97316;"></div>
+                        <span>CPE</span>
+                    </button>
+                    <button class="visibility-toggle" data-type="CPE" title="Hide/Show CPE nodes">👁</button>
+                </div>
+                <div class="node-type-row">
+                    <button class="filter-btn legend-filter-btn" data-type="CVE">
+                        <div class="legend-dot" style="background: #eab308;"></div>
+                        <span>CVE</span>
+                    </button>
+                    <button class="visibility-toggle" data-type="CVE" title="Hide/Show CVE nodes">👁</button>
+                </div>
+                <div class="node-type-row">
+                    <button class="filter-btn legend-filter-btn" data-type="CWE">
+                        <div class="legend-dot" style="background: #22c55e;"></div>
+                        <span>CWE</span>
+                    </button>
+                    <button class="visibility-toggle" data-type="CWE" title="Hide/Show CWE nodes">👁</button>
+                </div>
+                <div class="node-type-row">
+                    <button class="filter-btn legend-filter-btn" data-type="TI">
+                        <div class="legend-dot" style="background: #00bfff;"></div>
+                        <span>TI</span>
+                    </button>
+                    <button class="visibility-toggle" data-type="TI" title="Hide/Show TI nodes">👁</button>
+                </div>
+                <div class="node-type-row">
+                    <button class="filter-btn legend-filter-btn" data-type="VC">
+                        <div class="legend-dot" style="background: #6366f1;"></div>
+                        <span>VC</span>
+                    </button>
+                    <button class="visibility-toggle" data-type="VC" title="Hide/Show VC nodes">👁</button>
+                </div>
             </div>
 
             <!-- Environment Settings -->

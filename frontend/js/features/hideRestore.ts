@@ -4,6 +4,7 @@
 
 import { getCy } from '../graph/core';
 import { runLayout } from '../graph/layout';
+import { resetVisibility } from './filter';
 import type { EdgeSingular, ElementDefinition } from 'cytoscape';
 
 interface HiddenItem {
@@ -100,6 +101,10 @@ export function restoreAllNodes(): void {
     });
 
     hiddenElements = [];
+
+    // Also reset visibility toggles
+    resetVisibility();
+
     runLayout();
 }
 

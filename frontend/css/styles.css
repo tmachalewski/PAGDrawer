@@ -145,6 +145,50 @@ body {
     border-radius: 50%;
 }
 
+/* Node type row with filter button and visibility toggle */
+.node-type-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-bottom: 4px;
+}
+
+.node-type-row .legend-filter-btn {
+    flex: 1;
+    margin-bottom: 0;
+}
+
+.visibility-toggle {
+    background: rgba(60, 60, 100, 0.4);
+    border: 1px solid rgba(100, 100, 200, 0.3);
+    border-radius: 6px;
+    padding: 6px 8px;
+    cursor: pointer;
+    font-size: 14px;
+    opacity: 0.8;
+    transition: all 0.2s ease;
+    color: white;
+}
+
+.visibility-toggle:hover {
+    background: rgba(80, 80, 150, 0.5);
+    opacity: 1;
+}
+
+.visibility-toggle.hidden {
+    opacity: 0.4;
+    background: rgba(40, 40, 60, 0.4);
+}
+
+.visibility-toggle.hidden::after {
+    content: '';
+    position: absolute;
+    width: 2px;
+    height: 16px;
+    background: #ff6666;
+    transform: rotate(45deg);
+}
+
 /* =============================================================================
    NODE DETAILS
    ============================================================================= */
