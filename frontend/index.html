@@ -138,48 +138,57 @@
             </div>
 
             <p style="color: #888; font-size: 12px; margin-bottom: 16px;">
-                Choose how nodes are grouped: <strong>Singular</strong> (per-parent, cleaner)
-                or <strong>Universal</strong> (shared, more compact).
+                Set grouping granularity for each node type.<br>
+                <strong class="universal-text">ATTACKER</strong> = shared &nbsp;|&nbsp;
+                Further right = more granular
             </p>
 
-            <div class="setting-row">
-                <span class="setting-label">CPE (Software)</span>
-                <select id="config-CPE" class="setting-select">
-                    <option value="singular">Singular (Per-Host)</option>
-                    <option value="universal">Universal (Shared)</option>
-                </select>
+            <!-- Column headers -->
+            <div class="slider-header">
+                <span class="slider-row-label"></span>
+                <div class="slider-columns">
+                    <span>ATTACKER</span>
+                    <span>HOST</span>
+                    <span>CPE</span>
+                    <span>CVE</span>
+                    <span>CWE</span>
+                    <span>TI</span>
+                </div>
             </div>
 
-            <div class="setting-row">
-                <span class="setting-label">CVE (Vulnerabilities)</span>
-                <select id="config-CVE" class="setting-select">
-                    <option value="singular">Singular (Per-Host)</option>
-                    <option value="universal">Universal (Shared)</option>
-                </select>
+            <div class="node-slider-row" data-type="CPE" data-cols="2">
+                <span class="slider-row-label">CPE</span>
+                <div class="slider-columns">
+                    <input type="range" id="config-CPE" min="0" max="1" value="1" step="1" class="node-slider" style="grid-column: 1 / 3;">
+                </div>
             </div>
 
-            <div class="setting-row">
-                <span class="setting-label">CWE (Weaknesses)</span>
-                <select id="config-CWE" class="setting-select">
-                    <option value="singular">Singular (Per-CVE)</option>
-                    <option value="universal">Universal (Shared)</option>
-                </select>
+            <div class="node-slider-row" data-type="CVE" data-cols="3">
+                <span class="slider-row-label">CVE</span>
+                <div class="slider-columns">
+                    <input type="range" id="config-CVE" min="0" max="2" value="2" step="1" class="node-slider" style="grid-column: 1 / 4;">
+                </div>
             </div>
 
-            <div class="setting-row">
-                <span class="setting-label">TI (Technical Impact)</span>
-                <select id="config-TI" class="setting-select">
-                    <option value="singular">Singular (Per-CWE)</option>
-                    <option value="universal">Universal (Shared)</option>
-                </select>
+            <div class="node-slider-row" data-type="CWE" data-cols="4">
+                <span class="slider-row-label">CWE</span>
+                <div class="slider-columns">
+                    <input type="range" id="config-CWE" min="0" max="3" value="3" step="1" class="node-slider" style="grid-column: 1 / 5;">
+                </div>
             </div>
 
-            <div class="setting-row">
-                <span class="setting-label">VC (States)</span>
-                <select id="config-VC" class="setting-select">
-                    <option value="singular">Singular (Per-Host)</option>
-                    <option value="universal">Universal (Shared)</option>
-                </select>
+            <div class="node-slider-row" data-type="TI" data-cols="5">
+                <span class="slider-row-label">TI</span>
+                <div class="slider-columns">
+                    <input type="range" id="config-TI" min="0" max="4" value="4" step="1" class="node-slider" style="grid-column: 1 / 6;">
+                </div>
+            </div>
+
+            <div class="node-slider-row" data-type="VC" data-cols="6">
+                <span class="slider-row-label">VC</span>
+                <div class="slider-columns">
+                    <input type="range" id="config-VC" min="0" max="5" value="1" step="1" class="node-slider" style="grid-column: 1 / 7;">
+                </div>
             </div>
 
             <button class="save-btn" onclick="saveSettings()">💾 Save & Rebuild Graph</button>

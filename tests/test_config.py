@@ -8,22 +8,23 @@ from src.core.config import GraphConfig, DuplicationMode, DEFAULT_CONFIG
 
 class TestGraphConfigDefaults:
     """Tests for default configuration values."""
-    
+
     def test_default_config_exists(self):
         """Verify DEFAULT_CONFIG is available."""
         assert DEFAULT_CONFIG is not None
         assert isinstance(DEFAULT_CONFIG, GraphConfig)
-    
+
     def test_default_host_mode(self):
-        """HOST should always be universal."""
+        """HOST should always be universal (grouped by ATTACKER)."""
         config = GraphConfig()
-        assert config.node_modes["HOST"] == "universal"
-    
+        assert config.is_universal("HOST")
+        assert config.get_grouping_level("HOST") == "ATTACKER"
+
     def test_default_singular_modes(self):
-        """CPE, CVE, CWE, TI, VC should default to singular."""
+        """CPE, CVE, CWE, TI, VC should default to singular (per-parent)."""
         config = GraphConfig()
         for node_type in ["CPE", "CVE", "CWE", "TI", "VC"]:
-            assert config.node_modes[node_type] == "singular"
+            assert config.is_singular(node_type)
 
 
 class TestGraphConfigMethods:
@@ -42,9 +43,10 @@ class TestGraphConfigMethods:
         assert config.is_universal("CVE") == False
     
     def test_is_singular_unknown_type(self):
-        """Unknown types default to singular."""
+        """Unknown types default to universal (ATTACKER grouping)."""
         config = GraphConfig()
-        assert config.is_singular("UNKNOWN") == True
+        # Unknown types get ATTACKER grouping by default, which is universal
+        assert config.is_universal("UNKNOWN") == True
     
     def test_set_mode(self):
         """Test set_mode method."""
@@ -68,12 +70,13 @@ class TestGraphConfigSerialization:
         """Test to_dict export."""
         config = GraphConfig()
         result = config.to_dict()
-        
+
         assert isinstance(result, dict)
         assert "HOST" in result
         assert "CPE" in result
         assert "TI" in result
-        assert result["HOST"] == "universal"
+        # HOST is grouped by ATTACKER (universal)
+        assert result["HOST"] == "ATTACKER"
     
     def test_from_dict(self):
         """Test from_dict import."""

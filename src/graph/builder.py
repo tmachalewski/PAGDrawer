@@ -228,14 +228,16 @@ class KnowledgeGraphBuilder:
                 prereq_levels["PR"] = PR_HIERARCHY.get(vc_value, 0)
         
         # Create TI node (Technical Impact)
-        # TI depends on CWE (predecessor) when singular
+        # TI can be grouped by ATTACKER (universal), HOST, CPE, CVE, or CWE
         ti_label = technical_impact[:25] + "..." if len(technical_impact) > 25 else technical_impact
-        
-        if self.config.is_singular("TI"):
-            ti_id = f"TI:{technical_impact[:20]}@{cwe_id}"  # per-CWE
-        else:
+
+        if self.config.is_universal("TI"):
             ti_id = f"TI:{technical_impact[:20]}{layer_suffix}"  # universal within layer
-        
+        elif self.config.should_include_context("TI", "CWE"):
+            ti_id = f"TI:{technical_impact[:20]}@{cwe_id}"  # per-CWE (most granular)
+        else:
+            ti_id = f"TI:{technical_impact[:20]}@{host_id}"  # per-HOST
+
         if not self.graph.has_node(ti_id):
             self.graph.add_node(
                 ti_id,
@@ -244,8 +246,8 @@ class KnowledgeGraphBuilder:
                 label=ti_label,
                 description=f"Technical Impact: {technical_impact}",
                 layer="L2" if is_layer_2 else "L1",
-                host_id=host_id if self.config.is_singular("TI") else None,
-                cwe_id=cwe_id if self.config.is_singular("TI") else None
+                host_id=host_id if self.config.should_include_context("TI", "HOST") else None,
+                cwe_id=cwe_id if self.config.should_include_context("TI", "CWE") else None
             )
         
         # CWE → TI (HAS_IMPACT edge)
@@ -378,12 +380,12 @@ class KnowledgeGraphBuilder:
                 if not cpe_data:
                     continue
                 
-                # Create CPE node - depends on HOST (predecessor)
-                if self.config.is_singular("CPE"):
+                # Create CPE node - can be grouped by ATTACKER (universal) or HOST
+                if self.config.should_include_context("CPE", "HOST"):
                     actual_cpe_id = f"{cpe_id}@{host_id}"
                 else:
                     actual_cpe_id = f"{cpe_id}{layer_suffix}"  # universal within layer
-                
+
                 if not self.graph.has_node(actual_cpe_id):
                     self.graph.add_node(
                         actual_cpe_id,
@@ -392,7 +394,7 @@ class KnowledgeGraphBuilder:
                         vendor=cpe_data["vendor"],
                         product=cpe_data["product"],
                         version=cpe_data["version"],
-                        host_id=host_id if self.config.is_singular("CPE") else None,
+                        host_id=host_id if self.config.should_include_context("CPE", "HOST") else None,
                         layer="L2" if is_layer_2 else "L1"
                     )
                 
@@ -402,12 +404,14 @@ class KnowledgeGraphBuilder:
                 
                 # Process CVEs for this CPE
                 for cve_data in cpe_to_cves.get(cpe_id, []):
-                    # CVE depends on CPE (predecessor), not HOST
-                    if self.config.is_singular("CVE"):
-                        actual_cve_id = f"{cve_data['id']}@{actual_cpe_id}"
-                    else:
+                    # CVE can be grouped by ATTACKER, HOST, or CPE
+                    if self.config.is_universal("CVE"):
                         actual_cve_id = f"{cve_data['id']}{layer_suffix}"  # universal within layer
-                    
+                    elif self.config.should_include_context("CVE", "CPE"):
+                        actual_cve_id = f"{cve_data['id']}@{actual_cpe_id}"  # per-CPE
+                    else:
+                        actual_cve_id = f"{cve_data['id']}@{host_id}"  # per-HOST
+
                     if not self.graph.has_node(actual_cve_id):
                         self.graph.add_node(
                             actual_cve_id,
@@ -416,8 +420,8 @@ class KnowledgeGraphBuilder:
                             description=cve_data["description"],
                             epss_score=cve_data["epss_score"],
                             cvss_vector=cve_data["cvss_vector"],
-                            host_id=host_id if self.config.is_singular("CVE") else None,
-                            cpe_id=actual_cpe_id if self.config.is_singular("CVE") else None,
+                            host_id=host_id if self.config.should_include_context("CVE", "HOST") else None,
+                            cpe_id=actual_cpe_id if self.config.should_include_context("CVE", "CPE") else None,
                             layer="L2" if is_layer_2 else "L1"
                         )
                     
@@ -429,19 +433,23 @@ class KnowledgeGraphBuilder:
                     original_cwe_id = cve_data.get("cwe_id")
                     if original_cwe_id:
                         cwe_info = cwe_lookup.get(original_cwe_id, {})
-                        # CWE depends on CVE (predecessor)
-                        if self.config.is_singular("CWE"):
-                            actual_cwe_id = f"{original_cwe_id}@{actual_cve_id}"
-                        else:
+                        # CWE can be grouped by ATTACKER, HOST, CPE, or CVE
+                        if self.config.is_universal("CWE"):
                             actual_cwe_id = f"{original_cwe_id}{layer_suffix}"  # universal within layer
-                        
+                        elif self.config.should_include_context("CWE", "CVE"):
+                            actual_cwe_id = f"{original_cwe_id}@{actual_cve_id}"  # per-CVE
+                        elif self.config.should_include_context("CWE", "CPE"):
+                            actual_cwe_id = f"{original_cwe_id}@{actual_cpe_id}"  # per-CPE
+                        else:
+                            actual_cwe_id = f"{original_cwe_id}@{host_id}"  # per-HOST
+
                         if not self.graph.has_node(actual_cwe_id):
                             self.graph.add_node(
                                 actual_cwe_id,
                                 node_type="CWE",
                                 original_cwe=original_cwe_id,
                                 name=cwe_info.get("name", original_cwe_id),
-                                host_id=host_id if self.config.is_singular("CWE") else None,
+                                host_id=host_id if self.config.should_include_context("CWE", "HOST") else None,
                                 layer="L2" if is_layer_2 else "L1"
                             )
                         
@@ -452,7 +460,7 @@ class KnowledgeGraphBuilder:
                         # Wire CWE -> VCs
                         self._wire_cwe_to_vcs(
                             actual_cwe_id,
-                            host_id if self.config.is_singular("VC") else None,
+                            host_id if self.config.should_include_context("VC", "HOST") else None,
                             cve_data["cvss_vector"],
                             cve_data.get("technical_impact", ""),
                             layer_suffix

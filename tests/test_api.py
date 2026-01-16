@@ -123,11 +123,12 @@ class TestConfigEndpoint:
         """Should return node mode configuration."""
         response = await async_client.get("/api/config")
         data = response.json()
-        
+
         assert "HOST" in data
         assert "CPE" in data
         assert "TI" in data
-        assert data["HOST"] == "universal"
+        # HOST is grouped by ATTACKER (universal mode)
+        assert data["HOST"] == "ATTACKER"
     
     @pytest.mark.asyncio
     async def test_post_config_updates(self, async_client):

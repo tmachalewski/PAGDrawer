@@ -9,7 +9,86 @@ import { setupEventHandlers } from '../graph/events';
 import { applyEnvironmentFilter } from '../features/environment';
 import { updateStats, hideLoading } from './sidebar';
 
+// Node types and their grouping options (chain from ATTACKER to parent)
+const SLIDER_OPTIONS: Record<string, string[]> = {
+    CPE: ['ATTACKER', 'HOST'],
+    CVE: ['ATTACKER', 'HOST', 'CPE'],
+    CWE: ['ATTACKER', 'HOST', 'CPE', 'CVE'],
+    TI: ['ATTACKER', 'HOST', 'CPE', 'CVE', 'CWE'],
+    VC: ['ATTACKER', 'HOST', 'CPE', 'CVE', 'CWE', 'TI']
+};
 
+const NODE_TYPES = Object.keys(SLIDER_OPTIONS);
+
+/**
+ * Update the slider option labels to highlight the selected one
+ */
+function updateSliderLabels(type: string, value: number): void {
+    const row = document.querySelector(`.node-slider-row[data-type="${type}"]`);
+    if (!row) return;
+
+    const options = row.querySelectorAll('.slider-options span');
+    options.forEach((opt, index) => {
+        opt.classList.remove('active', 'universal-active');
+        if (index === value) {
+            // Position 0 (ATTACKER) = universal, others = singular/granular
+            opt.classList.add(value === 0 ? 'universal-active' : 'active');
+        }
+    });
+}
+
+/**
+ * Setup slider change listeners
+ */
+function setupSliderListeners(): void {
+    NODE_TYPES.forEach(type => {
+        const slider = document.getElementById(`config-${type}`) as HTMLInputElement | null;
+        if (slider) {
+            slider.oninput = () => {
+                updateSliderLabels(type, parseInt(slider.value, 10));
+            };
+        }
+    });
+}
+
+/**
+ * Convert backend config value to slider position
+ * 'singular' maps to max position (most granular)
+ * 'universal' or 'ATTACKER' maps to position 0
+ */
+function configToSliderPosition(type: string, configValue: string): number {
+    const options = SLIDER_OPTIONS[type];
+    if (!options) return 0;
+
+    // Handle legacy 'universal' value
+    if (configValue === 'universal' || configValue === 'ATTACKER') {
+        return 0;
+    }
+
+    // Check if configValue matches any option
+    const index = options.indexOf(configValue);
+    if (index >= 0) return index;
+
+    // Handle legacy 'singular' - map to most granular
+    if (configValue === 'singular') {
+        return options.length - 1;
+    }
+
+    // Default to most granular
+    return options.length - 1;
+}
+
+/**
+ * Convert slider position to config value
+ * Returns the actual grouping level (e.g., "ATTACKER", "HOST", "CPE")
+ */
+function sliderPositionToConfig(type: string, position: number): string {
+    const options = SLIDER_OPTIONS[type];
+    if (!options || position < 0 || position >= options.length) {
+        return 'ATTACKER';
+    }
+    return options[position];
+}
 
 /**
  * Open settings modal and load current config
@@ -22,16 +101,21 @@ export async function openSettings(): Promise<void> {
         const response = await fetch('/api/config');
         const config = await response.json();
 
-        // Set current values in dropdowns
-        (['CPE', 'CVE', 'CWE', 'TI', 'VC'] as const).forEach(type => {
-            const select = document.getElementById(`config-${type}`) as HTMLSelectElement | null;
-            if (select && config[type]) {
-                select.value = config[type];
+        // Set each slider based on config
+        NODE_TYPES.forEach(type => {
+            const slider = document.getElementById(`config-${type}`) as HTMLInputElement | null;
+            if (slider) {
+                const position = configToSliderPosition(type, config[type] || 'singular');
+                slider.value = String(position);
+                updateSliderLabels(type, position);
             }
         });
     } catch (error) {
         console.error('Error loading config:', error);
     }
+
+    // Setup listeners
+    setupSliderListeners();
 }
 
 /**
@@ -46,19 +130,13 @@ export function closeSettings(): void {
  * Save settings and rebuild graph
  */
 export async function saveSettings(): Promise<void> {
-    const getSelectValue = (id: string): string => {
-        const el = document.getElementById(id) as HTMLSelectElement | null;
-        return el?.value || '';
-    };
-
-    const config = {
-        HOST: 'universal',
-        CPE: getSelectValue('config-CPE'),
-        CVE: getSelectValue('config-CVE'),
-        CWE: getSelectValue('config-CWE'),
-        TI: getSelectValue('config-TI'),
-        VC: getSelectValue('config-VC')
-    };
+    // Read each slider position and convert to config value
+    const config: Record<string, string> = { HOST: 'universal' };
+    NODE_TYPES.forEach(type => {
+        const slider = document.getElementById(`config-${type}`) as HTMLInputElement | null;
+        const position = slider ? parseInt(slider.value, 10) : SLIDER_OPTIONS[type].length - 1;
+        config[type] = sliderPositionToConfig(type, position);
+    });
 
     try {
         // Update config on server
