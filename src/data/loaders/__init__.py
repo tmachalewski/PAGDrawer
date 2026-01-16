@@ -14,16 +14,30 @@ from .cwe_fetcher import (
     STATIC_CWE_MAPPING,
     SEVERITY_TO_IMPACT,
 )
+from .nvd_fetcher import (
+    NVDFetcher,
+    fetch_cve,
+    fetch_epss,
+    enrich_cve,
+)
 
 __all__ = [
+    # Base classes
     "DataLoader",
     "LoadedData",
     "DataLoadError",
     "DataValidationError",
+    # Mock data
     "MockDataLoader",
+    # CWE fetcher
     "CWEFetcher",
     "get_technical_impact",
     "get_technical_impacts",
     "STATIC_CWE_MAPPING",
     "SEVERITY_TO_IMPACT",
+    # NVD fetcher
+    "NVDFetcher",
+    "fetch_cve",
+    "fetch_epss",
+    "enrich_cve",
 ]
