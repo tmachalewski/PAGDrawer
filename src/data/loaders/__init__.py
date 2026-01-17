@@ -20,6 +20,7 @@ from .nvd_fetcher import (
     fetch_epss,
     enrich_cve,
 )
+from .trivy_loader import TrivyDataLoader, load_trivy_json
 
 __all__ = [
     # Base classes
@@ -40,4 +41,7 @@ __all__ = [
     "fetch_cve",
     "fetch_epss",
     "enrich_cve",
+    # Trivy loader
+    "TrivyDataLoader",
+    "load_trivy_json",
 ]
