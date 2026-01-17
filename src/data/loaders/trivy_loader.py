@@ -304,8 +304,8 @@ class TrivyDataLoader(DataLoader):
         # Determine CWE ID
         cwe_id = vuln.CweIDs[0] if vuln.CweIDs else "CWE-noinfo"
 
-        # Get technical impact from CWE
-        technical_impact = "Varies"
+        # Get technical impact from CWE (None if unknown - won't create TI node)
+        technical_impact = None
         if self._enrich_cwe and cwe_id != "CWE-noinfo":
             technical_impact = self.cwe_fetcher.get_primary_impact(
                 cwe_id, severity=vuln.Severity, fetch_if_missing=True
