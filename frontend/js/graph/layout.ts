@@ -57,10 +57,14 @@ export function getColumnPositions(): ColumnPositions {
 
 /**
  * Run the current layout algorithm
+ * Only layouts visible elements (excludes exploit-hidden and filtered elements)
  */
 export function runLayout(): void {
     const cy = getCy();
     if (!cy) return;
+
+    // Get only visible elements (exclude hidden by exploit paths or filters)
+    const visibleElements = cy.elements().not('.exploit-hidden').not('.filtered');
 
     let layoutConfig: any;
 
@@ -82,7 +86,7 @@ export function runLayout(): void {
             spacingFactor: 1.5,
             animate: true,
             animationDuration: 500,
-            roots: cy.nodes('[type="ATTACKER"]')
+            roots: visibleElements.nodes('[type="ATTACKER"]')
         };
     } else if (currentLayout === 'cose') {
         layoutConfig = {
@@ -102,7 +106,8 @@ export function runLayout(): void {
         layoutConfig = { name: currentLayout, animate: true };
     }
 
-    cy.layout(layoutConfig).run();
+    // Run layout only on visible elements
+    visibleElements.layout(layoutConfig).run();
 }
 
 /**
