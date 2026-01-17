@@ -233,14 +233,19 @@ class KnowledgeGraphBuilder:
         
         # Create TI node (Technical Impact)
         # TI can be grouped by ATTACKER (universal), HOST, CPE, CVE, or CWE
-        ti_label = technical_impact[:25] + "..." if len(technical_impact) > 25 else technical_impact
+        ti_short = technical_impact[:20] + "..." if len(technical_impact) > 20 else technical_impact
+        # Extract original CWE ID from full path (e.g., "CWE-347@CVE-...@cpe-..." -> "CWE-347")
+        original_cwe = cwe_id.split("@")[0] if cwe_id else ""
 
         if self.config.is_universal("TI"):
             ti_id = f"TI:{technical_impact[:20]}{layer_suffix}"  # universal within layer
+            ti_label = ti_short
         elif self.config.should_include_context("TI", "CWE"):
             ti_id = f"TI:{technical_impact[:20]}@{cwe_id}"  # per-CWE (most granular)
+            ti_label = f"{ti_short}\n({original_cwe})"
         else:
             ti_id = f"TI:{technical_impact[:20]}@{host_id}"  # per-HOST
+            ti_label = f"{ti_short}\n({host_id[:15] if host_id else ''})"
 
         if not self.graph.has_node(ti_id):
             self.graph.add_node(
