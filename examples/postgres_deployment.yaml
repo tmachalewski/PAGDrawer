@@ -1,0 +1,30 @@
+# Deployment configuration for postgres:15 Trivy scan
+# Consolidates all scan targets into a single database host
+
+version: "1.0"
+name: "PostgreSQL Database Server"
+description: "Single-host deployment for postgres:15 container"
+
+defaults:
+  os_family: Linux
+  criticality_score: 0.5
+  subnet_id: database
+
+subnets:
+  - id: database
+    name: Database Network
+    zone: internal
+
+hosts:
+  - id: postgres-db
+    name: PostgreSQL 15 Server
+    os_family: Linux
+    criticality_score: 0.9
+    subnet_id: database
+    trivy_targets:
+      # Match all targets from postgres:15 scan
+      - "postgres:*"           # OS packages (debian)
+      - "*postgres*"           # Any postgres reference
+      - "*gosu*"               # gosu binary
+      - "usr/local/bin/*"      # Any binary in usr/local/bin
+      - "*debian*"             # Debian OS packages

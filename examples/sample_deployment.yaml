@@ -1,0 +1,144 @@
+# Sample Deployment Configuration for PAGDrawer
+# This defines a typical 3-tier web application infrastructure
+
+version: "1.0"
+name: "Sample Web Application"
+description: "Three-tier architecture with DMZ, application, and database layers"
+
+# Default settings for hosts not explicitly configured
+defaults:
+  os_family: Linux
+  criticality_score: 0.5
+  subnet_id: internal
+
+# Network segments
+subnets:
+  - id: external
+    name: External/Internet
+    zone: external
+    description: Internet-facing services
+    connects_to:
+      - dmz
+
+  - id: dmz
+    name: DMZ Network
+    zone: dmz
+    cidr: 10.0.1.0/24
+    description: Demilitarized zone for public-facing services
+    connects_to:
+      - application
+
+  - id: application
+    name: Application Network
+    zone: internal
+    cidr: 10.0.2.0/24
+    description: Internal application servers
+    connects_to:
+      - database
+
+  - id: database
+    name: Database Network
+    zone: internal
+    cidr: 10.0.3.0/24
+    description: Isolated database tier
+
+# Host definitions with Trivy target mappings
+hosts:
+  # ==========================================================================
+  # DMZ Tier - Public-facing services
+  # ==========================================================================
+
+  - id: nginx-proxy
+    name: NGINX Reverse Proxy
+    os_family: Linux
+    criticality_score: 0.6
+    subnet_id: dmz
+    trivy_targets:
+      - "nginx:*"
+      - "*nginx*"
+      - "proxy:*"
+
+  - id: web-frontend
+    name: React Frontend Server
+    os_family: Linux
+    criticality_score: 0.5
+    subnet_id: dmz
+    trivy_targets:
+      - "frontend:*"
+      - "node:*"
+      - "*react*"
+      - "*nextjs*"
+
+  # ==========================================================================
+  # Application Tier - Business logic
+  # ==========================================================================
+
+  - id: api-server-1
+    name: API Server (Primary)
+    os_family: Linux
+    criticality_score: 0.8
+    subnet_id: application
+    trivy_targets:
+      - "api:*"
+      - "backend:*"
+      - "*fastapi*"
+      - "*flask*"
+      - "*django*"
+
+  - id: api-server-2
+    name: API Server (Secondary)
+    os_family: Linux
+    criticality_score: 0.8
+    subnet_id: application
+    trivy_targets:
+      - "api-secondary:*"
+
+  - id: worker-server
+    name: Background Worker
+    os_family: Linux
+    criticality_score: 0.6
+    subnet_id: application
+    trivy_targets:
+      - "worker:*"
+      - "celery:*"
+      - "*redis*"
+
+  # ==========================================================================
+  # Database Tier - Data storage
+  # ==========================================================================
+
+  - id: postgres-primary
+    name: PostgreSQL Primary
+    os_family: Linux
+    criticality_score: 1.0  # Highest criticality - contains all data
+    subnet_id: database
+    trivy_targets:
+      - "postgres:*"
+      - "postgresql:*"
+      - "*postgres*"
+
+  - id: redis-cache
+    name: Redis Cache Server
+    os_family: Linux
+    criticality_score: 0.4
+    subnet_id: database
+    trivy_targets:
+      - "redis:*"
+      - "*redis*"
+
+# Additional network connections beyond subnet topology
+network_edges:
+  # Direct connection from proxy to API (bypassing frontend for API calls)
+  - source: nginx-proxy
+    target: api-server-1
+    bidirectional: true
+
+  # Load balancing between API servers
+  - source: api-server-1
+    target: api-server-2
+    bidirectional: true
+
+  # Worker needs direct database access
+  - source: worker-server
+    target: postgres-primary
+    bidirectional: true
