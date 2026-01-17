@@ -170,8 +170,8 @@ class TestCWEFetcher:
         assert not temp_cache_file.exists()
 
 
-class TestCWEFetcherXMLParsing:
-    """Tests for XML parsing functionality."""
+class TestCWEFetcherImpactNormalization:
+    """Tests for impact normalization functionality."""
 
     @pytest.fixture
     def fetcher(self, tmp_path):
@@ -291,3 +291,152 @@ class TestMockDataCWECoverage:
         # but log them for awareness
         if mismatches:
             print(f"Note: {len(mismatches)} CVEs have different impact names than CWE mapping")
+
+
+class TestCWEFetcherAPIParsing:
+    """Tests for CWE REST API parsing functionality."""
+
+    @pytest.fixture
+    def fetcher(self, tmp_path):
+        """Create a CWE fetcher with temp cache."""
+        return CWEFetcher(cache_file=tmp_path / "cache.json")
+
+    def test_extract_weakness_from_response(self, fetcher):
+        """Should extract weakness from API response wrapper."""
+        response = {
+            "Weaknesses": [
+                {"ID": "354", "Name": "Test Weakness"}
+            ]
+        }
+        weakness = fetcher._extract_weakness_from_response(response)
+        assert weakness is not None
+        assert weakness["ID"] == "354"
+
+    def test_extract_weakness_from_empty_response(self, fetcher):
+        """Should return None for empty Weaknesses list."""
+        response = {"Weaknesses": []}
+        weakness = fetcher._extract_weakness_from_response(response)
+        assert weakness is None
+
+    def test_extract_weakness_from_missing_key(self, fetcher):
+        """Should return None if Weaknesses key is missing."""
+        response = {"SomeOtherKey": []}
+        weakness = fetcher._extract_weakness_from_response(response)
+        assert weakness is None
+
+    def test_extract_consequences_from_json(self, fetcher):
+        """Should extract impacts from CommonConsequences."""
+        weakness = {
+            "CommonConsequences": [
+                {"Scope": ["Integrity"], "Impact": ["Modify Application Data"]},
+                {"Scope": ["Confidentiality"], "Impact": ["Read Application Data"]},
+            ]
+        }
+        impacts = fetcher._extract_consequences_from_json(weakness)
+        assert "Modify Application Data" in impacts
+        assert "Read Application Data" in impacts
+
+    def test_extract_consequences_with_multiple_impacts_per_consequence(self, fetcher):
+        """Should extract all impacts when multiple per consequence."""
+        weakness = {
+            "CommonConsequences": [
+                {
+                    "Scope": ["Integrity", "Confidentiality"],
+                    "Impact": ["Modify Application Data", "Read Application Data"]
+                },
+            ]
+        }
+        impacts = fetcher._extract_consequences_from_json(weakness)
+        assert "Modify Application Data" in impacts
+        assert "Read Application Data" in impacts
+
+    def test_extract_consequences_with_string_impact(self, fetcher):
+        """Should handle Impact as a string instead of list."""
+        weakness = {
+            "CommonConsequences": [
+                {"Scope": ["Integrity"], "Impact": "Modify Application Data"},
+            ]
+        }
+        impacts = fetcher._extract_consequences_from_json(weakness)
+        assert "Modify Application Data" in impacts
+
+    def test_extract_consequences_empty(self, fetcher):
+        """Should return empty list for no consequences."""
+        weakness = {"CommonConsequences": []}
+        impacts = fetcher._extract_consequences_from_json(weakness)
+        assert impacts == []
+
+    def test_extract_consequences_missing_key(self, fetcher):
+        """Should return empty list if CommonConsequences is missing."""
+        weakness = {"Name": "Test"}
+        impacts = fetcher._extract_consequences_from_json(weakness)
+        assert impacts == []
+
+    def test_get_numeric_id(self, fetcher):
+        """Should extract numeric ID from CWE string."""
+        assert fetcher._get_numeric_id("CWE-354") == "354"
+        assert fetcher._get_numeric_id("CWE-79") == "79"
+        assert fetcher._get_numeric_id("invalid") is None
+
+    @patch('src.data.loaders.cwe_fetcher.urlopen')
+    def test_fetch_from_api_success(self, mock_urlopen, fetcher):
+        """Should fetch and parse CWE data from API."""
+        # Mock API response
+        mock_response = MagicMock()
+        mock_response.read.return_value = json.dumps({
+            "Weaknesses": [{
+                "ID": "354",
+                "Name": "Improper Validation",
+                "CommonConsequences": [
+                    {"Scope": ["Integrity"], "Impact": ["Modify Application Data"]},
+                ]
+            }]
+        }).encode('utf-8')
+        mock_response.__enter__ = MagicMock(return_value=mock_response)
+        mock_response.__exit__ = MagicMock(return_value=False)
+        mock_urlopen.return_value = mock_response
+
+        impacts = fetcher._fetch_from_api("CWE-354")
+        assert impacts is not None
+        assert "Modify Application Data" in impacts
+
+    @patch('src.data.loaders.cwe_fetcher.urlopen')
+    def test_fetch_from_api_404(self, mock_urlopen, fetcher):
+        """Should return None for 404 response."""
+        from urllib.error import HTTPError
+        mock_urlopen.side_effect = HTTPError(
+            url="http://test",
+            code=404,
+            msg="Not Found",
+            hdrs={},
+            fp=None
+        )
+        impacts = fetcher._fetch_from_api("CWE-99999")
+        assert impacts is None
+
+    @patch('src.data.loaders.cwe_fetcher.urlopen')
+    def test_fetch_from_api_network_error(self, mock_urlopen, fetcher):
+        """Should return None for network errors."""
+        from urllib.error import URLError
+        mock_urlopen.side_effect = URLError("Network unreachable")
+        impacts = fetcher._fetch_from_api("CWE-354")
+        assert impacts is None
+
+    def test_info_cache_persistence(self, fetcher, tmp_path):
+        """Info cache should persist to disk."""
+        cache_file = tmp_path / "cache.json"
+        fetcher = CWEFetcher(cache_file=cache_file)
+
+        # Add to info cache
+        fetcher._info_cache["CWE-TEST"] = {
+            "id": "CWE-TEST",
+            "name": "Test CWE",
+            "description": "Test description",
+            "technical_impacts": ["Test Impact"]
+        }
+        fetcher._save_cache()
+
+        # Load in new fetcher
+        fetcher2 = CWEFetcher(cache_file=cache_file)
+        assert "CWE-TEST" in fetcher2._info_cache
+        assert fetcher2._info_cache["CWE-TEST"]["name"] == "Test CWE"

@@ -67,7 +67,7 @@ class TrivyDataLoader(DataLoader):
     def nvd_fetcher(self) -> NVDFetcher:
         """Lazy initialization of NVD fetcher."""
         if self._nvd_fetcher is None:
-            self._nvd_fetcher = NVDFetcher(api_key=self._nvd_api_key)
+            self._nvd_fetcher = NVDFetcher(nvd_api_key=self._nvd_api_key)
         return self._nvd_fetcher
 
     @property

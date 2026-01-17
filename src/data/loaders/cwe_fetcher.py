@@ -1,20 +1,18 @@
 """
-CWE Data Fetcher - Retrieves CWE information from cwe.mitre.org.
+CWE Data Fetcher - Retrieves CWE information from the CWE REST API.
 
-Extracts "Common Consequences" from CWE entries to map CWE IDs to
+Uses the official MITRE CWE REST API (https://cwe-api.mitre.org/api/v1/)
+to extract "Common Consequences" from CWE entries and map them to
 Technical Impact values for the consensual matrix transformation.
 """
 
 import json
 import logging
 import re
-import xml.etree.ElementTree as ET
-import zipfile
-from io import BytesIO
 from pathlib import Path
-from typing import Dict, List, Optional, Set
-from urllib.request import urlopen
-from urllib.error import URLError
+from typing import Any, Dict, List, Optional, Set
+from urllib.request import urlopen, Request
+from urllib.error import URLError, HTTPError
 
 logger = logging.getLogger(__name__)
 
@@ -22,18 +20,15 @@ logger = logging.getLogger(__name__)
 CACHE_DIR = Path(__file__).parent.parent / "cache"
 CWE_CACHE_FILE = CACHE_DIR / "cwe_cache.json"
 
-# CWE XML download URL (Research Concepts view - most complete)
-CWE_XML_URL = "https://cwe.mitre.org/data/xml/cwec_latest.xml.zip"
-
-# XML namespace used in CWE data
-CWE_NS = {"cwe": "http://cwe.mitre.org/cwe-7"}
+# CWE REST API base URL
+CWE_API_BASE_URL = "https://cwe-api.mitre.org/api/v1"
 
 
 # =============================================================================
 # STATIC CWE → TECHNICAL IMPACT MAPPING
 # =============================================================================
 # Pre-defined mapping for common CWEs based on their Common Consequences.
-# This provides fast lookups without needing to fetch from the web.
+# This provides fast lookups without needing to fetch from the API.
 
 STATIC_CWE_MAPPING: Dict[str, List[str]] = {
     # Injection vulnerabilities
@@ -192,19 +187,21 @@ class CWEFetcher:
     Uses a combination of:
     1. Static pre-defined mapping for common CWEs
     2. Local cache for previously fetched CWEs
-    3. XML download from cwe.mitre.org for missing CWEs
+    3. REST API from cwe-api.mitre.org for missing CWEs
     """
 
-    def __init__(self, cache_file: Optional[Path] = None):
+    def __init__(self, cache_file: Optional[Path] = None, timeout: int = 30):
         """
         Initialize the CWE fetcher.
 
         Args:
             cache_file: Optional path to cache file. Defaults to src/data/cache/cwe_cache.json
+            timeout: Request timeout in seconds for API calls
         """
         self.cache_file = cache_file or CWE_CACHE_FILE
+        self.timeout = timeout
         self._cache: Dict[str, List[str]] = {}
-        self._xml_data: Optional[ET.Element] = None
+        self._info_cache: Dict[str, Dict[str, Any]] = {}
         self._load_cache()
 
     def _load_cache(self):
@@ -212,18 +209,31 @@ class CWEFetcher:
         if self.cache_file.exists():
             try:
                 with open(self.cache_file, "r") as f:
-                    self._cache = json.load(f)
+                    data = json.load(f)
+                    # Support both old format (just impacts) and new format (with info)
+                    if isinstance(data, dict):
+                        if "impacts" in data:
+                            self._cache = data.get("impacts", {})
+                            self._info_cache = data.get("info", {})
+                        else:
+                            # Old format - just impact mappings
+                            self._cache = data
                 logger.info(f"Loaded {len(self._cache)} cached CWE mappings")
             except (json.JSONDecodeError, IOError) as e:
                 logger.warning(f"Failed to load CWE cache: {e}")
                 self._cache = {}
+                self._info_cache = {}
 
     def _save_cache(self):
         """Save CWE mappings to disk cache."""
         self.cache_file.parent.mkdir(parents=True, exist_ok=True)
         try:
+            data = {
+                "impacts": self._cache,
+                "info": self._info_cache,
+            }
             with open(self.cache_file, "w") as f:
-                json.dump(self._cache, f, indent=2)
+                json.dump(data, f, indent=2)
             logger.debug(f"Saved {len(self._cache)} CWE mappings to cache")
         except IOError as e:
             logger.warning(f"Failed to save CWE cache: {e}")
@@ -240,7 +250,7 @@ class CWEFetcher:
         Args:
             cwe_id: CWE identifier (e.g., "CWE-78" or "78")
             severity: Optional CVSS severity for fallback (CRITICAL, HIGH, MEDIUM, LOW)
-            fetch_if_missing: Whether to fetch from web if not in cache/static
+            fetch_if_missing: Whether to fetch from API if not in cache/static
 
         Returns:
             List of Technical Impact strings.
@@ -256,9 +266,9 @@ class CWEFetcher:
         if cwe_id in self._cache:
             return self._cache[cwe_id]
 
-        # Try fetching from XML
+        # Try fetching from API
         if fetch_if_missing:
-            impacts = self._fetch_from_xml(cwe_id)
+            impacts = self._fetch_from_api(cwe_id)
             if impacts:
                 self._cache[cwe_id] = impacts
                 self._save_cache()
@@ -287,7 +297,7 @@ class CWEFetcher:
         Args:
             cwe_id: CWE identifier
             severity: Optional CVSS severity for fallback
-            fetch_if_missing: Whether to fetch from web if not in cache
+            fetch_if_missing: Whether to fetch from API if not in cache
 
         Returns:
             Primary Technical Impact string.
@@ -315,9 +325,14 @@ class CWEFetcher:
         # Return as-is if can't normalize
         return cwe_id
 
-    def _fetch_from_xml(self, cwe_id: str) -> Optional[List[str]]:
+    def _get_numeric_id(self, cwe_id: str) -> Optional[str]:
+        """Extract numeric ID from CWE ID string."""
+        match = re.match(r"CWE-(\d+)", cwe_id)
+        return match.group(1) if match else None
+
+    def _fetch_from_api(self, cwe_id: str) -> Optional[List[str]]:
         """
-        Fetch CWE data from downloaded XML.
+        Fetch CWE data from the REST API.
 
         Args:
             cwe_id: Normalized CWE ID (e.g., "CWE-78")
@@ -325,99 +340,93 @@ class CWEFetcher:
         Returns:
             List of Technical Impact strings, or None if not found.
         """
-        # Load XML data if not already loaded
-        if self._xml_data is None:
-            self._xml_data = self._download_cwe_xml()
-            if self._xml_data is None:
-                return None
-
-        # Extract numeric ID
-        match = re.match(r"CWE-(\d+)", cwe_id)
-        if not match:
-            return None
-        numeric_id = match.group(1)
-
-        # Find the weakness element
-        weakness = self._xml_data.find(
-            f".//cwe:Weakness[@ID='{numeric_id}']",
-            CWE_NS
-        )
-
-        if weakness is None:
-            logger.debug(f"CWE {cwe_id} not found in XML data")
+        numeric_id = self._get_numeric_id(cwe_id)
+        if not numeric_id:
             return None
 
-        # Extract Common Consequences
-        impacts = self._extract_consequences(weakness)
-
-        if impacts:
-            logger.info(f"Fetched {len(impacts)} impacts for {cwe_id}")
-
-        return impacts if impacts else None
-
-    def _download_cwe_xml(self) -> Optional[ET.Element]:
-        """
-        Download and parse the CWE XML data.
-
-        Returns:
-            Parsed XML root element, or None on failure.
-        """
-        logger.info(f"Downloading CWE XML from {CWE_XML_URL}...")
+        url = f"{CWE_API_BASE_URL}/cwe/weakness/{numeric_id}"
 
         try:
-            with urlopen(CWE_XML_URL, timeout=60) as response:
-                zip_data = BytesIO(response.read())
+            request = Request(url, headers={"Accept": "application/json"})
+            with urlopen(request, timeout=self.timeout) as response:
+                data = json.loads(response.read().decode("utf-8"))
 
-            # Extract XML from ZIP
-            with zipfile.ZipFile(zip_data) as zf:
-                # Find the XML file in the archive
-                xml_files = [n for n in zf.namelist() if n.endswith(".xml")]
-                if not xml_files:
-                    logger.error("No XML file found in CWE ZIP archive")
-                    return None
+            # API response structure: {"Weaknesses": [{...weakness data...}]}
+            weakness = self._extract_weakness_from_response(data)
+            if not weakness:
+                return None
 
-                xml_content = zf.read(xml_files[0])
+            # Extract Common Consequences from the weakness
+            impacts = self._extract_consequences_from_json(weakness)
 
-            # Parse XML
-            root = ET.fromstring(xml_content)
-            logger.info("Successfully downloaded and parsed CWE XML")
-            return root
+            if impacts:
+                logger.info(f"Fetched {len(impacts)} impacts for {cwe_id} from API")
 
-        except URLError as e:
-            logger.error(f"Failed to download CWE XML: {e}")
+            return impacts if impacts else None
+
+        except HTTPError as e:
+            if e.code == 404:
+                logger.debug(f"CWE {cwe_id} not found in API (404)")
+            else:
+                logger.warning(f"HTTP error fetching {cwe_id}: {e.code} {e.reason}")
             return None
-        except ET.ParseError as e:
-            logger.error(f"Failed to parse CWE XML: {e}")
+        except URLError as e:
+            logger.warning(f"URL error fetching {cwe_id}: {e}")
+            return None
+        except json.JSONDecodeError as e:
+            logger.warning(f"JSON decode error for {cwe_id}: {e}")
             return None
         except Exception as e:
-            logger.error(f"Unexpected error downloading CWE XML: {e}")
+            logger.warning(f"Unexpected error fetching {cwe_id}: {e}")
             return None
 
-    def _extract_consequences(self, weakness: ET.Element) -> List[str]:
+    def _extract_weakness_from_response(self, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """
-        Extract Technical Impact values from a Weakness element.
+        Extract the weakness object from API response.
+
+        The API returns: {"Weaknesses": [{...weakness data...}]}
 
         Args:
-            weakness: XML Element for a CWE Weakness
+            data: Raw API response
+
+        Returns:
+            The weakness dictionary, or None if not found.
+        """
+        weaknesses = data.get("Weaknesses", [])
+        if isinstance(weaknesses, list) and weaknesses:
+            return weaknesses[0]
+        return None
+
+    def _extract_consequences_from_json(self, data: Dict[str, Any]) -> List[str]:
+        """
+        Extract Technical Impact values from API JSON response.
+
+        Args:
+            data: Weakness data from CWE API
 
         Returns:
             List of Technical Impact strings.
         """
         impacts: Set[str] = set()
 
-        # Find Common_Consequences element
-        consequences = weakness.find("cwe:Common_Consequences", CWE_NS)
-        if consequences is None:
-            return []
+        # API uses "CommonConsequences" (camelCase, no underscore)
+        # Structure: {"CommonConsequences": [{"Scope": [...], "Impact": [...], "Note": "..."}, ...]}
+        consequences = data.get("CommonConsequences", [])
 
-        # Extract each Consequence
-        for consequence in consequences.findall("cwe:Consequence", CWE_NS):
-            # Get Impact element(s)
-            for impact in consequence.findall("cwe:Impact", CWE_NS):
-                impact_text = impact.text
-                if impact_text:
-                    # Normalize the impact text
-                    normalized = self._normalize_impact(impact_text.strip())
+        # Handle both single consequence (dict) and multiple (list)
+        if isinstance(consequences, dict):
+            consequences = [consequences]
+
+        for consequence in consequences:
+            # Impact can be a string or list of strings
+            impact_data = consequence.get("Impact", [])
+
+            if isinstance(impact_data, str):
+                impact_data = [impact_data]
+
+            for impact in impact_data:
+                if impact:
+                    normalized = self._normalize_impact(impact.strip())
                     if normalized:
                         impacts.add(normalized)
 
@@ -521,58 +530,124 @@ class CWEFetcher:
 
         return count
 
-    def get_cwe_info(self, cwe_id: str) -> Optional[Dict]:
+    def get_cwe_info(self, cwe_id: str, fetch_if_missing: bool = True) -> Optional[Dict]:
         """
         Get full CWE information including name and description.
 
         Args:
             cwe_id: CWE identifier
+            fetch_if_missing: Whether to fetch from API if not in cache
 
         Returns:
             Dict with id, name, description, and technical_impacts.
         """
         cwe_id = self._normalize_cwe_id(cwe_id)
 
-        # Load XML if needed
-        if self._xml_data is None:
-            self._xml_data = self._download_cwe_xml()
-            if self._xml_data is None:
+        # Check info cache first
+        if cwe_id in self._info_cache:
+            return self._info_cache[cwe_id]
+
+        if not fetch_if_missing:
+            return None
+
+        # Fetch from API
+        numeric_id = self._get_numeric_id(cwe_id)
+        if not numeric_id:
+            return None
+
+        url = f"{CWE_API_BASE_URL}/cwe/weakness/{numeric_id}"
+
+        try:
+            request = Request(url, headers={"Accept": "application/json"})
+            with urlopen(request, timeout=self.timeout) as response:
+                data = json.loads(response.read().decode("utf-8"))
+
+            # Extract weakness from response wrapper
+            weakness = self._extract_weakness_from_response(data)
+            if not weakness:
                 return None
 
-        # Extract numeric ID
-        match = re.match(r"CWE-(\d+)", cwe_id)
-        if not match:
+            name = weakness.get("Name", "Unknown")
+            description = weakness.get("Description", "")
+
+            # Also extract ExtendedDescription if available
+            extended = weakness.get("ExtendedDescription", "")
+            if extended and not description:
+                description = extended
+
+            impacts = self._extract_consequences_from_json(weakness)
+
+            info = {
+                "id": cwe_id,
+                "name": name,
+                "description": description,
+                "technical_impacts": impacts,
+            }
+
+            # Cache the info
+            self._info_cache[cwe_id] = info
+            self._save_cache()
+
+            return info
+
+        except HTTPError as e:
+            if e.code == 404:
+                logger.debug(f"CWE {cwe_id} not found in API (404)")
+            else:
+                logger.warning(f"HTTP error fetching info for {cwe_id}: {e.code}")
             return None
-        numeric_id = match.group(1)
-
-        # Find the weakness element
-        weakness = self._xml_data.find(
-            f".//cwe:Weakness[@ID='{numeric_id}']",
-            CWE_NS
-        )
-
-        if weakness is None:
+        except Exception as e:
+            logger.warning(f"Error fetching CWE info for {cwe_id}: {e}")
             return None
 
-        name = weakness.get("Name", "Unknown")
+    def fetch_multiple(self, cwe_ids: List[str]) -> Dict[str, List[str]]:
+        """
+        Fetch multiple CWEs.
 
-        # Get description
-        description_elem = weakness.find("cwe:Description", CWE_NS)
-        description = description_elem.text if description_elem is not None else ""
+        Note: The batch API endpoint (/cwe/74,79) only returns minimal data,
+        so we fetch each CWE individually to get full details including
+        CommonConsequences.
 
-        # Get impacts
-        impacts = self._extract_consequences(weakness)
+        Args:
+            cwe_ids: List of CWE identifiers
 
-        return {
-            "id": cwe_id,
-            "name": name,
-            "description": description,
-            "technical_impacts": impacts,
-        }
+        Returns:
+            Dict mapping CWE IDs to their Technical Impacts.
+        """
+        results: Dict[str, List[str]] = {}
+
+        # Separate CWEs into cached and uncached
+        uncached_ids = []
+        for cwe_id in cwe_ids:
+            normalized = self._normalize_cwe_id(cwe_id)
+            if normalized in STATIC_CWE_MAPPING:
+                results[normalized] = STATIC_CWE_MAPPING[normalized]
+            elif normalized in self._cache:
+                results[normalized] = self._cache[normalized]
+            else:
+                uncached_ids.append(normalized)
+
+        if not uncached_ids:
+            return results
+
+        # Fetch each uncached CWE individually
+        # (batch endpoint doesn't include CommonConsequences)
+        fetched_count = 0
+        for cwe_id in uncached_ids:
+            impacts = self._fetch_from_api(cwe_id)
+            if impacts:
+                results[cwe_id] = impacts
+                fetched_count += 1
+
+        if fetched_count > 0:
+            logger.info(f"Fetched {fetched_count} CWEs from API")
+
+        return results
 
     def clear_cache(self):
         """Clear the local cache."""
         self._cache = {}
+        self._info_cache = {}
         if self.cache_file.exists():
             self.cache_file.unlink()
         logger.info("CWE cache cleared")
@@ -606,7 +681,7 @@ def get_technical_impact(
     Args:
         cwe_id: CWE identifier (e.g., "CWE-78" or "78")
         severity: Optional CVSS severity for fallback
-        fetch_if_missing: Whether to fetch from web if not in cache
+        fetch_if_missing: Whether to fetch from API if not in cache
 
     Returns:
         Primary Technical Impact string.
@@ -627,7 +702,7 @@ def get_technical_impacts(
     Args:
         cwe_id: CWE identifier
         severity: Optional CVSS severity for fallback
-        fetch_if_missing: Whether to fetch from web if not in cache
+        fetch_if_missing: Whether to fetch from API if not in cache
 
     Returns:
         List of Technical Impact strings.
