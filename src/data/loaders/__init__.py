@@ -21,6 +21,7 @@ from .nvd_fetcher import (
     enrich_cve,
 )
 from .trivy_loader import TrivyDataLoader, load_trivy_json
+from .deployment_loader import DeploymentLoader, load_deployment
 
 __all__ = [
     # Base classes
@@ -44,4 +45,7 @@ __all__ = [
     # Trivy loader
     "TrivyDataLoader",
     "load_trivy_json",
+    # Deployment loader
+    "DeploymentLoader",
+    "load_deployment",
 ]

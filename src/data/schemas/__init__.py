@@ -15,8 +15,16 @@ from .trivy import (
     get_cvss_score,
     get_cvss_vector,
 )
+from .deployment import (
+    DeploymentConfig,
+    HostConfig,
+    SubnetConfig,
+    NetworkEdgeConfig,
+    EXAMPLE_CONFIG_YAML,
+)
 
 __all__ = [
+    # Trivy schemas
     "TrivyReport",
     "Result",
     "Vulnerability",
@@ -25,4 +33,10 @@ __all__ = [
     "SEVERITY_TO_NUM",
     "get_cvss_vector",
     "get_cvss_score",
+    # Deployment schemas
+    "DeploymentConfig",
+    "HostConfig",
+    "SubnetConfig",
+    "NetworkEdgeConfig",
+    "EXAMPLE_CONFIG_YAML",
 ]
