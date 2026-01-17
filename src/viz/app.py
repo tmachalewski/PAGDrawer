@@ -2,22 +2,36 @@
 FastAPI backend for serving the Knowledge Graph visualization.
 """
 
-from fastapi import FastAPI
+from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse
 from pathlib import Path
-from typing import Dict
+from typing import Dict, List, Optional, Any
 import json
 import os
+import tempfile
 
-from src.graph.builder import build_knowledge_graph
+import yaml
+
+from src.graph.builder import build_knowledge_graph, KnowledgeGraphBuilder
 from src.core.config import GraphConfig
+from src.data.loaders import (
+    TrivyDataLoader,
+    DeploymentLoader,
+    LoadedData,
+    load_trivy_json,
+    load_deployment,
+)
+from src.data.schemas.deployment import DeploymentConfig
 
 app = FastAPI(title="PAGDrawer", description="Knowledge Graph Visualization")
 
 # Global state
 graph_builder = None
 current_config = GraphConfig()
+current_data_source = "mock"  # "mock", "trivy", or "deployment"
+uploaded_trivy_data: List[Dict[str, Any]] = []
+uploaded_deployment_config: Optional[Dict[str, Any]] = None
 
 
 @app.on_event("startup")
@@ -108,16 +122,238 @@ async def get_config():
 async def update_config(config_data: Dict[str, str]):
     """Update configuration and rebuild graph."""
     global graph_builder, current_config
-    
+
     # Update config
     current_config = GraphConfig.from_dict(config_data)
-    
+
     # Rebuild graph with new config
     graph_builder = build_knowledge_graph(current_config)
     print(f"Graph rebuilt with config: {current_config.to_dict()}")
     print(f"New stats: {graph_builder.get_stats()}")
-    
+
     return {"status": "ok", "stats": graph_builder.get_stats()}
+
+
+# =============================================================================
+# TRIVY DATA UPLOAD ENDPOINTS
+# =============================================================================
+
+
+@app.post("/api/upload/trivy")
+async def upload_trivy_json(file: UploadFile = File(...)):
+    """Upload a Trivy JSON scan result.
+
+    Multiple files can be uploaded sequentially. Use /api/data/rebuild
+    to rebuild the graph with all uploaded data.
+    """
+    global uploaded_trivy_data
+
+    try:
+        content = await file.read()
+        data = json.loads(content)
+
+        # Validate it's a valid Trivy report
+        if "Results" not in data and "results" not in data:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid Trivy JSON: missing 'Results' field"
+            )
+
+        uploaded_trivy_data.append(data)
+
+        return {
+            "status": "ok",
+            "message": f"Trivy data uploaded successfully",
+            "filename": file.filename,
+            "total_uploaded": len(uploaded_trivy_data),
+        }
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid JSON: {e}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/upload/trivy/json")
+async def upload_trivy_json_direct(trivy_data: Dict[str, Any]):
+    """Upload Trivy JSON data directly (not as file upload)."""
+    global uploaded_trivy_data
+
+    try:
+        if "Results" not in trivy_data and "results" not in trivy_data:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid Trivy JSON: missing 'Results' field"
+            )
+
+        uploaded_trivy_data.append(trivy_data)
+
+        return {
+            "status": "ok",
+            "message": "Trivy data uploaded successfully",
+            "total_uploaded": len(uploaded_trivy_data),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/upload/deployment")
+async def upload_deployment_config(file: UploadFile = File(...)):
+    """Upload a deployment configuration YAML file."""
+    global uploaded_deployment_config
+
+    try:
+        content = await file.read()
+        content_str = content.decode("utf-8")
+
+        # Parse YAML
+        data = yaml.safe_load(content_str)
+
+        # Validate by creating DeploymentConfig
+        DeploymentConfig.model_validate(data)
+
+        uploaded_deployment_config = data
+
+        return {
+            "status": "ok",
+            "message": "Deployment config uploaded successfully",
+            "filename": file.filename,
+            "hosts": len(data.get("hosts", [])),
+            "subnets": len(data.get("subnets", [])),
+        }
+    except yaml.YAMLError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid YAML: {e}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/upload/deployment/json")
+async def upload_deployment_config_json(deployment_data: Dict[str, Any]):
+    """Upload deployment configuration directly as JSON."""
+    global uploaded_deployment_config
+
+    try:
+        # Validate by creating DeploymentConfig
+        DeploymentConfig.model_validate(deployment_data)
+
+        uploaded_deployment_config = deployment_data
+
+        return {
+            "status": "ok",
+            "message": "Deployment config uploaded successfully",
+            "hosts": len(deployment_data.get("hosts", [])),
+            "subnets": len(deployment_data.get("subnets", [])),
+        }
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid deployment config: {e}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/data/status")
+async def get_data_status():
+    """Get status of uploaded data."""
+    return {
+        "current_source": current_data_source,
+        "trivy_uploads": len(uploaded_trivy_data),
+        "has_deployment_config": uploaded_deployment_config is not None,
+        "deployment_hosts": len(uploaded_deployment_config.get("hosts", [])) if uploaded_deployment_config else 0,
+    }
+
+
+@app.post("/api/data/rebuild")
+async def rebuild_from_uploaded_data(
+    enrich: bool = True,
+    use_deployment: bool = True,
+):
+    """Rebuild the graph from uploaded Trivy data and deployment config.
+
+    Args:
+        enrich: Whether to enrich data from NVD/CWE sources.
+        use_deployment: Whether to use uploaded deployment config.
+    """
+    global graph_builder, current_data_source
+
+    if not uploaded_trivy_data:
+        raise HTTPException(
+            status_code=400,
+            detail="No Trivy data uploaded. Use /api/upload/trivy first."
+        )
+
+    try:
+        if use_deployment and uploaded_deployment_config:
+            # Use DeploymentLoader
+            loader = DeploymentLoader(
+                deployment_config=uploaded_deployment_config,
+                trivy_sources=uploaded_trivy_data,
+                enrich_from_nvd=enrich,
+                enrich_cwe=enrich,
+            )
+            loaded_data = loader.load()
+            current_data_source = "deployment"
+        else:
+            # Load Trivy data directly without deployment config
+            all_data = LoadedData()
+            for trivy_json in uploaded_trivy_data:
+                data = load_trivy_json(trivy_json, enrich=enrich)
+                # Merge data
+                all_data.hosts.extend(data.hosts)
+                all_data.cpes.extend(data.cpes)
+                all_data.cves.extend(data.cves)
+                all_data.cwes.extend(data.cwes)
+                for host_id, cpe_list in data.host_cpe_map.items():
+                    all_data.host_cpe_map.setdefault(host_id, []).extend(cpe_list)
+                all_data.network_edges.extend(data.network_edges)
+            loaded_data = all_data
+            current_data_source = "trivy"
+
+        # Create new builder and load data
+        graph_builder = KnowledgeGraphBuilder(config=current_config)
+        graph_builder.load_from_data(loaded_data)
+
+        print(f"Graph rebuilt from {current_data_source} data")
+        print(f"Stats: {graph_builder.get_stats()}")
+
+        return {
+            "status": "ok",
+            "source": current_data_source,
+            "stats": graph_builder.get_stats(),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/data/reset")
+async def reset_to_mock_data():
+    """Reset to using mock data and clear uploaded data."""
+    global graph_builder, current_data_source, uploaded_trivy_data, uploaded_deployment_config
+
+    # Clear uploaded data
+    uploaded_trivy_data = []
+    uploaded_deployment_config = None
+
+    # Rebuild with mock data
+    graph_builder = build_knowledge_graph(current_config)
+    current_data_source = "mock"
+
+    print("Reset to mock data")
+
+    return {
+        "status": "ok",
+        "source": "mock",
+        "stats": graph_builder.get_stats(),
+    }
+
+
+@app.delete("/api/data/trivy")
+async def clear_trivy_uploads():
+    """Clear all uploaded Trivy data."""
+    global uploaded_trivy_data
+    uploaded_trivy_data = []
+    return {"status": "ok", "message": "Trivy uploads cleared"}
 
 
 @app.get("/", response_class=HTMLResponse)
