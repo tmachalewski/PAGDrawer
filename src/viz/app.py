@@ -120,18 +120,52 @@ async def get_config():
 
 @app.post("/api/config")
 async def update_config(config_data: Dict[str, str]):
-    """Update configuration and rebuild graph."""
+    """Update configuration and rebuild graph with current data source."""
     global graph_builder, current_config
 
     # Update config
     current_config = GraphConfig.from_dict(config_data)
 
-    # Rebuild graph with new config
-    graph_builder = build_knowledge_graph(current_config)
-    print(f"Graph rebuilt with config: {current_config.to_dict()}")
-    print(f"New stats: {graph_builder.get_stats()}")
+    # Rebuild graph with new config using current data source
+    if current_data_source == "mock" or not uploaded_trivy_data:
+        # Use mock data
+        graph_builder = build_knowledge_graph(current_config)
+    else:
+        # Rebuild from uploaded Trivy/deployment data
+        try:
+            if current_data_source == "deployment" and uploaded_deployment_config:
+                loader = DeploymentLoader(
+                    deployment_config=uploaded_deployment_config,
+                    trivy_sources=uploaded_trivy_data,
+                    enrich_from_nvd=False,  # Don't re-enrich on config change
+                    enrich_cwe=True,
+                )
+                loaded_data = loader.load()
+            else:
+                # Load Trivy data directly
+                all_data = LoadedData()
+                for trivy_json in uploaded_trivy_data:
+                    data = load_trivy_json(trivy_json, enrich=False)
+                    all_data.hosts.extend(data.hosts)
+                    all_data.cpes.extend(data.cpes)
+                    all_data.cves.extend(data.cves)
+                    all_data.cwes.extend(data.cwes)
+                    for host_id, cpe_list in data.host_cpe_map.items():
+                        all_data.host_cpe_map.setdefault(host_id, []).extend(cpe_list)
+                    all_data.network_edges.extend(data.network_edges)
+                loaded_data = all_data
 
-    return {"status": "ok", "stats": graph_builder.get_stats()}
+            graph_builder = KnowledgeGraphBuilder(config=current_config)
+            graph_builder.load_from_data(loaded_data)
+        except Exception as e:
+            print(f"Error rebuilding from uploaded data: {e}")
+            # Fall back to mock data
+            graph_builder = build_knowledge_graph(current_config)
+
+    print(f"Graph rebuilt with config: {current_config.to_dict()}")
+    print(f"Data source: {current_data_source}, Stats: {graph_builder.get_stats()}")
+
+    return {"status": "ok", "source": current_data_source, "stats": graph_builder.get_stats()}
 
 
 # =============================================================================
