@@ -46,7 +46,7 @@ class LoadedData:
         - cvss_vector: str (CVSS 3.1 format)
         - cpe_id: str (reference to affected CPE)
         - cwe_id: str (e.g., "CWE-78")
-        - technical_impact: str (for consensual matrix transformation)
+        - technical_impacts: List[str] (list of impacts for consensual matrix transformation)
     """
 
     cwes: List[Dict[str, Any]] = field(default_factory=list)
@@ -96,7 +96,7 @@ class LoadedData:
         # Check required fields in CVEs
         for i, cve in enumerate(self.cves):
             cve_id = cve.get("id", f"index_{i}")
-            for field in ["id", "description", "epss_score", "cvss_vector", "cpe_id", "cwe_id", "technical_impact"]:
+            for field in ["id", "description", "epss_score", "cvss_vector", "cpe_id", "cwe_id", "technical_impacts"]:
                 if field not in cve:
                     errors.append(f"CVE '{cve_id}' missing '{field}'")
 

@@ -61,7 +61,7 @@ class TestLoadedData:
                     "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
                     "cpe_id": "cpe:2.3:a:vendor:product:1.0:*",
                     "cwe_id": "CWE-79",
-                    "technical_impact": "Execute Unauthorized Code"
+                    "technical_impacts": ["Execute Unauthorized Code"]
                 }
             ],
             cwes=[
@@ -112,7 +112,7 @@ class TestLoadedData:
         assert any("missing 'cvss_vector'" in e for e in errors)
         assert any("missing 'cpe_id'" in e for e in errors)
         assert any("missing 'cwe_id'" in e for e in errors)
-        assert any("missing 'technical_impact'" in e for e in errors)
+        assert any("missing 'technical_impacts'" in e for e in errors)
 
     def test_validate_unknown_cpe_reference(self):
         """Validation should catch CVE referencing unknown CPE."""
@@ -125,7 +125,7 @@ class TestLoadedData:
                     "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
                     "cpe_id": "cpe:unknown",
                     "cwe_id": "CWE-79",
-                    "technical_impact": "Test"
+                    "technical_impacts": ["Test"]
                 }
             ]
         )
@@ -146,7 +146,7 @@ class TestLoadedData:
                     "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
                     "cpe_id": "cpe:test",
                     "cwe_id": "CWE-UNKNOWN",
-                    "technical_impact": "Test"
+                    "technical_impacts": ["Test"]
                 }
             ]
         )
@@ -356,7 +356,7 @@ class TestBuilderWithLoadedData:
                     "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
                     "cpe_id": "cpe:2.3:a:test:app:1.0:*",
                     "cwe_id": "CWE-78",
-                    "technical_impact": "Execute Unauthorized Code"
+                    "technical_impacts": ["Execute Unauthorized Code"]
                 }
             ],
             cwes=[

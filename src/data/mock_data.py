@@ -104,7 +104,13 @@ MOCK_CVES: List[Dict[str, Any]] = [
         "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H",
         "cpe_id": "cpe:2.3:a:apache:log4j:2.14.1:*",
         "cwe_id": "CWE-78",
-        "technical_impact": "Execute Unauthorized Code"  # → AV:L, PR:L, EX:Y
+        # CWE-78 OS Command Injection: multiple impacts
+        "technical_impacts": [
+            "Execute Unauthorized Code or Commands",
+            "Read Files or Directories",
+            "Modify Files or Directories",
+            "Hide Activities"
+        ]
     },
     
     # Apache Path Traversal RCE
@@ -115,7 +121,12 @@ MOCK_CVES: List[Dict[str, Any]] = [
         "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
         "cpe_id": "cpe:2.3:a:apache:http_server:2.4.49:*",
         "cwe_id": "CWE-22",
-        "technical_impact": "Execute Unauthorized Code"  # → AV:L, PR:L, EX:Y
+        # CWE-22 Path Traversal: file access impacts
+        "technical_impacts": [
+            "Execute Unauthorized Code or Commands",
+            "Read Files or Directories",
+            "Modify Files or Directories"
+        ]
     },
     
     # WordPress File Upload RCE
@@ -126,7 +137,8 @@ MOCK_CVES: List[Dict[str, Any]] = [
         "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
         "cpe_id": "cpe:2.3:a:nginx:nginx:1.18.0:*",
         "cwe_id": "CWE-20",
-        "technical_impact": "Execute Unauthorized Code"  # → AV:L, PR:L, EX:Y
+        # CWE-20 Improper Input Validation
+        "technical_impacts": ["Execute Unauthorized Code or Commands"]
     },
     
     # Struts OGNL Injection RCE
@@ -137,7 +149,13 @@ MOCK_CVES: List[Dict[str, Any]] = [
         "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
         "cpe_id": "cpe:2.3:a:apache:struts:2.5.22:*",
         "cwe_id": "CWE-78",
-        "technical_impact": "Execute Unauthorized Code"  # → AV:L, PR:L, EX:Y
+        # CWE-78 OS Command Injection: multiple impacts
+        "technical_impacts": [
+            "Execute Unauthorized Code or Commands",
+            "Read Files or Directories",
+            "Modify Files or Directories",
+            "Hide Activities"
+        ]
     },
     
     # JDK Deserialization RCE
@@ -148,7 +166,13 @@ MOCK_CVES: List[Dict[str, Any]] = [
         "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
         "cpe_id": "cpe:2.3:a:oracle:jdk:11.0.9:*",
         "cwe_id": "CWE-78",
-        "technical_impact": "Execute Unauthorized Code"  # → AV:L, PR:L, EX:Y
+        # CWE-78 OS Command Injection: multiple impacts
+        "technical_impacts": [
+            "Execute Unauthorized Code or Commands",
+            "Read Files or Directories",
+            "Modify Files or Directories",
+            "Hide Activities"
+        ]
     },
     
     # =========================================================================
@@ -165,7 +189,14 @@ MOCK_CVES: List[Dict[str, Any]] = [
         "cvss_vector": "CVSS:3.1/AV:L/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H",
         "cpe_id": "cpe:2.3:a:openssh:openssh:7.9:*",  # On same hosts as SSH
         "cwe_id": "CWE-119",
-        "technical_impact": "Gain Privileges"  # → PR:H, EX:Y
+        # CWE-119 Buffer Overflow: memory and privilege impacts
+        "technical_impacts": [
+            "Execute Unauthorized Code or Commands",
+            "Gain Privileges or Assume Identity",
+            "Modify Memory",
+            "Read Memory",
+            "DoS: Crash, Exit, or Restart"
+        ]
     },
     
     # Linux Netfilter Privesc
@@ -176,7 +207,14 @@ MOCK_CVES: List[Dict[str, Any]] = [
         "cvss_vector": "CVSS:3.1/AV:L/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H",
         "cpe_id": "cpe:2.3:a:python:python:3.8.5:*",  # Python hosts
         "cwe_id": "CWE-119",
-        "technical_impact": "Gain Privileges"  # → PR:H, EX:Y
+        # CWE-119 Buffer Overflow: memory and privilege impacts
+        "technical_impacts": [
+            "Execute Unauthorized Code or Commands",
+            "Gain Privileges or Assume Identity",
+            "Modify Memory",
+            "Read Memory",
+            "DoS: Crash, Exit, or Restart"
+        ]
     },
     
     # Polkit Privesc
@@ -187,7 +225,14 @@ MOCK_CVES: List[Dict[str, Any]] = [
         "cvss_vector": "CVSS:3.1/AV:L/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H",
         "cpe_id": "cpe:2.3:a:apache:http_server:2.4.41:*",  # Apache 2.4.41 hosts
         "cwe_id": "CWE-119",
-        "technical_impact": "Gain Privileges"  # → PR:H, EX:Y
+        # CWE-119 Buffer Overflow: memory and privilege impacts
+        "technical_impacts": [
+            "Execute Unauthorized Code or Commands",
+            "Gain Privileges or Assume Identity",
+            "Modify Memory",
+            "Read Memory",
+            "DoS: Crash, Exit, or Restart"
+        ]
     },
     
     # Dirty Pipe - Kernel Privesc
@@ -198,7 +243,14 @@ MOCK_CVES: List[Dict[str, Any]] = [
         "cvss_vector": "CVSS:3.1/AV:L/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H",
         "cpe_id": "cpe:2.3:a:postgresql:postgresql:12.5:*",  # DB hosts
         "cwe_id": "CWE-119",
-        "technical_impact": "Gain Privileges"  # → PR:H, EX:Y
+        # CWE-119 Buffer Overflow: memory and privilege impacts
+        "technical_impacts": [
+            "Execute Unauthorized Code or Commands",
+            "Gain Privileges or Assume Identity",
+            "Modify Memory",
+            "Read Memory",
+            "DoS: Crash, Exit, or Restart"
+        ]
     },
     
     # Windows Print Spooler Privesc
@@ -209,7 +261,13 @@ MOCK_CVES: List[Dict[str, Any]] = [
         "cvss_vector": "CVSS:3.1/AV:L/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H",
         "cpe_id": "cpe:2.3:a:mysql:mysql:5.7.32:*",  # DB hosts with MySQL
         "cwe_id": "CWE-78",
-        "technical_impact": "Gain Privileges"  # → PR:H, EX:Y
+        # CWE-78 OS Command Injection with privesc
+        "technical_impacts": [
+            "Execute Unauthorized Code or Commands",
+            "Gain Privileges or Assume Identity",
+            "Read Files or Directories",
+            "Modify Files or Directories"
+        ]
     },
     
     # =========================================================================
@@ -225,7 +283,12 @@ MOCK_CVES: List[Dict[str, Any]] = [
         "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N",
         "cpe_id": "cpe:2.3:a:mysql:mysql:5.7.32:*",
         "cwe_id": "CWE-89",
-        "technical_impact": "Read Data"  # → No VC gain (info disclosure only)
+        # CWE-89 SQL Injection: data access impacts
+        "technical_impacts": [
+            "Read Application Data",
+            "Modify Application Data",
+            "Bypass Protection Mechanism"
+        ]
     },
     
     # XSS - Requires user interaction
@@ -236,7 +299,12 @@ MOCK_CVES: List[Dict[str, Any]] = [
         "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N",
         "cpe_id": "cpe:2.3:a:apache:struts:2.5.22:*",
         "cwe_id": "CWE-79",
-        "technical_impact": "Execute Unauthorized Code"  # → AV:L, PR:L but UI:R penalty
+        # CWE-79 XSS: client-side impacts
+        "technical_impacts": [
+            "Execute Unauthorized Code or Commands",
+            "Read Application Data",
+            "Bypass Protection Mechanism"
+        ]
     },
 ]
 

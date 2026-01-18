@@ -198,121 +198,124 @@ class KnowledgeGraphBuilder:
                 if vc_id in self._vc_nodes:
                     self.add_edge(cve_id, vc_id, EdgeType.YIELDS_STATE)
     
-    def _wire_cwe_to_vcs(self, cwe_id: str, host_id: str, cvss_vector: str, technical_impact: str, layer_suffix: str = ""):
+    def _wire_cwe_to_vcs(self, cwe_id: str, host_id: str, cvss_vector: str, technical_impacts: List[str], layer_suffix: str = ""):
         """
         Create TI and VC nodes connected from CWE.
-        
-        Flow: CWE → TI → VC
-        
+
+        Flow: CWE → TI → VC (for each technical impact)
+
         Args:
             cwe_id: The CWE node to connect from
             host_id: If provided, VCs are per-host (singular mode)
                      If None, VCs are global (universal mode)
             cvss_vector: CVSS string for extracting outcomes
-            technical_impact: Technical impact for consensual matrix
+            technical_impacts: List of technical impacts for consensual matrix
             layer_suffix: Suffix for layer identification (empty for L1, ":INSIDE_NETWORK" for L2)
         """
         from src.core.consensual_matrix import (
             AV_HIERARCHY, PR_HIERARCHY, transform_cve_to_vc_edges
         )
-        
-        # Skip if no technical impact
-        if not technical_impact:
+
+        # Skip if no technical impacts
+        if not technical_impacts:
             return
-        
+
         is_layer_2 = layer_suffix != ""
-        transformation = transform_cve_to_vc_edges(cwe_id, cvss_vector, technical_impact)
-        
-        # Build prereq lookup for escalation checking
-        prereq_levels = {}
-        for vc_type, vc_value in transformation["prerequisites"]:
-            if vc_type == "AV":
-                prereq_levels["AV"] = AV_HIERARCHY.get(vc_value, 0)
-            elif vc_type == "PR":
-                prereq_levels["PR"] = PR_HIERARCHY.get(vc_value, 0)
-        
-        # Create TI node (Technical Impact)
-        # TI can be grouped by ATTACKER (universal), HOST, CPE, CVE, or CWE
-        ti_short = technical_impact[:20] + "..." if len(technical_impact) > 20 else technical_impact
-        # Extract original CWE ID from full path (e.g., "CWE-347@CVE-...@cpe-..." -> "CWE-347")
-        original_cwe = cwe_id.split("@")[0] if cwe_id else ""
 
-        if self.config.is_universal("TI"):
-            ti_id = f"TI:{technical_impact[:20]}{layer_suffix}"  # universal within layer
-            ti_label = ti_short
-        elif self.config.should_include_context("TI", "CWE"):
-            ti_id = f"TI:{technical_impact[:20]}@{cwe_id}"  # per-CWE (most granular)
-            ti_label = f"{ti_short}\n({original_cwe})"
-        else:
-            ti_id = f"TI:{technical_impact[:20]}@{host_id}"  # per-HOST
-            ti_label = f"{ti_short}\n({host_id[:15] if host_id else ''})"
+        # Process each technical impact
+        for technical_impact in technical_impacts:
+            transformation = transform_cve_to_vc_edges(cwe_id, cvss_vector, technical_impact)
 
-        if not self.graph.has_node(ti_id):
-            self.graph.add_node(
-                ti_id,
-                node_type="TI",
-                impact=technical_impact,
-                label=ti_label,
-                description=f"Technical Impact: {technical_impact}",
-                layer="L2" if is_layer_2 else "L1",
-                host_id=host_id if self.config.should_include_context("TI", "HOST") else None,
-                cwe_id=cwe_id if self.config.should_include_context("TI", "CWE") else None
-            )
-        
-        # CWE → TI (HAS_IMPACT edge)
-        if cwe_id and self.graph.has_node(cwe_id):
-            if not self.graph.has_edge(cwe_id, ti_id):
-                self.graph.add_edge(
-                    cwe_id,
+            # Build prereq lookup for escalation checking
+            prereq_levels = {}
+            for vc_type, vc_value in transformation["prerequisites"]:
+                if vc_type == "AV":
+                    prereq_levels["AV"] = AV_HIERARCHY.get(vc_value, 0)
+                elif vc_type == "PR":
+                    prereq_levels["PR"] = PR_HIERARCHY.get(vc_value, 0)
+
+            # Create TI node (Technical Impact)
+            # TI can be grouped by ATTACKER (universal), HOST, CPE, CVE, or CWE
+            ti_short = technical_impact[:20] + "..." if len(technical_impact) > 20 else technical_impact
+            # Extract original CWE ID from full path (e.g., "CWE-347@CVE-...@cpe-..." -> "CWE-347")
+            original_cwe = cwe_id.split("@")[0] if cwe_id else ""
+
+            if self.config.is_universal("TI"):
+                ti_id = f"TI:{technical_impact[:20]}{layer_suffix}"  # universal within layer
+                ti_label = ti_short
+            elif self.config.should_include_context("TI", "CWE"):
+                ti_id = f"TI:{technical_impact[:20]}@{cwe_id}"  # per-CWE (most granular)
+                ti_label = f"{ti_short}\n({original_cwe})"
+            else:
+                ti_id = f"TI:{technical_impact[:20]}@{host_id}"  # per-HOST
+                ti_label = f"{ti_short}\n({host_id[:15] if host_id else ''})"
+
+            if not self.graph.has_node(ti_id):
+                self.graph.add_node(
                     ti_id,
-                    edge_type="HAS_IMPACT"
+                    node_type="TI",
+                    impact=technical_impact,
+                    label=ti_label,
+                    description=f"Technical Impact: {technical_impact}",
+                    layer="L2" if is_layer_2 else "L1",
+                    host_id=host_id if self.config.should_include_context("TI", "HOST") else None,
+                    cwe_id=cwe_id if self.config.should_include_context("TI", "CWE") else None
                 )
-        
-        # Create outcome VCs connected FROM TI (only for escalations)
-        for vc_type, vc_value in transformation["outcomes"]:
-            is_escalation = True
-            
-            if vc_type == "AV":
-                outcome_level = AV_HIERARCHY.get(vc_value, 0)
-                prereq_level = prereq_levels.get("AV", 0)
-                is_escalation = outcome_level > prereq_level
-            elif vc_type == "PR":
-                outcome_level = PR_HIERARCHY.get(vc_value, 0)
-                prereq_level = prereq_levels.get("PR", 0)
-                is_escalation = outcome_level > prereq_level
-            elif vc_type == "EX":
-                is_escalation = True
-            
-            if is_escalation:
-                # Determine VC ID based on host
-                if host_id:
-                    vc_id = f"VC:{vc_type}:{vc_value}@{host_id}"
-                else:
-                    vc_id = f"VC:{vc_type}:{vc_value}{layer_suffix}"
-                
-                # Create the VC node if it doesn't exist
-                if not self.graph.has_node(vc_id):
-                    node_attrs = {
-                        "node_type": "VC",
-                        "vc_type": vc_type,
-                        "value": vc_value,
-                        "layer": "L2" if is_layer_2 else "L1"
-                    }
-                    # EX:Y is the terminal goal - full system compromise
-                    if vc_type == "EX" and vc_value == "Y":
-                        node_attrs["is_terminal"] = True
-                        node_attrs["label"] = "EXPLOITED"
-                    if host_id:
-                        node_attrs["host_id"] = host_id
-                    self.graph.add_node(vc_id, **node_attrs)
-                
-                # TI → VC (LEADS_TO edge - technical impact leads to this state change)
-                if not self.graph.has_edge(ti_id, vc_id):
+
+            # CWE → TI (HAS_IMPACT edge)
+            if cwe_id and self.graph.has_node(cwe_id):
+                if not self.graph.has_edge(cwe_id, ti_id):
                     self.graph.add_edge(
+                        cwe_id,
                         ti_id,
-                        vc_id,
-                        edge_type="LEADS_TO"
+                        edge_type="HAS_IMPACT"
                     )
+
+            # Create outcome VCs connected FROM TI (only for escalations)
+            for vc_type, vc_value in transformation["outcomes"]:
+                is_escalation = True
+
+                if vc_type == "AV":
+                    outcome_level = AV_HIERARCHY.get(vc_value, 0)
+                    prereq_level = prereq_levels.get("AV", 0)
+                    is_escalation = outcome_level > prereq_level
+                elif vc_type == "PR":
+                    outcome_level = PR_HIERARCHY.get(vc_value, 0)
+                    prereq_level = prereq_levels.get("PR", 0)
+                    is_escalation = outcome_level > prereq_level
+                elif vc_type == "EX":
+                    is_escalation = True
+
+                if is_escalation:
+                    # Determine VC ID based on host
+                    if host_id:
+                        vc_id = f"VC:{vc_type}:{vc_value}@{host_id}"
+                    else:
+                        vc_id = f"VC:{vc_type}:{vc_value}{layer_suffix}"
+
+                    # Create the VC node if it doesn't exist
+                    if not self.graph.has_node(vc_id):
+                        node_attrs = {
+                            "node_type": "VC",
+                            "vc_type": vc_type,
+                            "value": vc_value,
+                            "layer": "L2" if is_layer_2 else "L1"
+                        }
+                        # EX:Y is the terminal goal - full system compromise
+                        if vc_type == "EX" and vc_value == "Y":
+                            node_attrs["is_terminal"] = True
+                            node_attrs["label"] = "EXPLOITED"
+                        if host_id:
+                            node_attrs["host_id"] = host_id
+                        self.graph.add_node(vc_id, **node_attrs)
+
+                    # TI → VC (LEADS_TO edge - technical impact leads to this state change)
+                    if not self.graph.has_edge(ti_id, vc_id):
+                        self.graph.add_edge(
+                            ti_id,
+                            vc_id,
+                            edge_type="LEADS_TO"
+                        )
     
     # =========================================================================
     # BULK LOADING - 2-LAYER MODEL
@@ -512,7 +515,7 @@ class KnowledgeGraphBuilder:
                             actual_cwe_id,
                             host_id if self.config.should_include_context("VC", "HOST") else None,
                             cve_data["cvss_vector"],
-                            cve_data.get("technical_impact", ""),
+                            cve_data.get("technical_impacts", []),
                             layer_suffix
                         )
     

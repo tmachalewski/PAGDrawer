@@ -325,38 +325,38 @@ class TestWireCveToVcs:
 class TestWireCweToVcs:
     """Tests for _wire_cwe_to_vcs method."""
     
-    def test_skips_empty_technical_impact(self, empty_graph_builder):
-        """Should skip when technical_impact is empty."""
+    def test_skips_empty_technical_impacts(self, empty_graph_builder):
+        """Should skip when technical_impacts is empty."""
         cwe_id = "CWE-79"
         empty_graph_builder.graph.add_node(cwe_id, node_type="CWE")
-        
+
         # This should not raise an error and should not create TI nodes
         empty_graph_builder._wire_cwe_to_vcs(
             cwe_id,
             "host-001",
             "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
-            "",  # Empty technical impact
+            [],  # Empty technical impacts list
             ""
         )
-        
+
         stats = empty_graph_builder.get_stats()
         # Should have 1 CWE but no TI nodes
         assert stats["node_counts"].get("CWE", 0) == 1
         assert stats["node_counts"].get("TI", 0) == 0
     
     def test_creates_ti_node_with_valid_impact(self, empty_graph_builder):
-        """Should create TI node when technical_impact is provided."""
+        """Should create TI node when technical_impacts is provided."""
         cwe_id = "CWE-89"
         empty_graph_builder.graph.add_node(cwe_id, node_type="CWE")
-        
+
         empty_graph_builder._wire_cwe_to_vcs(
             cwe_id,
             "host-002",
             "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
-            "Execute unauthorized code",
+            ["Execute unauthorized code"],
             ""
         )
-        
+
         stats = empty_graph_builder.get_stats()
         assert stats["node_counts"].get("TI", 0) >= 1
     
@@ -364,18 +364,75 @@ class TestWireCweToVcs:
         """Should create TI and possibly VC with layer suffix when no host_id."""
         cwe_id = "CWE-22"
         empty_graph_builder.graph.add_node(cwe_id, node_type="CWE")
-        
+
         empty_graph_builder._wire_cwe_to_vcs(
             cwe_id,
             None,  # No host_id
             "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
-            "Execute unauthorized code",
+            ["Execute unauthorized code"],
             ":INSIDE_NETWORK"  # Layer 2 suffix
         )
-        
+
         stats = empty_graph_builder.get_stats()
         # TI node should be created even if VC is not (depends on escalation logic)
         assert stats["node_counts"].get("TI", 0) >= 1
+
+    def test_multiple_impacts_create_multiple_ti_nodes(self, empty_graph_builder):
+        """Multiple technical_impacts should create multiple TI nodes."""
+        cwe_id = "CWE-78"
+        empty_graph_builder.graph.add_node(cwe_id, node_type="CWE")
+
+        # CWE-78 style: 4 different impacts
+        impacts = [
+            "Execute Unauthorized Code or Commands",
+            "Read Files or Directories",
+            "Modify Files or Directories",
+            "Hide Activities"
+        ]
+
+        empty_graph_builder._wire_cwe_to_vcs(
+            cwe_id,
+            "host-001",
+            "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+            impacts,
+            ""
+        )
+
+        stats = empty_graph_builder.get_stats()
+        # Should have 4 TI nodes (one per impact)
+        assert stats["node_counts"].get("TI", 0) == 4
+
+        # Should have 4 HAS_IMPACT edges (CWE -> each TI)
+        assert stats["edge_counts"].get("HAS_IMPACT", 0) == 4
+
+    def test_multiple_impacts_create_unique_ti_ids(self, empty_graph_builder):
+        """Each impact should have a unique TI node ID."""
+        cwe_id = "CWE-119"
+        empty_graph_builder.graph.add_node(cwe_id, node_type="CWE")
+
+        impacts = [
+            "Execute Unauthorized Code or Commands",
+            "Gain Privileges or Assume Identity",
+            "Read Memory"
+        ]
+
+        empty_graph_builder._wire_cwe_to_vcs(
+            cwe_id,
+            "host-002",
+            "CVSS:3.1/AV:L/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H",
+            impacts,
+            ""
+        )
+
+        # Get all TI node IDs
+        ti_nodes = [
+            node_id for node_id, data in empty_graph_builder.graph.nodes(data=True)
+            if data.get("node_type") == "TI"
+        ]
+
+        # Should have 3 unique TI nodes
+        assert len(ti_nodes) == 3
+        assert len(set(ti_nodes)) == 3  # All unique
 
 
 class TestMultistageAttacks:

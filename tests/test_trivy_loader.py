@@ -199,7 +199,7 @@ class TestLoadBasic:
             assert "cvss_vector" in cve
             assert "cpe_id" in cve
             assert "cwe_id" in cve
-            assert "technical_impact" in cve
+            assert "technical_impacts" in cve
 
     def test_load_extracts_cwes(self, loader_no_enrich):
         """Test that CWEs are created from vulnerability CweIDs."""
@@ -320,22 +320,22 @@ class TestEnrichment:
         assert cve["epss_score"] == 0.85
 
     @patch("src.data.loaders.trivy_loader.CWEFetcher")
-    def test_enrichment_fetches_technical_impact(self, mock_cwe_class):
-        """Test that technical impact is fetched from CWE."""
+    def test_enrichment_fetches_technical_impacts(self, mock_cwe_class):
+        """Test that technical impacts are fetched from CWE."""
         mock_fetcher = MagicMock()
-        mock_fetcher.get_primary_impact.return_value = "Execute Unauthorized Code or Commands"
+        mock_fetcher.get_technical_impacts.return_value = ["Execute Unauthorized Code or Commands"]
         mock_cwe_class.return_value = mock_fetcher
 
         loader = TrivyDataLoader(source=SAMPLE_TRIVY_REPORT, enrich_from_nvd=False, enrich_cwe=True)
         result = loader.load()
 
         # Verify CWE fetcher was called
-        assert mock_fetcher.get_primary_impact.called
+        assert mock_fetcher.get_technical_impacts.called
 
-        # Check technical impact was populated
+        # Check technical impacts were populated
         cve = next((c for c in result.cves if c["id"] == "CVE-2023-12345"), None)
         assert cve is not None
-        assert cve["technical_impact"] == "Execute Unauthorized Code or Commands"
+        assert cve["technical_impacts"] == ["Execute Unauthorized Code or Commands"]
 
 
 class TestFileLoading:

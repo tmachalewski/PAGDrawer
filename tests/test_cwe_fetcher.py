@@ -261,36 +261,37 @@ class TestMockDataCWECoverage:
         assert len(missing_cwes) == 0, f"Missing CWE mappings: {missing_cwes}"
 
     def test_mock_data_technical_impacts_match(self):
-        """Mock data technical_impact should match CWE mapping."""
+        """Mock data technical_impacts should match CWE mapping."""
         from src.data.mock_data import MOCK_CVES
 
         mismatches = []
         for cve in MOCK_CVES:
             cwe_id = cve.get("cwe_id")
-            mock_impact = cve.get("technical_impact")
+            mock_impacts = cve.get("technical_impacts", [])
 
-            if cwe_id and mock_impact:
+            if cwe_id and mock_impacts:
                 mapped_impacts = STATIC_CWE_MAPPING.get(cwe_id, [])
 
-                # Check if the mock impact is a shortened version of a mapped impact
-                found = False
-                for mapped in mapped_impacts:
-                    if mock_impact in mapped or mapped.startswith(mock_impact):
-                        found = True
-                        break
+                # Check if each mock impact is in the mapped impacts
+                for mock_impact in mock_impacts:
+                    found = False
+                    for mapped in mapped_impacts:
+                        if mock_impact in mapped or mapped.startswith(mock_impact):
+                            found = True
+                            break
 
-                if not found and mapped_impacts:
-                    mismatches.append({
-                        "cve": cve["id"],
-                        "cwe": cwe_id,
-                        "mock_impact": mock_impact,
-                        "mapped_impacts": mapped_impacts
-                    })
+                    if not found and mapped_impacts:
+                        mismatches.append({
+                            "cve": cve["id"],
+                            "cwe": cwe_id,
+                            "mock_impact": mock_impact,
+                            "mapped_impacts": mapped_impacts
+                        })
 
         # Allow some mismatches since mock data uses simplified impact names
         # but log them for awareness
         if mismatches:
-            print(f"Note: {len(mismatches)} CVEs have different impact names than CWE mapping")
+            print(f"Note: {len(mismatches)} impact mismatches between mock data and CWE mapping")
 
 
 class TestCWEFetcherAPIParsing:

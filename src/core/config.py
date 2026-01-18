@@ -42,7 +42,7 @@ class GraphConfig:
         "CVE": "CPE",            # CVE per CPE (vulnerability exists per software)
         "CWE": "CVE",            # CWE per CVE (clean linear flow)
         "TI": "CWE",             # TI per CWE (technical impact per weakness)
-        "VC": "HOST",            # VC per host (state is per-host)
+        "VC": "TI",              # VC per TI (state follows technical impact)
     })
 
     def _normalize_mode(self, node_type: str, mode: str) -> str:

@@ -304,10 +304,10 @@ class TrivyDataLoader(DataLoader):
         # Determine CWE ID
         cwe_id = vuln.CweIDs[0] if vuln.CweIDs else "CWE-noinfo"
 
-        # Get technical impact from CWE (None if unknown - won't create TI node)
-        technical_impact = None
+        # Get technical impacts from CWE (empty list if unknown - won't create TI nodes)
+        technical_impacts = []
         if self._enrich_cwe and cwe_id != "CWE-noinfo":
-            technical_impact = self.cwe_fetcher.get_primary_impact(
+            technical_impacts = self.cwe_fetcher.get_technical_impacts(
                 cwe_id, severity=vuln.Severity, fetch_if_missing=True
             )
 
@@ -330,7 +330,7 @@ class TrivyDataLoader(DataLoader):
                 if cwe_id == "CWE-noinfo" and nvd_data.get("cwe_ids"):
                     cwe_id = nvd_data["cwe_ids"][0]
                     if self._enrich_cwe:
-                        technical_impact = self.cwe_fetcher.get_primary_impact(
+                        technical_impacts = self.cwe_fetcher.get_technical_impacts(
                             cwe_id, severity=vuln.Severity, fetch_if_missing=True
                         )
 
@@ -346,7 +346,7 @@ class TrivyDataLoader(DataLoader):
             "cvss_score": cvss_score,
             "cpe_id": cpe_id,
             "cwe_id": cwe_id,
-            "technical_impact": technical_impact,
+            "technical_impacts": technical_impacts,
             "severity": vuln.Severity,
             "fixed_version": vuln.FixedVersion,
             "references": vuln.References,
