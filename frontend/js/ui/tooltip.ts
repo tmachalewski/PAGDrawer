@@ -67,9 +67,16 @@ export function setupTooltip(): void {
 }
 
 /**
- * Create SVG container for arrows
+ * Create SVG container for arrows (or reuse existing)
  */
 function createArrowsContainer(): void {
+    // Check for existing container to avoid duplicates on graph rebuild
+    const existing = document.getElementById('tooltip-arrows');
+    if (existing) {
+        arrowsContainer = existing as unknown as SVGElement;
+        return;
+    }
+
     arrowsContainer = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     arrowsContainer.id = 'tooltip-arrows';
     arrowsContainer.style.cssText = `

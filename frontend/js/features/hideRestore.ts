@@ -114,3 +114,11 @@ export function restoreAllNodes(): void {
 export function getHiddenCount(): number {
     return hiddenElements.length;
 }
+
+/**
+ * Clear all hidden elements (called when graph is rebuilt)
+ */
+export function clearHiddenElements(): void {
+    hiddenElements = [];
+    bridgeEdges = [];
+}

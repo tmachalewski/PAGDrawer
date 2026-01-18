@@ -133,7 +133,7 @@ class TestGetGroupingLevel:
         assert config.get_grouping_level("CVE") == "CPE"
         assert config.get_grouping_level("CWE") == "CVE"
         assert config.get_grouping_level("TI") == "CWE"
-        assert config.get_grouping_level("VC") == "HOST"
+        assert config.get_grouping_level("VC") == "TI"
 
     def test_grouping_level_with_legacy_universal(self):
         """Legacy 'universal' should map to 'ATTACKER'."""

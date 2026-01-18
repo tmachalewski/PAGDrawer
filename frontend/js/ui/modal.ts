@@ -4,11 +4,13 @@
 
 import { updateConfig, fetchGraph, fetchStats } from '../services/api';
 import { reapplyHiddenTypes } from '../features/filter';
+import { clearHiddenElements } from '../features/hideRestore';
 import { initCytoscape, destroyCytoscape } from '../graph/core';
 import { runLayout } from '../graph/layout';
 import { setupEventHandlers } from '../graph/events';
 import { applyEnvironmentFilter } from '../features/environment';
 import { updateStats, hideLoading } from './sidebar';
+import { setupTooltip, clearSelectedNode } from './tooltip';
 
 // Node types and their grouping options (chain from ATTACKER to parent)
 const SLIDER_OPTIONS: Record<string, string[]> = {
@@ -149,10 +151,15 @@ export async function saveSettings(): Promise<void> {
             fetchStats()
         ]);
 
+        // Clear tooltip and hidden state before destroying old graph
+        clearSelectedNode();
+        clearHiddenElements();
+
         // Reinitialize Cytoscape
         destroyCytoscape();
         initCytoscape(graphData.elements);
         setupEventHandlers();
+        setupTooltip();
 
         // Reapply hidden types from before rebuild
         reapplyHiddenTypes();
