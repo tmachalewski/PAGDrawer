@@ -38,7 +38,8 @@
             </div>
 
             <div class="legend">
-                <div class="legend-title">🔗 Node Types <span class="legend-hint">(click to filter, 👁 to hide)</span></div>
+                <div class="legend-title">🔗 Node Types <span class="legend-hint">(click to filter, 👁 to hide)</span>
+                </div>
                 <button class="filter-btn legend-filter-btn active" data-type="all">
                     <div class="legend-dot" style="background: linear-gradient(135deg, #ef4444, #6366f1);"></div>
                     <span>All Types</span>
@@ -121,6 +122,49 @@
                 </div>
             </div>
 
+            <!-- Data Source Panel -->
+            <div class="stats-panel">
+                <div class="stats-title">📁 Data Source</div>
+                <div id="data-source-content" style="margin-top: 12px;">
+                    <div class="stat-row">
+                        <span>Current</span>
+                        <span class="stat-value" id="data-source">mock</span>
+                    </div>
+                    <div class="stat-row">
+                        <span>Trivy Uploads</span>
+                        <span class="stat-value" id="trivy-count">0</span>
+                    </div>
+
+                    <!-- File Upload -->
+                    <div style="margin-top: 12px;">
+                        <input type="file" id="trivy-file-input" accept=".json" style="display: none;" />
+                        <button class="upload-btn" onclick="triggerFileUpload()">
+                            📤 Upload Trivy Scan
+                        </button>
+                    </div>
+
+                    <!-- Options -->
+                    <div style="margin-top: 8px;">
+                        <label style="font-size: 11px; color: #aaa; display: flex; align-items: center; gap: 6px;">
+                            <input type="checkbox" id="enrich-checkbox" checked />
+                            Enrich from NVD/CWE (slower)
+                        </label>
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div style="margin-top: 12px; display: flex; gap: 8px;">
+                        <button class="action-btn" onclick="rebuildGraph()" id="rebuild-btn" disabled>
+                            🔄 Rebuild
+                        </button>
+                        <button class="action-btn reset-btn" onclick="resetToMock()">
+                            ↩️ Reset
+                        </button>
+                    </div>
+
+                    <!-- Status -->
+                    <div id="upload-status" style="font-size: 11px; color: #888; margin-top: 8px;"></div>
+                </div>
+            </div>
 
         </div>
         <!-- /sidebar -->
@@ -180,35 +224,40 @@
             <div class="node-slider-row" data-type="CPE" data-cols="2">
                 <span class="slider-row-label">CPE</span>
                 <div class="slider-columns">
-                    <input type="range" id="config-CPE" min="0" max="1" value="1" step="1" class="node-slider" style="grid-column: 1 / 3;">
+                    <input type="range" id="config-CPE" min="0" max="1" value="1" step="1" class="node-slider"
+                        style="grid-column: 1 / 3;">
                 </div>
             </div>
 
             <div class="node-slider-row" data-type="CVE" data-cols="3">
                 <span class="slider-row-label">CVE</span>
                 <div class="slider-columns">
-                    <input type="range" id="config-CVE" min="0" max="2" value="2" step="1" class="node-slider" style="grid-column: 1 / 4;">
+                    <input type="range" id="config-CVE" min="0" max="2" value="2" step="1" class="node-slider"
+                        style="grid-column: 1 / 4;">
                 </div>
             </div>
 
             <div class="node-slider-row" data-type="CWE" data-cols="4">
                 <span class="slider-row-label">CWE</span>
                 <div class="slider-columns">
-                    <input type="range" id="config-CWE" min="0" max="3" value="3" step="1" class="node-slider" style="grid-column: 1 / 5;">
+                    <input type="range" id="config-CWE" min="0" max="3" value="3" step="1" class="node-slider"
+                        style="grid-column: 1 / 5;">
                 </div>
             </div>
 
             <div class="node-slider-row" data-type="TI" data-cols="5">
                 <span class="slider-row-label">TI</span>
                 <div class="slider-columns">
-                    <input type="range" id="config-TI" min="0" max="4" value="4" step="1" class="node-slider" style="grid-column: 1 / 6;">
+                    <input type="range" id="config-TI" min="0" max="4" value="4" step="1" class="node-slider"
+                        style="grid-column: 1 / 6;">
                 </div>
             </div>
 
             <div class="node-slider-row" data-type="VC" data-cols="6">
                 <span class="slider-row-label">VC</span>
                 <div class="slider-columns">
-                    <input type="range" id="config-VC" min="0" max="5" value="1" step="1" class="node-slider" style="grid-column: 1 / 7;">
+                    <input type="range" id="config-VC" min="0" max="5" value="1" step="1" class="node-slider"
+                        style="grid-column: 1 / 7;">
                 </div>
             </div>
 

@@ -11,6 +11,7 @@ import { setupFilterButtons } from './features/filter';
 import { setupEnvironmentListeners, applyEnvironmentFilter } from './features/environment';
 import { hideSelectedNodes, restoreAllNodes } from './features/hideRestore';
 import { toggleExploitPaths } from './features/exploitPaths';
+import { initDataSource, triggerFileUpload, rebuildGraph, resetToMock } from './features/dataSource';
 import { openSettings, closeSettings, saveSettings } from './ui/modal';
 import { updateStats, hideLoading, showError } from './ui/sidebar';
 import { setupTooltip } from './ui/tooltip';
@@ -30,6 +31,9 @@ declare global {
         openSettings: typeof openSettings;
         closeSettings: typeof closeSettings;
         saveSettings: typeof saveSettings;
+        triggerFileUpload: typeof triggerFileUpload;
+        rebuildGraph: typeof rebuildGraph;
+        resetToMock: typeof resetToMock;
     }
 }
 
@@ -71,6 +75,9 @@ async function init(): Promise<void> {
         // Setup tooltip for dimmed nodes
         setupTooltip();
 
+        // Initialize data source panel
+        initDataSource();
+
         // Expose cy instance for testing
         window.cy = getCy();
 
@@ -92,6 +99,9 @@ window.toggleExploitPaths = toggleExploitPaths;
 window.openSettings = openSettings;
 window.closeSettings = closeSettings;
 window.saveSettings = saveSettings;
+window.triggerFileUpload = triggerFileUpload;
+window.rebuildGraph = rebuildGraph;
+window.resetToMock = resetToMock;
 window.getCy = getCy;  // Expose for testing
 
 // Initialize on page load

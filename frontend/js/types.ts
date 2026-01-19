@@ -46,5 +46,28 @@ export interface Stats {
 export type UIValue = 'N' | 'R';
 export type ACValue = 'L' | 'H';
 
+// Upload response from API
+export interface UploadResponse {
+    status: string;
+    message: string;
+    filename?: string;
+    total_uploaded: number;
+}
+
+// Rebuild response from API
+export interface RebuildResponse {
+    status: string;
+    source: string;
+    stats: Stats;
+}
+
+// Data status from API
+export interface DataStatus {
+    current_source: string;
+    trivy_uploads: number;
+    has_deployment_config: boolean;
+    deployment_hosts: number;
+}
+
 // Re-export Cytoscape types for convenience
 export type { Core, NodeSingular, EdgeSingular, EventObject };
