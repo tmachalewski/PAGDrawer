@@ -593,3 +593,121 @@ body {
     left: 0;
     color: #ff6666;
 }
+
+/* =============================================================================
+   DATA SOURCE - UPLOAD & SCAN SELECTOR
+   ============================================================================= */
+
+.upload-btn {
+    width: 100%;
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    color: white;
+    border: none;
+    padding: 10px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    transition: all 0.2s;
+}
+
+.upload-btn:hover {
+    background: linear-gradient(135deg, #4f46e5, #7c3aed);
+    transform: translateY(-1px);
+}
+
+.action-btn {
+    flex: 1;
+    background: rgba(40, 40, 80, 0.8);
+    color: white;
+    border: 1px solid rgba(100, 100, 200, 0.4);
+    padding: 8px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.2s;
+}
+
+.action-btn:hover:not(:disabled) {
+    background: rgba(60, 60, 100, 0.9);
+    border-color: rgba(100, 100, 200, 0.7);
+}
+
+.action-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.action-btn.reset-btn {
+    background: rgba(80, 40, 40, 0.6);
+    border-color: rgba(200, 100, 100, 0.4);
+}
+
+.action-btn.reset-btn:hover {
+    background: rgba(100, 50, 50, 0.8);
+    border-color: rgba(200, 100, 100, 0.7);
+}
+
+/* Scan Selector Dropdown */
+.scan-select {
+    width: 100%;
+    background: rgba(40, 40, 80, 0.8);
+    border: 1px solid rgba(100, 100, 200, 0.4);
+    color: #e0e0e0;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    cursor: pointer;
+    margin-top: 4px;
+}
+
+.scan-select:focus {
+    outline: none;
+    border-color: rgba(100, 100, 200, 0.8);
+}
+
+/* Scan List Items */
+.scan-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    background: rgba(40, 40, 80, 0.4);
+    border-radius: 6px;
+    margin-bottom: 4px;
+    font-size: 11px;
+}
+
+.scan-item:hover {
+    background: rgba(50, 50, 90, 0.6);
+}
+
+.scan-item .scan-name {
+    flex: 1;
+    color: #e0e0e0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.scan-item .scan-vulns {
+    color: #f59e0b;
+    font-size: 10px;
+    white-space: nowrap;
+}
+
+.scan-item .scan-delete {
+    background: none;
+    border: none;
+    color: #888;
+    cursor: pointer;
+    padding: 2px 4px;
+    font-size: 12px;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+}
+
+.scan-item .scan-delete:hover {
+    opacity: 1;
+    color: #ef4444;
+}

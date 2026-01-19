@@ -143,6 +143,17 @@
                         </button>
                     </div>
 
+                    <!-- Scan Selector (shown when scans exist) -->
+                    <div id="scan-selector-container" style="margin-top: 12px; display: none;">
+                        <label style="font-size: 11px; color: #aaa;">Select Scan:</label>
+                        <select id="scan-selector" class="scan-select">
+                            <option value="all">All Scans</option>
+                        </select>
+                    </div>
+
+                    <!-- Scan List -->
+                    <div id="scan-list" style="margin-top: 8px; max-height: 100px; overflow-y: auto;"></div>
+
                     <!-- Options -->
                     <div style="margin-top: 8px;">
                         <label style="font-size: 11px; color: #aaa; display: flex; align-items: center; gap: 6px;">

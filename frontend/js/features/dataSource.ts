@@ -1,18 +1,20 @@
 /**
  * Data Source Management Feature
- * Handles Trivy file uploads and graph rebuilding from the UI
+ * Handles Trivy file uploads, scan selection, and graph rebuilding from the UI
  */
 
-import { uploadTrivyFile, rebuildData, resetData, getDataStatus, fetchGraph, fetchStats } from '../services/api';
+import { uploadTrivyFile, rebuildData, resetData, getDataStatus, getScans, deleteScan, fetchGraph, fetchStats } from '../services/api';
 import { initCytoscape } from '../graph/core';
 import { runLayout } from '../graph/layout';
 import { updateStats } from '../ui/sidebar';
+import { reapplyHiddenTypes } from './filter';
 
 /**
  * Initialize data source panel - fetch and display current status
  */
 export function initDataSource(): void {
     refreshDataStatus();
+    refreshScanList();
     setupFileInput();
 }
 
@@ -46,9 +48,10 @@ async function handleFileSelect(event: Event): Promise<void> {
 
     try {
         const result = await uploadTrivyFile(file);
-        setStatus(`✅ Uploaded: ${file.name}`, 'success');
+        setStatus(`✅ Uploaded: ${result.name || file.name}`, 'success');
         enableRebuildButton();
-        refreshDataStatus();
+        await refreshDataStatus();
+        await refreshScanList();
         console.log('Trivy file uploaded:', result);
     } catch (error) {
         const message = error instanceof Error ? error.message : 'Upload failed';
@@ -61,11 +64,23 @@ async function handleFileSelect(event: Event): Promise<void> {
 }
 
 /**
+ * Get selected scan IDs for rebuild
+ */
+function getSelectedScanIds(): string[] | undefined {
+    const selector = document.getElementById('scan-selector') as HTMLSelectElement;
+    if (!selector || selector.value === 'all') {
+        return undefined;  // Use all scans
+    }
+    return [selector.value];
+}
+
+/**
  * Rebuild graph from uploaded data
  */
 export async function rebuildGraph(): Promise<void> {
     const enrichCheckbox = document.getElementById('enrich-checkbox') as HTMLInputElement;
     const enrich = enrichCheckbox?.checked ?? true;
+    const scanIds = getSelectedScanIds();
 
     const statusMsg = enrich
         ? 'Rebuilding with enrichment (may take a minute)...'
@@ -74,17 +89,20 @@ export async function rebuildGraph(): Promise<void> {
     disableRebuildButton();
 
     try {
-        await rebuildData(enrich);
+        await rebuildData(enrich, scanIds);
 
         // Reload graph with new data
         const [graphData, stats] = await Promise.all([fetchGraph(), fetchStats()]);
         initCytoscape(graphData.elements);
-        setTimeout(() => runLayout(), 100);
+        setTimeout(() => {
+            runLayout();
+            reapplyHiddenTypes();
+        }, 100);
         updateStats(stats);
 
         setStatus('✅ Graph rebuilt successfully', 'success');
-        refreshDataStatus();
-        console.log('Graph rebuilt with enrich=' + enrich);
+        await refreshDataStatus();
+        console.log('Graph rebuilt with enrich=' + enrich + ', scanIds=' + (scanIds || 'all'));
     } catch (error) {
         const message = error instanceof Error ? error.message : 'Rebuild failed';
         setStatus(`❌ ${message}`, 'error');
@@ -105,11 +123,15 @@ export async function resetToMock(): Promise<void> {
         // Reload graph with mock data
         const [graphData, stats] = await Promise.all([fetchGraph(), fetchStats()]);
         initCytoscape(graphData.elements);
-        setTimeout(() => runLayout(), 100);
+        setTimeout(() => {
+            runLayout();
+            reapplyHiddenTypes();
+        }, 100);
         updateStats(stats);
 
         setStatus('✅ Reset to mock data', 'success');
-        refreshDataStatus();
+        await refreshDataStatus();
+        await refreshScanList();
         disableRebuildButton();
         console.log('Reset to mock data');
     } catch (error) {
@@ -117,6 +139,74 @@ export async function resetToMock(): Promise<void> {
         setStatus(`❌ ${message}`, 'error');
         console.error('Reset error:', error);
     }
+}
+
+/**
+ * Delete a specific scan and refresh list
+ */
+export async function deleteScanItem(scanId: string): Promise<void> {
+    try {
+        await deleteScan(scanId);
+        await refreshDataStatus();
+        await refreshScanList();
+        setStatus('✅ Scan deleted', 'success');
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'Delete failed';
+        setStatus(`❌ ${message}`, 'error');
+        console.error('Delete error:', error);
+    }
+}
+
+/**
+ * Refresh and display scan list
+ */
+async function refreshScanList(): Promise<void> {
+    try {
+        const { scans } = await getScans();
+
+        const container = document.getElementById('scan-selector-container');
+        const selector = document.getElementById('scan-selector') as HTMLSelectElement;
+        const scanList = document.getElementById('scan-list');
+
+        if (scans.length === 0) {
+            if (container) container.style.display = 'none';
+            if (scanList) scanList.innerHTML = '';
+            return;
+        }
+
+        // Show selector
+        if (container) container.style.display = 'block';
+
+        // Populate selector dropdown
+        if (selector) {
+            selector.innerHTML = '<option value="all">All Scans (' + scans.length + ')</option>' +
+                scans.map(s =>
+                    `<option value="${s.id}">${escapeHtml(s.name)} (${s.vuln_count} vulns)</option>`
+                ).join('');
+        }
+
+        // Populate scan list with delete buttons
+        if (scanList) {
+            scanList.innerHTML = scans.map(s => `
+                <div class="scan-item" data-id="${s.id}">
+                    <span class="scan-name" title="${escapeHtml(s.filename)}">${escapeHtml(s.name)}</span>
+                    <span class="scan-vulns">${s.vuln_count} vulns</span>
+                    <button class="scan-delete" onclick="deleteScanItem('${s.id}')" title="Delete scan">🗑️</button>
+                </div>
+            `).join('');
+        }
+    } catch (error) {
+        console.error('Failed to refresh scan list:', error);
+    }
+}
+
+/**
+ * Escape HTML to prevent XSS
+ */
+function escapeHtml(text: string): string {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 
 /**
@@ -135,6 +225,8 @@ async function refreshDataStatus(): Promise<void> {
         // Enable rebuild button if there are uploads
         if (status.trivy_uploads > 0) {
             enableRebuildButton();
+        } else {
+            disableRebuildButton();
         }
     } catch (error) {
         console.error('Failed to refresh data status:', error);

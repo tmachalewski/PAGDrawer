@@ -7,9 +7,12 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse
 from pathlib import Path
 from typing import Dict, List, Optional, Any
+from dataclasses import dataclass, asdict
+from datetime import datetime
 import json
 import os
 import tempfile
+import uuid
 
 import yaml
 
@@ -26,11 +29,23 @@ from src.data.schemas.deployment import DeploymentConfig
 
 app = FastAPI(title="PAGDrawer", description="Knowledge Graph Visualization")
 
+
+@dataclass
+class TrivyScan:
+    """Stores a Trivy scan with metadata."""
+    id: str
+    name: str  # From ArtifactName or filename
+    filename: str
+    uploaded_at: datetime
+    vuln_count: int
+    data: Dict[str, Any]
+
+
 # Global state
 graph_builder = None
 current_config = GraphConfig()
 current_data_source = "mock"  # "mock", "trivy", or "deployment"
-uploaded_trivy_data: List[Dict[str, Any]] = []
+uploaded_trivy_scans: List[TrivyScan] = []
 uploaded_deployment_config: Optional[Dict[str, Any]] = None
 
 
@@ -127,16 +142,17 @@ async def update_config(config_data: Dict[str, str]):
     current_config = GraphConfig.from_dict(config_data)
 
     # Rebuild graph with new config using current data source
-    if current_data_source == "mock" or not uploaded_trivy_data:
+    if current_data_source == "mock" or not uploaded_trivy_scans:
         # Use mock data
         graph_builder = build_knowledge_graph(current_config)
     else:
         # Rebuild from uploaded Trivy/deployment data
+        trivy_data_list = [scan.data for scan in uploaded_trivy_scans]
         try:
             if current_data_source == "deployment" and uploaded_deployment_config:
                 loader = DeploymentLoader(
                     deployment_config=uploaded_deployment_config,
-                    trivy_sources=uploaded_trivy_data,
+                    trivy_sources=trivy_data_list,
                     enrich_from_nvd=False,  # Don't re-enrich on config change
                     enrich_cwe=True,
                 )
@@ -144,7 +160,7 @@ async def update_config(config_data: Dict[str, str]):
             else:
                 # Load Trivy data directly
                 all_data = LoadedData()
-                for trivy_json in uploaded_trivy_data:
+                for trivy_json in trivy_data_list:
                     data = load_trivy_json(trivy_json, enrich=False)
                     all_data.hosts.extend(data.hosts)
                     all_data.cpes.extend(data.cpes)
@@ -180,29 +196,50 @@ async def upload_trivy_json(file: UploadFile = File(...)):
     Multiple files can be uploaded sequentially. Use /api/data/rebuild
     to rebuild the graph with all uploaded data.
     """
-    global uploaded_trivy_data
+    global uploaded_trivy_scans
 
     try:
         content = await file.read()
         data = json.loads(content)
 
         # Validate it's a valid Trivy report
-        if "Results" not in data and "results" not in data:
+        results = data.get("Results") or data.get("results", [])
+        if not results:
             raise HTTPException(
                 status_code=400,
                 detail="Invalid Trivy JSON: missing 'Results' field"
             )
 
-        uploaded_trivy_data.append(data)
+        # Extract metadata
+        artifact_name = data.get("ArtifactName", file.filename or "unknown")
+        vuln_count = sum(
+            len(result.get("Vulnerabilities", []))
+            for result in results
+        )
+
+        scan = TrivyScan(
+            id=str(uuid.uuid4()),
+            name=artifact_name,
+            filename=file.filename or "uploaded.json",
+            uploaded_at=datetime.now(),
+            vuln_count=vuln_count,
+            data=data,
+        )
+        uploaded_trivy_scans.append(scan)
 
         return {
             "status": "ok",
-            "message": f"Trivy data uploaded successfully",
-            "filename": file.filename,
-            "total_uploaded": len(uploaded_trivy_data),
+            "message": "Trivy data uploaded successfully",
+            "scan_id": scan.id,
+            "name": scan.name,
+            "vuln_count": scan.vuln_count,
+            "filename": scan.filename,
+            "total_uploaded": len(uploaded_trivy_scans),
         }
     except json.JSONDecodeError as e:
         raise HTTPException(status_code=400, detail=f"Invalid JSON: {e}")
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -210,21 +247,40 @@ async def upload_trivy_json(file: UploadFile = File(...)):
 @app.post("/api/upload/trivy/json")
 async def upload_trivy_json_direct(trivy_data: Dict[str, Any]):
     """Upload Trivy JSON data directly (not as file upload)."""
-    global uploaded_trivy_data
+    global uploaded_trivy_scans
 
     try:
-        if "Results" not in trivy_data and "results" not in trivy_data:
+        results = trivy_data.get("Results") or trivy_data.get("results", [])
+        if not results:
             raise HTTPException(
                 status_code=400,
                 detail="Invalid Trivy JSON: missing 'Results' field"
             )
 
-        uploaded_trivy_data.append(trivy_data)
+        # Extract metadata
+        artifact_name = trivy_data.get("ArtifactName", "direct-upload")
+        vuln_count = sum(
+            len(result.get("Vulnerabilities", []))
+            for result in results
+        )
+
+        scan = TrivyScan(
+            id=str(uuid.uuid4()),
+            name=artifact_name,
+            filename="direct-upload.json",
+            uploaded_at=datetime.now(),
+            vuln_count=vuln_count,
+            data=trivy_data,
+        )
+        uploaded_trivy_scans.append(scan)
 
         return {
             "status": "ok",
             "message": "Trivy data uploaded successfully",
-            "total_uploaded": len(uploaded_trivy_data),
+            "scan_id": scan.id,
+            "name": scan.name,
+            "vuln_count": scan.vuln_count,
+            "total_uploaded": len(uploaded_trivy_scans),
         }
     except HTTPException:
         raise
@@ -292,37 +348,83 @@ async def get_data_status():
     """Get status of uploaded data."""
     return {
         "current_source": current_data_source,
-        "trivy_uploads": len(uploaded_trivy_data),
+        "trivy_uploads": len(uploaded_trivy_scans),
         "has_deployment_config": uploaded_deployment_config is not None,
         "deployment_hosts": len(uploaded_deployment_config.get("hosts", [])) if uploaded_deployment_config else 0,
     }
+
+
+@app.get("/api/data/scans")
+async def list_scans():
+    """List all uploaded Trivy scans with metadata."""
+    return {
+        "scans": [
+            {
+                "id": scan.id,
+                "name": scan.name,
+                "filename": scan.filename,
+                "uploaded_at": scan.uploaded_at.isoformat(),
+                "vuln_count": scan.vuln_count,
+            }
+            for scan in uploaded_trivy_scans
+        ]
+    }
+
+
+@app.delete("/api/data/scans/{scan_id}")
+async def delete_scan(scan_id: str):
+    """Delete a specific scan by ID."""
+    global uploaded_trivy_scans
+    
+    original_count = len(uploaded_trivy_scans)
+    uploaded_trivy_scans = [s for s in uploaded_trivy_scans if s.id != scan_id]
+    
+    if len(uploaded_trivy_scans) == original_count:
+        raise HTTPException(status_code=404, detail=f"Scan not found: {scan_id}")
+    
+    return {"status": "ok", "remaining": len(uploaded_trivy_scans)}
 
 
 @app.post("/api/data/rebuild")
 async def rebuild_from_uploaded_data(
     enrich: bool = True,
     use_deployment: bool = True,
+    scan_ids: Optional[List[str]] = None,
 ):
     """Rebuild the graph from uploaded Trivy data and deployment config.
 
     Args:
         enrich: Whether to enrich data from NVD/CWE sources.
         use_deployment: Whether to use uploaded deployment config.
+        scan_ids: Optional list of scan IDs to use. If None, uses all scans.
     """
     global graph_builder, current_data_source
 
-    if not uploaded_trivy_data:
+    if not uploaded_trivy_scans:
         raise HTTPException(
             status_code=400,
             detail="No Trivy data uploaded. Use /api/upload/trivy first."
         )
+
+    # Filter scans if scan_ids provided
+    scans_to_use = uploaded_trivy_scans
+    if scan_ids:
+        scans_to_use = [s for s in uploaded_trivy_scans if s.id in scan_ids]
+        if not scans_to_use:
+            raise HTTPException(
+                status_code=400,
+                detail="No matching scans found for provided scan_ids"
+            )
+
+    # Extract raw data from scans
+    trivy_data_list = [scan.data for scan in scans_to_use]
 
     try:
         if use_deployment and uploaded_deployment_config:
             # Use DeploymentLoader
             loader = DeploymentLoader(
                 deployment_config=uploaded_deployment_config,
-                trivy_sources=uploaded_trivy_data,
+                trivy_sources=trivy_data_list,
                 enrich_from_nvd=enrich,
                 enrich_cwe=enrich,
             )
@@ -331,7 +433,7 @@ async def rebuild_from_uploaded_data(
         else:
             # Load Trivy data directly without deployment config
             all_data = LoadedData()
-            for trivy_json in uploaded_trivy_data:
+            for trivy_json in trivy_data_list:
                 data = load_trivy_json(trivy_json, enrich=enrich)
                 # Merge data
                 all_data.hosts.extend(data.hosts)
@@ -349,11 +451,13 @@ async def rebuild_from_uploaded_data(
         graph_builder.load_from_data(loaded_data)
 
         print(f"Graph rebuilt from {current_data_source} data")
+        print(f"Using {len(scans_to_use)} scan(s): {[s.name for s in scans_to_use]}")
         print(f"Stats: {graph_builder.get_stats()}")
 
         return {
             "status": "ok",
             "source": current_data_source,
+            "scans_used": len(scans_to_use),
             "stats": graph_builder.get_stats(),
         }
     except Exception as e:
@@ -363,10 +467,10 @@ async def rebuild_from_uploaded_data(
 @app.post("/api/data/reset")
 async def reset_to_mock_data():
     """Reset to using mock data and clear uploaded data."""
-    global graph_builder, current_data_source, uploaded_trivy_data, uploaded_deployment_config
+    global graph_builder, current_data_source, uploaded_trivy_scans, uploaded_deployment_config
 
     # Clear uploaded data
-    uploaded_trivy_data = []
+    uploaded_trivy_scans = []
     uploaded_deployment_config = None
 
     # Rebuild with mock data
@@ -385,8 +489,8 @@ async def reset_to_mock_data():
 @app.delete("/api/data/trivy")
 async def clear_trivy_uploads():
     """Clear all uploaded Trivy data."""
-    global uploaded_trivy_data
-    uploaded_trivy_data = []
+    global uploaded_trivy_scans
+    uploaded_trivy_scans = []
     return {"status": "ok", "message": "Trivy uploads cleared"}
 
 

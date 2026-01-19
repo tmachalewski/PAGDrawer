@@ -11,7 +11,7 @@ import { setupFilterButtons } from './features/filter';
 import { setupEnvironmentListeners, applyEnvironmentFilter } from './features/environment';
 import { hideSelectedNodes, restoreAllNodes } from './features/hideRestore';
 import { toggleExploitPaths } from './features/exploitPaths';
-import { initDataSource, triggerFileUpload, rebuildGraph, resetToMock } from './features/dataSource';
+import { initDataSource, triggerFileUpload, rebuildGraph, resetToMock, deleteScanItem } from './features/dataSource';
 import { openSettings, closeSettings, saveSettings } from './ui/modal';
 import { updateStats, hideLoading, showError } from './ui/sidebar';
 import { setupTooltip } from './ui/tooltip';
@@ -34,6 +34,7 @@ declare global {
         triggerFileUpload: typeof triggerFileUpload;
         rebuildGraph: typeof rebuildGraph;
         resetToMock: typeof resetToMock;
+        deleteScanItem: typeof deleteScanItem;
     }
 }
 
@@ -102,6 +103,7 @@ window.saveSettings = saveSettings;
 window.triggerFileUpload = triggerFileUpload;
 window.rebuildGraph = rebuildGraph;
 window.resetToMock = resetToMock;
+window.deleteScanItem = deleteScanItem;
 window.getCy = getCy;  // Expose for testing
 
 // Initialize on page load

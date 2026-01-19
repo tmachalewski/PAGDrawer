@@ -2,7 +2,7 @@
  * API service for communicating with the backend
  */
 
-import type { GraphData, Stats, UploadResponse, RebuildResponse, DataStatus } from '../types';
+import type { GraphData, Stats, UploadResponse, RebuildResponse, DataStatus, ScansResponse } from '../types';
 
 const API_BASE = '';
 
@@ -75,9 +75,19 @@ export async function uploadTrivyFile(file: File): Promise<UploadResponse> {
 /**
  * Rebuild graph from uploaded data
  */
-export async function rebuildData(enrich: boolean = true): Promise<RebuildResponse> {
+export async function rebuildData(enrich: boolean = true, scanIds?: string[]): Promise<RebuildResponse> {
+    const params = new URLSearchParams({
+        enrich: String(enrich),
+        use_deployment: 'false'
+    });
+
+    // Add scan_ids as query params if provided
+    if (scanIds && scanIds.length > 0) {
+        scanIds.forEach(id => params.append('scan_ids', id));
+    }
+
     const response = await fetch(
-        `${API_BASE}/api/data/rebuild?enrich=${enrich}&use_deployment=false`,
+        `${API_BASE}/api/data/rebuild?${params}`,
         { method: 'POST' }
     );
     if (!response.ok) {
@@ -105,6 +115,30 @@ export async function getDataStatus(): Promise<DataStatus> {
     const response = await fetch(`${API_BASE}/api/data/status`);
     if (!response.ok) {
         throw new Error(`Failed to get status: ${response.status}`);
+    }
+    return response.json();
+}
+
+/**
+ * Get list of uploaded scans with metadata
+ */
+export async function getScans(): Promise<ScansResponse> {
+    const response = await fetch(`${API_BASE}/api/data/scans`);
+    if (!response.ok) {
+        throw new Error(`Failed to get scans: ${response.status}`);
+    }
+    return response.json();
+}
+
+/**
+ * Delete a specific scan by ID
+ */
+export async function deleteScan(scanId: string): Promise<{ status: string; remaining: number }> {
+    const response = await fetch(`${API_BASE}/api/data/scans/${scanId}`, {
+        method: 'DELETE'
+    });
+    if (!response.ok) {
+        throw new Error(`Failed to delete scan: ${response.status}`);
     }
     return response.json();
 }

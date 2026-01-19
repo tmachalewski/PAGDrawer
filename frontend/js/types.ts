@@ -50,6 +50,9 @@ export type ACValue = 'L' | 'H';
 export interface UploadResponse {
     status: string;
     message: string;
+    scan_id?: string;
+    name?: string;
+    vuln_count?: number;
     filename?: string;
     total_uploaded: number;
 }
@@ -67,6 +70,20 @@ export interface DataStatus {
     trivy_uploads: number;
     has_deployment_config: boolean;
     deployment_hosts: number;
+}
+
+// Scan info from API
+export interface ScanInfo {
+    id: string;
+    name: string;
+    filename: string;
+    uploaded_at: string;
+    vuln_count: number;
+}
+
+// Scans list response
+export interface ScansResponse {
+    scans: ScanInfo[];
 }
 
 // Re-export Cytoscape types for convenience
