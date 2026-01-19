@@ -49,7 +49,7 @@ def client():
     """Create a test client with fresh state."""
     # Reset global state before each test
     from src.viz import app as app_module
-    app_module.uploaded_trivy_data = []
+    app_module.uploaded_trivy_scans = []
     app_module.uploaded_deployment_config = None
     app_module.current_data_source = "mock"
 
@@ -288,3 +288,138 @@ class TestExistingEndpoints:
         """Test that /api/config still works."""
         response = client.get("/api/config")
         assert response.status_code == 200
+
+
+class TestScanSelectionEndpoints:
+    """Tests for scan selection and management endpoints."""
+
+    def test_list_scans_empty(self, client):
+        """Test listing scans when none uploaded."""
+        response = client.get("/api/data/scans")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["scans"] == []
+
+    def test_list_scans_after_upload(self, client):
+        """Test listing scans after uploading."""
+        # Upload a scan
+        client.post("/api/upload/trivy/json", json=SAMPLE_TRIVY_REPORT)
+
+        response = client.get("/api/data/scans")
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["scans"]) == 1
+
+        scan = data["scans"][0]
+        assert "id" in scan
+        assert "name" in scan
+        assert "filename" in scan
+        assert "uploaded_at" in scan
+        assert "vuln_count" in scan
+        assert scan["vuln_count"] == 1  # One vuln in sample
+
+    def test_list_scans_multiple_uploads(self, client):
+        """Test listing multiple uploaded scans."""
+        # Upload two scans
+        client.post("/api/upload/trivy/json", json=SAMPLE_TRIVY_REPORT)
+        client.post("/api/upload/trivy/json", json=SAMPLE_TRIVY_REPORT)
+
+        response = client.get("/api/data/scans")
+        data = response.json()
+        assert len(data["scans"]) == 2
+
+        # Each scan should have unique ID
+        ids = [s["id"] for s in data["scans"]]
+        assert len(set(ids)) == 2
+
+    def test_delete_scan(self, client):
+        """Test deleting a specific scan."""
+        # Upload two scans
+        client.post("/api/upload/trivy/json", json=SAMPLE_TRIVY_REPORT)
+        client.post("/api/upload/trivy/json", json=SAMPLE_TRIVY_REPORT)
+
+        # Get scan IDs
+        scans = client.get("/api/data/scans").json()["scans"]
+        assert len(scans) == 2
+        scan_id = scans[0]["id"]
+
+        # Delete first scan
+        response = client.delete(f"/api/data/scans/{scan_id}")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["remaining"] == 1
+
+        # Verify only one scan left
+        remaining = client.get("/api/data/scans").json()["scans"]
+        assert len(remaining) == 1
+        assert remaining[0]["id"] != scan_id
+
+    def test_delete_nonexistent_scan(self, client):
+        """Test deleting a scan that doesn't exist."""
+        response = client.delete("/api/data/scans/nonexistent-id")
+        assert response.status_code == 404
+        assert "not found" in response.json()["detail"].lower()
+
+    @patch("src.viz.app.load_trivy_json")
+    def test_rebuild_with_specific_scan_ids(self, mock_load_trivy, client):
+        """Test rebuilding with specific scan IDs."""
+        from src.data.loaders import LoadedData
+
+        # Mock the load function
+        mock_load_trivy.return_value = LoadedData(
+            hosts=[{"id": "test-host", "os_family": "Linux", "criticality_score": 0.5, "subnet_id": "default"}],
+            cpes=[{"id": "cpe:2.3:a:test:test:1.0:*", "vendor": "test", "product": "test", "version": "1.0"}],
+            cves=[],
+            cwes=[],
+            host_cpe_map={"test-host": ["cpe:2.3:a:test:test:1.0:*"]},
+            network_edges=[],
+        )
+
+        # Upload two scans
+        client.post("/api/upload/trivy/json", json=SAMPLE_TRIVY_REPORT)
+        client.post("/api/upload/trivy/json", json=SAMPLE_TRIVY_REPORT)
+
+        # Get scan IDs
+        scans = client.get("/api/data/scans").json()["scans"]
+        first_scan_id = scans[0]["id"]
+
+        # Rebuild with only first scan (note: use Query for list params)
+        response = client.post(
+            "/api/data/rebuild",
+            params={"enrich": "false", "use_deployment": "false", "scan_ids": first_scan_id}
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "ok"
+        # Verify only one scan was used from response
+        assert data["scans_used"] == 1
+
+    @patch("src.viz.app.load_trivy_json")
+    def test_rebuild_with_invalid_scan_ids(self, mock_load_trivy, client):
+        """Test rebuilding with nonexistent scan IDs returns error."""
+        from src.data.loaders import LoadedData
+        mock_load_trivy.return_value = LoadedData(
+            hosts=[], cpes=[], cves=[], cwes=[], host_cpe_map={}, network_edges=[]
+        )
+
+        # Upload a scan
+        client.post("/api/upload/trivy/json", json=SAMPLE_TRIVY_REPORT)
+
+        # Rebuild with invalid ID - should fail with 400
+        response = client.post(
+            "/api/data/rebuild",
+            params={"enrich": "false", "scan_ids": "invalid-id-that-does-not-exist"}
+        )
+        assert response.status_code == 400
+        assert "No matching scans" in response.json()["detail"]
+
+    def test_upload_returns_scan_metadata(self, client):
+        """Test that upload response includes scan metadata."""
+        response = client.post("/api/upload/trivy/json", json=SAMPLE_TRIVY_REPORT)
+        assert response.status_code == 200
+        data = response.json()
+
+        assert "scan_id" in data
+        assert "name" in data
+        assert "vuln_count" in data
+        assert data["vuln_count"] == 1

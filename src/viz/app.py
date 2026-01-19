@@ -2,7 +2,7 @@
 FastAPI backend for serving the Knowledge Graph visualization.
 """
 
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, Query
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse
 from pathlib import Path
@@ -389,7 +389,7 @@ async def delete_scan(scan_id: str):
 async def rebuild_from_uploaded_data(
     enrich: bool = True,
     use_deployment: bool = True,
-    scan_ids: Optional[List[str]] = None,
+    scan_ids: Optional[List[str]] = Query(default=None),
 ):
     """Rebuild the graph from uploaded Trivy data and deployment config.
 

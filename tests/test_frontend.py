@@ -920,3 +920,125 @@ class TestReachabilityFiltering:
             }
         """)
         assert l2_reachable, "L2 hosts should remain reachable via jump hosts"
+
+
+class TestScanSelection:
+    """Tests for scan selection and data source management UI."""
+
+    def test_data_source_section_exists(self, page: Page):
+        """Data Source section should exist in sidebar."""
+        page.goto(BASE_URL)
+        wait_for_cytoscape(page)
+
+        # Scroll to data source section
+        page.evaluate('document.querySelector(".sidebar").scrollTop = 2000')
+        page.wait_for_timeout(200)
+
+        # Check for Data Source section header (uses stats-title class)
+        data_source = page.locator(".stats-title:has-text('Data Source')")
+        expect(data_source).to_be_visible()
+
+    def test_upload_button_exists(self, page: Page):
+        """Upload Trivy Scan button should exist."""
+        page.goto(BASE_URL)
+        wait_for_cytoscape(page)
+
+        # Scroll to data source section
+        page.evaluate('document.querySelector(".sidebar").scrollTop = 2000')
+        page.wait_for_timeout(200)
+
+        upload_btn = page.locator(".upload-btn")
+        expect(upload_btn).to_be_visible()
+
+    def test_rebuild_button_exists(self, page: Page):
+        """Rebuild button should exist."""
+        page.goto(BASE_URL)
+        wait_for_cytoscape(page)
+
+        page.evaluate('document.querySelector(".sidebar").scrollTop = 2000')
+        page.wait_for_timeout(200)
+
+        rebuild_btn = page.locator("#rebuild-btn")
+        expect(rebuild_btn).to_be_visible()
+
+    def test_reset_button_exists(self, page: Page):
+        """Reset button should exist."""
+        page.goto(BASE_URL)
+        wait_for_cytoscape(page)
+
+        page.evaluate('document.querySelector(".sidebar").scrollTop = 2000')
+        page.wait_for_timeout(200)
+
+        reset_btn = page.locator(".reset-btn")
+        expect(reset_btn).to_be_visible()
+
+    def test_scan_selector_hidden_when_no_scans(self, page: Page):
+        """Scan selector should be hidden when no scans uploaded."""
+        page.goto(BASE_URL)
+        wait_for_cytoscape(page)
+
+        # Reset to ensure no scans
+        page.evaluate('fetch("/api/data/reset", {method: "POST"})')
+        page.wait_for_timeout(500)
+        page.reload()
+        wait_for_cytoscape(page)
+
+        page.evaluate('document.querySelector(".sidebar").scrollTop = 2000')
+        selector_container = page.locator("#scan-selector-container")
+        expect(selector_container).to_be_hidden()
+
+    def test_visibility_persists_after_rebuild(self, page: Page):
+        """Hidden node types should remain hidden after rebuild."""
+        page.goto(BASE_URL)
+        wait_for_cytoscape(page)
+
+        # Hide CVE nodes
+        page.locator('.visibility-toggle[data-type="CVE"]').click()
+        page.wait_for_timeout(300)
+
+        # Verify CVE hidden
+        cve_before = int(page.evaluate('getCy().nodes().filter(n => n.data("type") === "CVE").length'))
+        assert cve_before == 0, "CVE should be hidden"
+
+        # Scroll to data source and rebuild
+        page.evaluate('document.querySelector(".sidebar").scrollTop = 2000')
+        page.wait_for_timeout(200)
+
+        # Check if rebuild button is enabled (scans exist)
+        rebuild_btn = page.locator("#rebuild-btn")
+        if rebuild_btn.is_enabled():
+            rebuild_btn.click()
+            page.wait_for_timeout(2000)
+            wait_for_cytoscape(page)
+
+            # Verify CVE still hidden after rebuild
+            cve_after = int(page.evaluate('getCy().nodes().filter(n => n.data("type") === "CVE").length'))
+            assert cve_after == 0, f"CVE should still be hidden after rebuild, got {cve_after}"
+
+    def test_enrich_checkbox_exists(self, page: Page):
+        """Enrich from NVD/CWE checkbox should exist."""
+        page.goto(BASE_URL)
+        wait_for_cytoscape(page)
+
+        page.evaluate('document.querySelector(".sidebar").scrollTop = 2000')
+        page.wait_for_timeout(200)
+
+        enrich_checkbox = page.locator("#enrich-checkbox")
+        expect(enrich_checkbox).to_be_visible()
+
+    def test_reset_returns_to_mock_data(self, page: Page):
+        """Reset should return to mock data source."""
+        page.goto(BASE_URL)
+        wait_for_cytoscape(page)
+
+        page.evaluate('document.querySelector(".sidebar").scrollTop = 2000')
+        page.wait_for_timeout(200)
+
+        # Click reset
+        reset_btn = page.locator(".reset-btn")
+        reset_btn.click()
+        page.wait_for_timeout(1000)
+
+        # Check status shows mock
+        status = page.locator("#data-source")
+        expect(status).to_contain_text("mock")
