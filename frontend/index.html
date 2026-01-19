@@ -23,17 +23,58 @@
                 <div class="logo-subtitle">Predictive Attack Graph Drawer</div>
             </div>
 
+            <!-- Data Source Panel -->
             <div class="stats-panel">
-                <div class="stats-title">📊 Graph Statistics</div>
-                <div id="stats-content">
+                <div class="stats-title">📁 Data Source</div>
+                <div id="data-source-content" style="margin-top: 12px;">
                     <div class="stat-row">
-                        <span>Total Nodes</span>
-                        <span class="stat-value" id="total-nodes">-</span>
+                        <span>Current</span>
+                        <span class="stat-value" id="data-source">mock</span>
                     </div>
                     <div class="stat-row">
-                        <span>Total Edges</span>
-                        <span class="stat-value" id="total-edges">-</span>
+                        <span>Trivy Uploads</span>
+                        <span class="stat-value" id="trivy-count">0</span>
                     </div>
+
+                    <!-- File Upload -->
+                    <div style="margin-top: 12px;">
+                        <input type="file" id="trivy-file-input" accept=".json" style="display: none;" />
+                        <button class="upload-btn" onclick="triggerFileUpload()">
+                            📤 Upload Trivy Scan
+                        </button>
+                    </div>
+
+                    <!-- Scan Selector (shown when scans exist) -->
+                    <div id="scan-selector-container" style="margin-top: 12px; display: none;">
+                        <label style="font-size: 11px; color: #aaa;">Select Scan:</label>
+                        <select id="scan-selector" class="scan-select">
+                            <option value="all">All Scans</option>
+                        </select>
+                    </div>
+
+                    <!-- Scan List -->
+                    <div id="scan-list" style="margin-top: 8px; max-height: 100px; overflow-y: auto;"></div>
+
+                    <!-- Options -->
+                    <div style="margin-top: 8px;">
+                        <label style="font-size: 11px; color: #aaa; display: flex; align-items: center; gap: 6px;">
+                            <input type="checkbox" id="enrich-checkbox" checked />
+                            Enrich from NVD/CWE (slower)
+                        </label>
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div style="margin-top: 12px; display: flex; gap: 8px;">
+                        <button class="action-btn" onclick="rebuildGraph()" id="rebuild-btn" disabled>
+                            🔄 Rebuild
+                        </button>
+                        <button class="action-btn reset-btn" onclick="resetToMock()">
+                            ↩️ Reset
+                        </button>
+                    </div>
+
+                    <!-- Status -->
+                    <div id="upload-status" style="font-size: 11px; color: #888; margin-top: 8px;"></div>
                 </div>
             </div>
 
@@ -122,61 +163,6 @@
                 </div>
             </div>
 
-            <!-- Data Source Panel -->
-            <div class="stats-panel">
-                <div class="stats-title">📁 Data Source</div>
-                <div id="data-source-content" style="margin-top: 12px;">
-                    <div class="stat-row">
-                        <span>Current</span>
-                        <span class="stat-value" id="data-source">mock</span>
-                    </div>
-                    <div class="stat-row">
-                        <span>Trivy Uploads</span>
-                        <span class="stat-value" id="trivy-count">0</span>
-                    </div>
-
-                    <!-- File Upload -->
-                    <div style="margin-top: 12px;">
-                        <input type="file" id="trivy-file-input" accept=".json" style="display: none;" />
-                        <button class="upload-btn" onclick="triggerFileUpload()">
-                            📤 Upload Trivy Scan
-                        </button>
-                    </div>
-
-                    <!-- Scan Selector (shown when scans exist) -->
-                    <div id="scan-selector-container" style="margin-top: 12px; display: none;">
-                        <label style="font-size: 11px; color: #aaa;">Select Scan:</label>
-                        <select id="scan-selector" class="scan-select">
-                            <option value="all">All Scans</option>
-                        </select>
-                    </div>
-
-                    <!-- Scan List -->
-                    <div id="scan-list" style="margin-top: 8px; max-height: 100px; overflow-y: auto;"></div>
-
-                    <!-- Options -->
-                    <div style="margin-top: 8px;">
-                        <label style="font-size: 11px; color: #aaa; display: flex; align-items: center; gap: 6px;">
-                            <input type="checkbox" id="enrich-checkbox" checked />
-                            Enrich from NVD/CWE (slower)
-                        </label>
-                    </div>
-
-                    <!-- Action Buttons -->
-                    <div style="margin-top: 12px; display: flex; gap: 8px;">
-                        <button class="action-btn" onclick="rebuildGraph()" id="rebuild-btn" disabled>
-                            🔄 Rebuild
-                        </button>
-                        <button class="action-btn reset-btn" onclick="resetToMock()">
-                            ↩️ Reset
-                        </button>
-                    </div>
-
-                    <!-- Status -->
-                    <div id="upload-status" style="font-size: 11px; color: #888; margin-top: 8px;"></div>
-                </div>
-            </div>
-
         </div>
         <!-- /sidebar -->
 
@@ -209,8 +195,21 @@
     <div id="settings-modal" class="modal-overlay" onclick="if(event.target===this)closeSettings()">
         <div class="modal-content">
             <div class="modal-header">
-                <span class="modal-title">⚙️ Node Grouping Settings</span>
+                <span class="modal-title">⚙️ Settings</span>
                 <button class="close-btn" onclick="closeSettings()">×</button>
+            </div>
+
+            <!-- Graph Statistics -->
+            <div
+                style="display: flex; gap: 24px; margin-bottom: 16px; padding: 12px; background: rgba(100, 100, 200, 0.1); border-radius: 8px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 12px; color: #aaa;">📊 Total Nodes:</span>
+                    <span style="font-weight: bold; color: white;" id="total-nodes">-</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 12px; color: #aaa;">🔗 Total Edges:</span>
+                    <span style="font-weight: bold; color: white;" id="total-edges">-</span>
+                </div>
             </div>
 
             <p style="color: #888; font-size: 12px; margin-bottom: 16px;">
