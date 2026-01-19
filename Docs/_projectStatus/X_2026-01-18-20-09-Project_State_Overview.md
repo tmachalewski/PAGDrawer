@@ -31,28 +31,28 @@ ATTACKER → HOST → CPE → CVE → CWE → TI → VC
 
 ### Node Types
 
-| Type | Description | Example |
-|------|-------------|---------|
-| **HOST** | Target machines | `host-001` (web server) |
-| **CPE** | Software/OS components | `cpe:2.3:a:apache:log4j:2.14.1` |
-| **CVE** | Known vulnerabilities | `CVE-2021-44228` (Log4Shell) |
-| **CWE** | Weakness categories | `CWE-78` (OS Command Injection) |
-| **TI** | Technical Impacts | "Execute Unauthorized Code or Commands" |
-| **VC** | Vector Changers | `AV:L`, `PR:H`, `EX:Y` (privilege levels) |
-| **ATTACKER** | Entry point | Single attacker node |
-| **BRIDGE** | L1→L2 transition | Connects layers |
-| **COMPOUND** | Multi-vuln chains | Combined exploits |
+| Type         | Description            | Example                                   |
+| ------------ | ---------------------- | ----------------------------------------- |
+| **HOST**     | Target machines        | `host-001` (web server)                   |
+| **CPE**      | Software/OS components | `cpe:2.3:a:apache:log4j:2.14.1`           |
+| **CVE**      | Known vulnerabilities  | `CVE-2021-44228` (Log4Shell)              |
+| **CWE**      | Weakness categories    | `CWE-78` (OS Command Injection)           |
+| **TI**       | Technical Impacts      | "Execute Unauthorized Code or Commands"   |
+| **VC**       | Vector Changers        | `AV:L`, `PR:H`, `EX:Y` (privilege levels) |
+| **ATTACKER** | Entry point            | Single attacker node                      |
+| **BRIDGE**   | L1→L2 transition       | Connects layers                           |
+| **COMPOUND** | Multi-vuln chains      | Combined exploits                         |
 
 ### Edge Types
 
-| Edge | Meaning |
-|------|---------|
-| `RUNS` | Host runs software (HOST→CPE) |
-| `HAS_VULN` | Software has vulnerability (CPE→CVE) |
-| `IS_INSTANCE_OF` | CVE is instance of weakness (CVE→CWE) |
-| `HAS_IMPACT` | Weakness has technical impact (CWE→TI) |
-| `LEADS_TO` | Impact leads to privilege state (TI→VC) |
-| `ENABLES` | State enables further attacks (VC→VC) |
+| Edge             | Meaning                                 |
+| ---------------- | --------------------------------------- |
+| `RUNS`           | Host runs software (HOST→CPE)           |
+| `HAS_VULN`       | Software has vulnerability (CPE→CVE)    |
+| `IS_INSTANCE_OF` | CVE is instance of weakness (CVE→CWE)   |
+| `HAS_IMPACT`     | Weakness has technical impact (CWE→TI)  |
+| `LEADS_TO`       | Impact leads to privilege state (TI→VC) |
+| `ENABLES`        | State enables further attacks (VC→VC)   |
 
 ---
 
@@ -158,14 +158,31 @@ CWE-78 ─┬─ TI:"Execute Unauthorized Code or Commands" → VC nodes
 
 ## API Endpoints
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/graph` | GET | Full graph as Cytoscape JSON |
-| `/api/stats` | GET | Node/edge counts |
-| `/api/config` | GET/POST | Granularity configuration |
-| `/api/trivy/upload` | POST | Upload Trivy JSON |
-| `/api/trivy/scans` | GET | List uploaded scans |
-| `/api/deployment/upload` | POST | Upload deployment YAML |
+### Graph & Configuration
+
+| Endpoint      | Method   | Description                  |
+| ------------- | -------- | ---------------------------- |
+| `/api/graph`  | GET      | Full graph as Cytoscape JSON |
+| `/api/stats`  | GET      | Node/edge counts             |
+| `/api/config` | GET/POST | Granularity configuration    |
+
+### Data Upload
+
+| Endpoint                      | Method | Description                           |
+| ----------------------------- | ------ | ------------------------------------- |
+| `/api/upload/trivy`           | POST   | Upload Trivy JSON file                |
+| `/api/upload/trivy/json`      | POST   | Upload Trivy data as JSON body        |
+| `/api/upload/deployment`      | POST   | Upload deployment YAML file           |
+| `/api/upload/deployment/json` | POST   | Upload deployment config as JSON body |
+
+### Data Management
+
+| Endpoint            | Method | Description                      |
+| ------------------- | ------ | -------------------------------- |
+| `/api/data/status`  | GET    | Current source + upload counts   |
+| `/api/data/rebuild` | POST   | Rebuild graph from uploaded data |
+| `/api/data/reset`   | POST   | Reset to mock data               |
+| `/api/data/trivy`   | DELETE | Clear uploaded Trivy data        |
 
 ---
 
@@ -193,16 +210,16 @@ trivy image --format json postgres:latest > scan.json
 
 ## Current Graph Statistics (Mock Data)
 
-| Metric | Count |
-|--------|-------|
-| Total Nodes | 273 |
-| Total Edges | 458 |
-| HOST | 12 |
-| CPE | 30 |
-| CVE | 32 |
-| CWE | 32 |
-| TI | 130 |
-| VC | 34 |
+| Metric      | Count |
+| ----------- | ----- |
+| Total Nodes | 273   |
+| Total Edges | 458   |
+| HOST        | 12    |
+| CPE         | 30    |
+| CVE         | 32    |
+| CWE         | 32    |
+| TI          | 130   |
+| VC          | 34    |
 
 ---
 
@@ -232,12 +249,12 @@ python -m pytest tests/ -v
 
 ### Tech Stack
 
-| Component | Technology |
-|-----------|------------|
-| Backend | Python 3.10, FastAPI, NetworkX |
-| Frontend | TypeScript, Vite, Cytoscape.js |
-| Testing | pytest, Playwright (E2E) |
-| Data | Pydantic, aiohttp |
+| Component | Technology                     |
+| --------- | ------------------------------ |
+| Backend   | Python 3.10, FastAPI, NetworkX |
+| Frontend  | TypeScript, Vite, Cytoscape.js |
+| Testing   | pytest, Playwright (E2E)       |
+| Data      | Pydantic, aiohttp              |
 
 ---
 
