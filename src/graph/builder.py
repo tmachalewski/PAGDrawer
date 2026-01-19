@@ -198,7 +198,16 @@ class KnowledgeGraphBuilder:
                 if vc_id in self._vc_nodes:
                     self.add_edge(cve_id, vc_id, EdgeType.YIELDS_STATE)
     
-    def _wire_cwe_to_vcs(self, cwe_id: str, host_id: str, cvss_vector: str, technical_impacts: List[str], layer_suffix: str = ""):
+    def _wire_cwe_to_vcs(
+        self,
+        cwe_id: str,
+        host_id: Optional[str],
+        cpe_id: Optional[str],
+        cve_id: Optional[str],
+        cvss_vector: str,
+        technical_impacts: List[str],
+        layer_suffix: str = ""
+    ):
         """
         Create TI and VC nodes connected from CWE.
 
@@ -206,8 +215,9 @@ class KnowledgeGraphBuilder:
 
         Args:
             cwe_id: The CWE node to connect from
-            host_id: If provided, VCs are per-host (singular mode)
-                     If None, VCs are global (universal mode)
+            host_id: Host context (if config includes HOST)
+            cpe_id: CPE context (if config includes CPE)
+            cve_id: CVE context (if config includes CVE)
             cvss_vector: CVSS string for extracting outcomes
             technical_impacts: List of technical impacts for consensual matrix
             layer_suffix: Suffix for layer identification (empty for L1, ":INSIDE_NETWORK" for L2)
@@ -282,10 +292,20 @@ class KnowledgeGraphBuilder:
                     is_escalation = True
 
                 if is_escalation:
-                    # Determine VC ID based on host
-                    if host_id:
+                    # Determine VC ID based on config - check from most specific to least
+                    if self.config.should_include_context("VC", "TI"):
+                        # Most granular: per-TI (VC inherits TI's full context)
+                        vc_id = f"VC:{vc_type}:{vc_value}@{ti_id}"
+                    elif self.config.should_include_context("VC", "CWE") and cwe_id:
+                        vc_id = f"VC:{vc_type}:{vc_value}@{cwe_id}"
+                    elif self.config.should_include_context("VC", "CVE") and cve_id:
+                        vc_id = f"VC:{vc_type}:{vc_value}@{cve_id}"
+                    elif self.config.should_include_context("VC", "CPE") and cpe_id:
+                        vc_id = f"VC:{vc_type}:{vc_value}@{cpe_id}"
+                    elif self.config.should_include_context("VC", "HOST") and host_id:
                         vc_id = f"VC:{vc_type}:{vc_value}@{host_id}"
                     else:
+                        # Universal (ATTACKER level)
                         vc_id = f"VC:{vc_type}:{vc_value}{layer_suffix}"
 
                     # Create the VC node if it doesn't exist
@@ -300,8 +320,11 @@ class KnowledgeGraphBuilder:
                         if vc_type == "EX" and vc_value == "Y":
                             node_attrs["is_terminal"] = True
                             node_attrs["label"] = "EXPLOITED"
-                        if host_id:
+                        # Store context IDs based on config
+                        if self.config.should_include_context("VC", "HOST") and host_id:
                             node_attrs["host_id"] = host_id
+                        if self.config.should_include_context("VC", "TI"):
+                            node_attrs["ti_id"] = ti_id
                         self.graph.add_node(vc_id, **node_attrs)
 
                     # TI → VC (LEADS_TO edge - technical impact leads to this state change)
@@ -505,10 +528,12 @@ class KnowledgeGraphBuilder:
                         if not self.graph.has_edge(actual_cve_id, actual_cwe_id):
                             self.add_edge(actual_cve_id, actual_cwe_id, EdgeType.IS_INSTANCE_OF)
                         
-                        # Wire CWE -> VCs
+                        # Wire CWE -> VCs (pass full context for VC ID construction)
                         self._wire_cwe_to_vcs(
                             actual_cwe_id,
                             host_id if self.config.should_include_context("VC", "HOST") else None,
+                            actual_cpe_id if self.config.should_include_context("VC", "CPE") else None,
+                            actual_cve_id if self.config.should_include_context("VC", "CVE") else None,
                             cve_data["cvss_vector"],
                             cve_data.get("technical_impacts", []),
                             layer_suffix
