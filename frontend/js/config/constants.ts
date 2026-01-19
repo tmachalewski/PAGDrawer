@@ -157,7 +157,9 @@ export function getCytoscapeStyles(): any[] {
                 'line-style': 'dashed',
                 'line-dash-pattern': [6, 3],
                 'width': 3,
-                'opacity': 0.9
+                'opacity': 0.9,
+                'line-color': (ele: EdgeSingular) => ele.data('bridgeColor') || '#00ffff',
+                'target-arrow-color': (ele: EdgeSingular) => ele.data('bridgeColor') || '#00ffff'
             }
         },
         {

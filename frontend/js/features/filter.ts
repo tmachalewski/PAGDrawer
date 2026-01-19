@@ -3,6 +3,7 @@
  */
 
 import { getCy } from '../graph/core';
+import { edgeColors } from '../config/constants';
 import type { EdgeSingular, ElementDefinition } from 'cytoscape';
 
 // Track hidden node types and their elements
@@ -14,6 +15,61 @@ interface HiddenTypeData {
 }
 const hiddenByType: Map<string, HiddenTypeData> = new Map();
 const typeBridgeEdges: Map<string, EdgeSingular[]> = new Map();
+
+/**
+ * Compute a bright averaged color from hidden edge types
+ */
+function computeBridgeColor(edgeTypes: string[]): string {
+    if (edgeTypes.length === 0) {
+        return '#00ffff'; // Default cyan for bridges
+    }
+
+    // Parse hex color to RGB
+    const hexToRgb = (hex: string): [number, number, number] => {
+        const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+        return result
+            ? [parseInt(result[1], 16), parseInt(result[2], 16), parseInt(result[3], 16)]
+            : [0, 255, 255]; // fallback cyan
+    };
+
+    // Average the colors
+    let r = 0, g = 0, b = 0;
+    let count = 0;
+
+    edgeTypes.forEach(type => {
+        const color = edgeColors[type];
+        if (color) {
+            const [cr, cg, cb] = hexToRgb(color);
+            r += cr;
+            g += cg;
+            b += cb;
+            count++;
+        }
+    });
+
+    if (count === 0) {
+        return '#00ffff';
+    }
+
+    r = Math.round(r / count);
+    g = Math.round(g / count);
+    b = Math.round(b / count);
+
+    // Brighten the color (push towards white while preserving hue)
+    const brightenFactor = 0.4; // 0 = no change, 1 = pure white
+    r = Math.round(r + (255 - r) * brightenFactor);
+    g = Math.round(g + (255 - g) * brightenFactor);
+    b = Math.round(b + (255 - b) * brightenFactor);
+
+    // Also boost saturation slightly by pushing away from gray
+    const gray = (r + g + b) / 3;
+    const saturationBoost = 1.2;
+    r = Math.min(255, Math.round(gray + (r - gray) * saturationBoost));
+    g = Math.min(255, Math.round(gray + (g - gray) * saturationBoost));
+    b = Math.min(255, Math.round(gray + (b - gray) * saturationBoost));
+
+    return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+}
 
 
 /**
@@ -85,6 +141,20 @@ function hideNodeType(type: string): void {
                 const bridgeId = `typebridge_${type}_${pred.id()}_${succ.id()}`;
                 // Check if bridge already exists
                 if (cy.getElementById(bridgeId).length === 0) {
+                    // Collect edge types that this bridge represents
+                    const hiddenEdgeTypes: string[] = [];
+                    node.connectedEdges().forEach(edge => {
+                        if (!edge.data('isBridge')) {
+                            const edgeType = edge.data('type');
+                            if (edgeType && !hiddenEdgeTypes.includes(edgeType)) {
+                                hiddenEdgeTypes.push(edgeType);
+                            }
+                        }
+                    });
+
+                    // Compute averaged bright color from hidden edge types
+                    const bridgeColor = computeBridgeColor(hiddenEdgeTypes);
+
                     const bridgeEdge = cy.add({
                         group: 'edges',
                         data: {
@@ -93,7 +163,9 @@ function hideNodeType(type: string): void {
                             target: succ.id(),
                             type: 'BRIDGE',
                             isBridge: true,
-                            bridgeForType: type
+                            bridgeForType: type,
+                            hiddenEdgeTypes: hiddenEdgeTypes,
+                            bridgeColor: bridgeColor
                         }
                     }) as EdgeSingular;
                     bridges.push(bridgeEdge);
