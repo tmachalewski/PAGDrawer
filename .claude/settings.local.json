@@ -1,7 +1,19 @@
 {
   "permissions": {
     "allow": [
-      "Bash(python -m pytest:*)"
+      "Bash(python -m pytest:*)",
+      "Bash(npm run dev)",
+      "Bash(ping:*)",
+      "Bash(curl:*)",
+      "Bash(echo:*)",
+      "Bash(python -m uvicorn:*)",
+      "Bash(python:*)",
+      "Bash(powershell -Command \"Get-Date -Format ''HH-mm''\")",
+      "Bash(npm run build:*)",
+      "Bash(uvicorn src.viz.app:app:*)",
+      "Bash(D:/_DEV/_PYTHON/PAGDrawer/Scripts/start-backend.sh)",
+      "Bash(D:/_DEV/_PYTHON/PAGDrawer/Scripts/start-frontend.sh)",
+      "Bash(D:/_DEV/_PYTHON/PAGDrawer/Scripts/kill-backend.sh)"
     ]
   }
 }
