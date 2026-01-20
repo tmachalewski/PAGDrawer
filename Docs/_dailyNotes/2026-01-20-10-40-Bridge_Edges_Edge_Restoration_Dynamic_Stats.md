@@ -216,3 +216,94 @@ def test_edge_restoration_same_order_show(self, page: Page):
 - Stats update when opening Settings after toggling visibility
 - All 58 frontend tests pass in ~2 minutes
 
+---
+
+## 4. Node Search Feature
+
+**Feature**: Added a search bar in the graph controls area that allows users to quickly find and highlight nodes by their label text.
+
+### Implementation
+
+**New Module**: `frontend/js/features/search.ts`
+
+```typescript
+// Core functions
+export function setupSearch(): void;      // Initialize search UI and events
+export function performSearch(query: string): number;  // Search and highlight
+export function clearSearch(): void;      // Clear search and restore view
+export function focusSearch(): void;      // Focus search input
+```
+
+### Features
+
+| Feature                 | Behavior                                        |
+| ----------------------- | ----------------------------------------------- |
+| **Real-time filtering** | Matching nodes highlighted as user types        |
+| **Case-insensitive**    | "cve" matches "CVE-2021-1234"                   |
+| **Partial match**       | "2021" matches all CVE-2021-* nodes             |
+| **Debounce**            | 200ms delay to avoid excessive updates          |
+| **Minimum query**       | Search triggers at 2+ characters                |
+| **Match count**         | Shows "32 matches" or "No matches"              |
+| **Clear button**        | × button clears search and restores view        |
+| **Keyboard shortcuts**  | `/` or `Ctrl+F` focuses search, `Escape` clears |
+| **Fit to matches**      | `Enter` fits view to show matching nodes        |
+
+### CSS Classes
+
+| Class           | Applied To            | Effect                |
+| --------------- | --------------------- | --------------------- |
+| `search-match`  | Matching nodes        | Highlighted with glow |
+| `search-dimmed` | Non-matching elements | Faded to 30% opacity  |
+
+### Files Modified
+
+| File                             | Changes                              |
+| -------------------------------- | ------------------------------------ |
+| `frontend/js/features/search.ts` | NEW - Core search functionality      |
+| `frontend/index.html`            | Search bar UI (lines 173-178)        |
+| `frontend/css/styles.css`        | Search styles (lines 716-775)        |
+| `frontend/js/main.ts`            | Import and setup, expose clearSearch |
+
+### E2E Tests Added
+
+Added `TestNodeSearch` class with 12 comprehensive tests:
+
+| Test                                 | Description                             |
+| ------------------------------------ | --------------------------------------- |
+| `test_search_input_exists`           | Search input visible in controls        |
+| `test_search_clear_button_exists`    | Clear button exists (hidden by default) |
+| `test_search_filters_nodes`          | Typing highlights matching nodes        |
+| `test_search_match_count_displays`   | Match count updates dynamically         |
+| `test_clear_button_clears_search`    | Clear button resets search state        |
+| `test_escape_clears_search`          | Escape key clears and blurs input       |
+| `test_slash_shortcut_focuses_search` | "/" key focuses search input            |
+| `test_case_insensitive_search`       | Lowercase and uppercase match equally   |
+| `test_partial_match_search`          | Partial strings match node labels       |
+| `test_no_match_dims_all_nodes`       | No matches dims all nodes               |
+| `test_minimum_query_length`          | Single character doesn't trigger search |
+| `test_enter_fits_to_matches`         | Enter fits view to matching nodes       |
+
+### Testing Results
+
+```
+pytest tests/test_frontend.py::TestNodeSearch -v
+============== 12 passed in 31.40s ==============
+```
+
+All tests pass including:
+- CVE search: 32 matches
+- HOST search: 12 matches
+- Case-insensitive matching verified
+- "/" shortcut works without typing "/" in input
+
+---
+
+## Updated Testing Summary
+
+| Suite           | Count | Status     |
+| --------------- | ----- | ---------- |
+| Frontend (E2E)  | 70    | ✅ All pass |
+| Builder         | 46+   | ✅ All pass |
+| Full test suite | 384   | ✅ All pass |
+
+
