@@ -557,6 +557,41 @@ class TestVisibilityToggle:
         assert final_nodes == initial_nodes, f"Nodes: expected {initial_nodes}, got {final_nodes}"
         assert final_edges == initial_edges, f"Edges: expected {initial_edges}, got {final_edges}"
 
+    def test_edge_restoration_same_order_show(self, page: Page):
+        """Regression test: Edges must be preserved when showing types in SAME order as hiding.
+        
+        This tests the specific scenario that was broken before the global edge storage fix:
+        1. Hide CVE → edges stored in CVE storage
+        2. Hide CWE → CVE↔CWE edges stored AGAIN in CWE storage  
+        3. Show CVE → CVE↔CWE edges skipped (CWE still hidden)
+        4. Show CWE → edges were in CVE storage, not restored from CWE storage → LOST
+        
+        The fix uses global edge storage to prevent duplicates and restore correctly.
+        """
+        page.goto(BASE_URL)
+        wait_for_cytoscape(page)
+
+        initial_nodes = int(page.evaluate("getCy().nodes().length"))
+        initial_edges = int(page.evaluate("getCy().edges().length"))
+
+        # Hide CVE then CWE
+        page.locator('.visibility-toggle[data-type="CVE"]').click()
+        page.wait_for_timeout(200)
+        page.locator('.visibility-toggle[data-type="CWE"]').click()
+        page.wait_for_timeout(300)
+
+        # Show in SAME order (CVE then CWE) - this was the buggy scenario
+        page.locator('.visibility-toggle[data-type="CVE"]').click()
+        page.wait_for_timeout(200)
+        page.locator('.visibility-toggle[data-type="CWE"]').click()
+        page.wait_for_timeout(300)
+
+        final_nodes = int(page.evaluate("getCy().nodes().length"))
+        final_edges = int(page.evaluate("getCy().edges().length"))
+
+        assert final_nodes == initial_nodes, f"Nodes: expected {initial_nodes}, got {final_nodes}"
+        assert final_edges == initial_edges, f"Edges: expected {initial_edges}, got {final_edges} (edge restoration bug)"
+
     def test_no_bridge_edges_after_full_restore(self, page: Page):
         """After restoring all, no bridge edges should remain."""
         page.goto(BASE_URL)
