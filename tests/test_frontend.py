@@ -66,21 +66,30 @@ class TestGraphLoading:
         expect(sidebar).to_be_visible()
     
     def test_node_count_displayed(self, page: Page):
-        """Node count should be displayed in stats."""
+        """Node count should be displayed in Settings modal."""
         page.goto(BASE_URL)
-        page.wait_for_timeout(2000)  # Wait for graph to load
+        wait_for_cytoscape(page)
         
-        # Check that stats panel shows node count (use first() for multiple matches)
-        stats_text = page.locator(".stats-panel").first.inner_text()
-        assert "Total Nodes" in stats_text
+        # Open Settings modal where stats are now displayed
+        page.get_by_role("button", name="Settings").click()
+        page.locator("#settings-modal").wait_for(state="visible", timeout=5000)
+        
+        # Check that modal shows node count
+        modal_text = page.locator(".modal-content").inner_text()
+        assert "Total Nodes" in modal_text
     
     def test_edge_count_displayed(self, page: Page):
-        """Edge count should be displayed in stats."""
+        """Edge count should be displayed in Settings modal."""
         page.goto(BASE_URL)
-        page.wait_for_timeout(2000)
+        wait_for_cytoscape(page)
         
-        stats_text = page.locator(".stats-panel").first.inner_text()
-        assert "Total Edges" in stats_text
+        # Open Settings modal where stats are now displayed
+        page.get_by_role("button", name="Settings").click()
+        page.locator("#settings-modal").wait_for(state="visible", timeout=5000)
+        
+        # Check that modal shows edge count
+        modal_text = page.locator(".modal-content").inner_text()
+        assert "Total Edges" in modal_text
 
 
 class TestEnvironmentFiltering:
@@ -353,8 +362,8 @@ class TestSettingsModal:
         page.goto(BASE_URL)
         wait_for_cytoscape(page)
 
-        # Get initial node count
-        initial_count = page.locator("#total-nodes").inner_text()
+        # Get initial node count via JS (more reliable than modal text)
+        initial_count = int(page.evaluate("getCy().nodes().length"))
 
         # Open settings and set CPE to universal (position 0)
         page.get_by_role("button", name="Settings").click()
@@ -368,11 +377,11 @@ class TestSettingsModal:
         page.get_by_role("button", name="Save").click()
         wait_for_cytoscape(page, timeout=10000)
 
-        # Get new node count
-        final_count = page.locator("#total-nodes").inner_text()
+        # Get new node count via JS
+        final_count = int(page.evaluate("getCy().nodes().length"))
 
         # Universal mode should have fewer or equal nodes
-        assert int(final_count) <= int(initial_count)
+        assert final_count <= initial_count, f"Expected {final_count} <= {initial_count}"
 
 
 class TestHideRestore:

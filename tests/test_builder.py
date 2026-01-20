@@ -334,6 +334,8 @@ class TestWireCweToVcs:
         empty_graph_builder._wire_cwe_to_vcs(
             cwe_id,
             "host-001",
+            None,  # cpe_id
+            None,  # cve_id
             "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
             [],  # Empty technical impacts list
             ""
@@ -352,6 +354,8 @@ class TestWireCweToVcs:
         empty_graph_builder._wire_cwe_to_vcs(
             cwe_id,
             "host-002",
+            None,  # cpe_id
+            None,  # cve_id
             "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
             ["Execute unauthorized code"],
             ""
@@ -368,6 +372,8 @@ class TestWireCweToVcs:
         empty_graph_builder._wire_cwe_to_vcs(
             cwe_id,
             None,  # No host_id
+            None,  # cpe_id
+            None,  # cve_id
             "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
             ["Execute unauthorized code"],
             ":INSIDE_NETWORK"  # Layer 2 suffix
@@ -393,6 +399,8 @@ class TestWireCweToVcs:
         empty_graph_builder._wire_cwe_to_vcs(
             cwe_id,
             "host-001",
+            None,  # cpe_id
+            None,  # cve_id
             "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
             impacts,
             ""
@@ -419,6 +427,8 @@ class TestWireCweToVcs:
         empty_graph_builder._wire_cwe_to_vcs(
             cwe_id,
             "host-002",
+            None,  # cpe_id
+            None,  # cve_id
             "CVSS:3.1/AV:L/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H",
             impacts,
             ""
