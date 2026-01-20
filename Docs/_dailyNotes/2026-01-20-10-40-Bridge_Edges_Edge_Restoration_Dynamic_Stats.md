@@ -137,11 +137,75 @@ Stats dynamically reflect:
 
 ## Commits
 
-| Commit    | Description                                         |
-| --------- | --------------------------------------------------- |
-| `2d340a6` | feat: Color bridge edges based on hidden edge types |
-| `ca2c7fb` | fix: Edge restoration on visibility toggle          |
-| `ad5ccdd` | feat: Dynamic graph stats in Settings modal         |
+| Commit    | Description                                             |
+| --------- | ------------------------------------------------------- |
+| `2d340a6` | feat: Color bridge edges based on hidden edge types     |
+| `ca2c7fb` | fix: Edge restoration on visibility toggle              |
+| `ad5ccdd` | feat: Dynamic graph stats in Settings modal             |
+| `10516e1` | test: Add regression test for edge restoration          |
+| `6d5bab0` | fix: Update tests for signature changes and stats moved |
+
+---
+
+## Test Fixes
+
+After running full test suite, 8 tests failed due to code changes made:
+
+### 1. `TestWireCweToVcs` (5 tests)
+
+**Issue**: `_wire_cwe_to_vcs()` signature changed during VC singularity fix, adding `cpe_id` and `cve_id` params.
+
+**Fix**: Updated all test calls to include `None` for new params:
+```python
+empty_graph_builder._wire_cwe_to_vcs(
+    cwe_id,
+    "host-001",
+    None,  # cpe_id
+    None,  # cve_id
+    "CVSS:3.1/AV:N/...",
+    impacts,
+    ""
+)
+```
+
+### 2. Stats Location Tests (2 tests)
+
+**Issue**: `test_node_count_displayed` and `test_edge_count_displayed` looked for stats in `.stats-panel` but stats moved to Settings modal.
+
+**Fix**: Updated tests to open Settings modal and check there.
+
+### 3. Slider Test (1 test)
+
+**Issue**: `test_slider_affects_graph_node_count` used modal text for counts, which was unreliable.
+
+**Fix**: Use JavaScript to get counts directly from Cytoscape:
+```python
+initial_count = int(page.evaluate("getCy().nodes().length"))
+```
+
+---
+
+## Regression Test Added
+
+Added `test_edge_restoration_same_order_show` to document the edge restoration bug:
+
+```python
+def test_edge_restoration_same_order_show(self, page: Page):
+    """Regression test: Edges must be preserved when showing types in SAME order as hiding."""
+    # Hide CVE → Hide CWE
+    # Show CVE → Show CWE (same order - was buggy)
+    # Verify edge count matches initial
+```
+
+---
+
+## Testing Summary
+
+| Suite           | Count | Status     |
+| --------------- | ----- | ---------- |
+| Frontend (E2E)  | 58    | ✅ All pass |
+| Builder         | 46+   | ✅ All pass |
+| Full test suite | 372   | ✅ All pass |
 
 ---
 
@@ -150,3 +214,5 @@ Stats dynamically reflect:
 - Edge restoration verified: 499 → 499 after full hide/show cycle
 - Bridge colors vary based on edge types being hidden
 - Stats update when opening Settings after toggling visibility
+- All 58 frontend tests pass in ~2 minutes
+
