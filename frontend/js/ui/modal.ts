@@ -9,7 +9,7 @@ import { initCytoscape, destroyCytoscape } from '../graph/core';
 import { runLayout } from '../graph/layout';
 import { setupEventHandlers } from '../graph/events';
 import { applyEnvironmentFilter } from '../features/environment';
-import { updateStats, hideLoading } from './sidebar';
+import { updateStats, updateLiveStats, hideLoading } from './sidebar';
 import { setupTooltip, clearSelectedNode } from './tooltip';
 
 // Node types and their grouping options (chain from ATTACKER to parent)
@@ -116,6 +116,9 @@ export async function openSettings(): Promise<void> {
     } catch (error) {
         console.error('Error loading config:', error);
     }
+
+    // Update stats to show current live graph state
+    updateLiveStats();
 
     // Setup listeners
     setupSliderListeners();

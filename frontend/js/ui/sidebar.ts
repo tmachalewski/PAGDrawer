@@ -3,15 +3,36 @@
  */
 
 import type { Stats } from '../types';
+import { getCy } from '../graph/core';
 
 /**
- * Update stats panel with graph statistics
+ * Update stats panel with graph statistics from backend
  */
 export function updateStats(stats: Stats): void {
     const nodesEl = document.getElementById('total-nodes');
     const edgesEl = document.getElementById('total-edges');
     if (nodesEl) nodesEl.textContent = String(stats.total_nodes);
     if (edgesEl) edgesEl.textContent = String(stats.total_edges);
+}
+
+/**
+ * Update stats panel with LIVE graph statistics from Cytoscape
+ * This reflects current visible state including visibility toggles and filters
+ */
+export function updateLiveStats(): void {
+    const cy = getCy();
+    if (!cy) return;
+
+    const nodesEl = document.getElementById('total-nodes');
+    const edgesEl = document.getElementById('total-edges');
+
+    // Count visible nodes (excluding exploit-hidden)
+    const visibleNodes = cy.nodes().filter(n => !n.hasClass('exploit-hidden')).length;
+    // Count visible edges (excluding exploit-hidden)
+    const visibleEdges = cy.edges().filter(e => !e.hasClass('exploit-hidden')).length;
+
+    if (nodesEl) nodesEl.textContent = String(visibleNodes);
+    if (edgesEl) edgesEl.textContent = String(visibleEdges);
 }
 
 /**
