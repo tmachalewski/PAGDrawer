@@ -16,6 +16,9 @@ interface HiddenTypeData {
 const hiddenByType: Map<string, HiddenTypeData> = new Map();
 const typeBridgeEdges: Map<string, EdgeSingular[]> = new Map();
 
+// Global edge storage - prevents duplicates when multiple types are hidden
+const globalHiddenEdges: Map<string, ElementDefinition> = new Map();
+
 /**
  * Compute a bright averaged color from hidden edge types
  */
@@ -176,9 +179,15 @@ function hideNodeType(type: string): void {
         // Store node data
         storedNodes.push(node.json() as ElementDefinition);
 
-        // Store and remove edges (excluding bridges)
+        // Store and remove edges (excluding bridges) - use global storage to prevent duplicates
         const connected = node.connectedEdges().filter(e => !e.data('isBridge'));
         connected.forEach(edge => {
+            const edgeId = edge.id();
+            // Only store if not already globally stored
+            if (!globalHiddenEdges.has(edgeId)) {
+                globalHiddenEdges.set(edgeId, edge.json() as ElementDefinition);
+            }
+            // Still track per-type for bridge edge management
             storedEdges.push(edge.json() as ElementDefinition);
         });
     });
@@ -220,30 +229,35 @@ function showNodeType(type: string): void {
             }
         });
 
-        // Then restore edges (only if both ends exist and are not hidden)
-        data.edges.forEach(edgeData => {
-            const sourceId = edgeData.data?.source as string;
-            const targetId = edgeData.data?.target as string;
-            const edgeId = edgeData.data?.id as string;
-
-            const sourceNode = cy.getElementById(sourceId);
-            const targetNode = cy.getElementById(targetId);
-
-            if (sourceNode.length && targetNode.length) {
-                const sourceType = sourceNode.data('type');
-                const targetType = targetNode.data('type');
-
-                // Only restore if both ends are visible
-                if (!hiddenTypes.has(sourceType) && !hiddenTypes.has(targetType)) {
-                    if (cy.getElementById(edgeId).length === 0) {
-                        cy.add(edgeData);
-                    }
-                }
-            }
-        });
-
         hiddenByType.delete(type);
     }
+
+    // Now check ALL globally hidden edges for restoration
+    // An edge can be restored if both ends exist and neither type is hidden
+    const edgesToRestore: string[] = [];
+    globalHiddenEdges.forEach((edgeData, edgeId) => {
+        const sourceId = edgeData.data?.source as string;
+        const targetId = edgeData.data?.target as string;
+
+        const sourceNode = cy.getElementById(sourceId);
+        const targetNode = cy.getElementById(targetId);
+
+        if (sourceNode.length && targetNode.length) {
+            const sourceType = sourceNode.data('type');
+            const targetType = targetNode.data('type');
+
+            // Restore if both ends are visible
+            if (!hiddenTypes.has(sourceType) && !hiddenTypes.has(targetType)) {
+                if (cy.getElementById(edgeId).length === 0) {
+                    cy.add(edgeData);
+                }
+                edgesToRestore.push(edgeId);
+            }
+        }
+    });
+
+    // Remove restored edges from global storage
+    edgesToRestore.forEach(edgeId => globalHiddenEdges.delete(edgeId));
 }
 
 /**
@@ -310,29 +324,25 @@ export function resetVisibility(): void {
     // Clear hidden types BEFORE second pass so edge restoration works
     hiddenTypes.clear();
 
-    // Second pass: restore all edges (now all nodes exist and no types are hidden)
-    typesToShow.forEach(type => {
-        const data = hiddenByType.get(type);
-        if (data) {
-            data.edges.forEach(edgeData => {
-                const sourceId = edgeData.data?.source as string;
-                const targetId = edgeData.data?.target as string;
-                const edgeId = edgeData.data?.id as string;
+    // Second pass: restore all edges from global storage (now all nodes exist)
+    globalHiddenEdges.forEach((edgeData, edgeId) => {
+        const sourceId = edgeData.data?.source as string;
+        const targetId = edgeData.data?.target as string;
 
-                const sourceNode = cy.getElementById(sourceId);
-                const targetNode = cy.getElementById(targetId);
+        const sourceNode = cy.getElementById(sourceId);
+        const targetNode = cy.getElementById(targetId);
 
-                if (sourceNode.length && targetNode.length) {
-                    if (cy.getElementById(edgeId).length === 0) {
-                        cy.add(edgeData);
-                    }
-                }
-            });
+        if (sourceNode.length && targetNode.length) {
+            if (cy.getElementById(edgeId).length === 0) {
+                cy.add(edgeData);
+            }
         }
     });
 
+    // Clear all storage
     hiddenByType.clear();
     typeBridgeEdges.clear();
+    globalHiddenEdges.clear();
 
     // Reset toggle button states
     document.querySelectorAll('.visibility-toggle').forEach(btn => {
