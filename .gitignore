@@ -35,3 +35,6 @@ nul
 .DS_Store
 Thumbs.db
 src/data/cache/
+
+# Auto-generated markdown preview files
+Docs/**/*.html
