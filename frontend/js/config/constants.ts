@@ -152,6 +152,22 @@ export function getCytoscapeStyles(): any[] {
             }
         },
         {
+            selector: '.search-match',
+            style: {
+                'border-width': 4,
+                'border-color': '#ffd700',
+                'overlay-color': '#ffd700',
+                'overlay-opacity': 0.2,
+                'z-index': 999
+            }
+        },
+        {
+            selector: '.search-dimmed',
+            style: {
+                'opacity': 0.15
+            }
+        },
+        {
             selector: 'edge[?isBridge]',
             style: {
                 'line-style': 'dashed',

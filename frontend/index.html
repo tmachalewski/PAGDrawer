@@ -170,6 +170,12 @@
             <div id="loading-overlay" class="loading">Loading graph...</div>
             <div id="cy"></div>
             <div class="controls">
+                <!-- Node Search -->
+                <div class="search-container">
+                    <input type="text" id="node-search" placeholder="🔍 Search nodes..." class="search-input">
+                    <button id="search-clear" class="search-clear" style="display: none;">×</button>
+                    <span id="search-match-count" class="search-match-count"></span>
+                </div>
                 <select id="layout-select" class="control-btn" onchange="changeLayout(this.value)">
                     <option value="dagre">Dagre (DAG)</option>
                     <option value="breadthfirst">Breadthfirst</option>

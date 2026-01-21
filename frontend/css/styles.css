@@ -711,3 +711,65 @@ body {
     opacity: 1;
     color: #ef4444;
 }
+
+/* =============================================================================
+   NODE SEARCH
+   ============================================================================= */
+
+.search-container {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: rgba(40, 40, 80, 0.9);
+    border: 1px solid rgba(100, 100, 200, 0.3);
+    border-radius: 8px;
+    padding: 4px 8px;
+    transition: all 0.2s;
+}
+
+.search-container:focus-within {
+    border-color: rgba(100, 100, 200, 0.7);
+    box-shadow: 0 0 12px rgba(99, 102, 241, 0.3);
+}
+
+.search-input {
+    background: transparent;
+    border: none;
+    color: #e0e0e0;
+    font-size: 13px;
+    width: 160px;
+    outline: none;
+    padding: 6px 4px;
+}
+
+.search-input::placeholder {
+    color: #888;
+}
+
+.search-clear {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(100, 100, 200, 0.3);
+    border: none;
+    color: #e0e0e0;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    transition: all 0.2s;
+}
+
+.search-clear:hover {
+    background: rgba(239, 68, 68, 0.6);
+    color: white;
+}
+
+.search-match-count {
+    font-size: 11px;
+    color: #6ee7b7;
+    white-space: nowrap;
+    padding: 0 4px;
+}
