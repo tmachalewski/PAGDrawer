@@ -4,11 +4,15 @@
  */
 
 import { uploadTrivyFile, rebuildData, resetData, getDataStatus, getScans, deleteScan, fetchGraph, fetchStats } from '../services/api';
-import { initCytoscape } from '../graph/core';
+import { initCytoscape, destroyCytoscape } from '../graph/core';
 import { runLayout } from '../graph/layout';
+import { setupEventHandlers } from '../graph/events';
 import { updateStats } from '../ui/sidebar';
 import { reapplyHiddenTypes } from './filter';
+import { applyEnvironmentFilter } from './environment';
 import { syncSlidersFromConfig } from '../ui/modal';
+import { setupTooltip, clearSelectedNode } from '../ui/tooltip';
+import { clearHiddenElements } from './hideRestore';
 
 /**
  * Initialize data source panel - fetch and display current status
@@ -94,10 +98,16 @@ export async function rebuildGraph(): Promise<void> {
 
         // Reload graph with new data
         const [graphData, stats] = await Promise.all([fetchGraph(), fetchStats()]);
+        clearSelectedNode();
+        clearHiddenElements();
+        destroyCytoscape();
         initCytoscape(graphData.elements);
+        setupEventHandlers();
+        setupTooltip();
         setTimeout(() => {
             runLayout();
             reapplyHiddenTypes();
+            applyEnvironmentFilter();
         }, 100);
         updateStats(stats);
 
@@ -126,10 +136,16 @@ export async function resetToMock(): Promise<void> {
 
         // Reload graph with mock data
         const [graphData, stats] = await Promise.all([fetchGraph(), fetchStats()]);
+        clearSelectedNode();
+        clearHiddenElements();
+        destroyCytoscape();
         initCytoscape(graphData.elements);
+        setupEventHandlers();
+        setupTooltip();
         setTimeout(() => {
             runLayout();
             reapplyHiddenTypes();
+            applyEnvironmentFilter();
         }, 100);
         updateStats(stats);
 

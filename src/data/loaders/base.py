@@ -45,7 +45,7 @@ class LoadedData:
         - epss_score: float (0.0-1.0)
         - cvss_vector: str (CVSS 3.1 format)
         - cpe_id: str (reference to affected CPE)
-        - cwe_id: str (e.g., "CWE-78")
+        - cwe_ids: List[str] (e.g., ["CWE-78", "CWE-22"])
         - technical_impacts: List[str] (list of impacts for consensual matrix transformation)
     """
 
@@ -96,9 +96,12 @@ class LoadedData:
         # Check required fields in CVEs
         for i, cve in enumerate(self.cves):
             cve_id = cve.get("id", f"index_{i}")
-            for field in ["id", "description", "epss_score", "cvss_vector", "cpe_id", "cwe_id", "technical_impacts"]:
+            for field in ["id", "description", "epss_score", "cvss_vector", "cpe_id", "technical_impacts"]:
                 if field not in cve:
                     errors.append(f"CVE '{cve_id}' missing '{field}'")
+            # Require either cwe_ids (new) or cwe_id (legacy)
+            if "cwe_ids" not in cve and "cwe_id" not in cve:
+                errors.append(f"CVE '{cve_id}' missing 'cwe_ids' or 'cwe_id'")
 
             # Check CPE reference exists
             if cve.get("cpe_id") and cve["cpe_id"] not in cpe_ids:
@@ -117,8 +120,12 @@ class LoadedData:
 
         # Check CWE references in CVEs
         for cve in self.cves:
-            if cve.get("cwe_id") and cve["cwe_id"] not in cwe_ids:
-                errors.append(f"CVE '{cve.get('id')}' references unknown CWE '{cve['cwe_id']}'")
+            cve_cwe_ids = cve.get("cwe_ids", [])
+            if not cve_cwe_ids and cve.get("cwe_id"):
+                cve_cwe_ids = [cve["cwe_id"]]
+            for cwe_ref in cve_cwe_ids:
+                if cwe_ref and cwe_ref not in cwe_ids:
+                    errors.append(f"CVE '{cve.get('id')}' references unknown CWE '{cwe_ref}'")
 
         # Check host_cpe_map references
         for host_id, cpe_list in self.host_cpe_map.items():

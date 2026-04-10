@@ -33,6 +33,16 @@ export function updateLiveStats(): void {
 
     if (nodesEl) nodesEl.textContent = String(visibleNodes);
     if (edgesEl) edgesEl.textContent = String(visibleEdges);
+
+    // Update per-type counts in settings modal slider labels
+    const types = ['CPE', 'CVE', 'CWE', 'TI', 'VC'];
+    types.forEach(type => {
+        const countEl = document.getElementById(`count-${type}`);
+        if (countEl) {
+            const count = cy.nodes().filter(n => n.data('type') === type && !n.hasClass('exploit-hidden')).length;
+            countEl.textContent = `(${count})`;
+        }
+    });
 }
 
 /**

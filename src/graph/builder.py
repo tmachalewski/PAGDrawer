@@ -18,6 +18,7 @@ from src.core.schema import (
     HostNode, CPENode, CVENode, CWENode, VCNode, Edge,
     create_vc_id, parse_cvss_vector
 )
+from src.data.loaders.cwe_fetcher import STATIC_CWE_MAPPING
 from src.core.consensual_matrix import transform_cve_to_vc_edges
 from src.core.config import GraphConfig, DEFAULT_CONFIG
 
@@ -500,9 +501,13 @@ class KnowledgeGraphBuilder:
                     if not self.graph.has_edge(actual_cpe_id, actual_cve_id):
                         self.add_edge(actual_cpe_id, actual_cve_id, EdgeType.HAS_VULN)
                     
-                    # Process CWE
-                    original_cwe_id = cve_data.get("cwe_id")
-                    if original_cwe_id:
+                    # Process CWEs (support multiple per CVE)
+                    original_cwe_ids = cve_data.get("cwe_ids", [])
+                    # Backwards compatibility: support old single cwe_id field
+                    if not original_cwe_ids and cve_data.get("cwe_id"):
+                        original_cwe_ids = [cve_data["cwe_id"]]
+
+                    for original_cwe_id in original_cwe_ids:
                         cwe_info = cwe_lookup.get(original_cwe_id, {})
                         # CWE can be grouped by ATTACKER, HOST, CPE, or CVE
                         if self.config.is_universal("CWE"):
@@ -523,11 +528,16 @@ class KnowledgeGraphBuilder:
                                 host_id=host_id if self.config.should_include_context("CWE", "HOST") else None,
                                 layer="L2" if is_layer_2 else "L1"
                             )
-                        
+
                         # CVE -> CWE
                         if not self.graph.has_edge(actual_cve_id, actual_cwe_id):
                             self.add_edge(actual_cve_id, actual_cwe_id, EdgeType.IS_INSTANCE_OF)
-                        
+
+                        # Get TI impacts specific to this CWE
+                        cwe_technical_impacts = STATIC_CWE_MAPPING.get(original_cwe_id, [])
+                        if not cwe_technical_impacts:
+                            cwe_technical_impacts = cve_data.get("technical_impacts", [])
+
                         # Wire CWE -> VCs (pass full context for VC ID construction)
                         self._wire_cwe_to_vcs(
                             actual_cwe_id,
@@ -535,7 +545,7 @@ class KnowledgeGraphBuilder:
                             actual_cpe_id if self.config.should_include_context("VC", "CPE") else None,
                             actual_cve_id if self.config.should_include_context("VC", "CVE") else None,
                             cve_data["cvss_vector"],
-                            cve_data.get("technical_impacts", []),
+                            cwe_technical_impacts,
                             layer_suffix
                         )
     
@@ -616,16 +626,16 @@ class KnowledgeGraphBuilder:
         
         # Collect all VC nodes AND track which CVEs produce them
         # by tracing: CVE → CPE → CWE → TI → VC path (via edges)
-        vc_nodes = {}
+        vc_nodes = {}  # (vc_type, vc_value, host_id) → list of node IDs
         vc_producer_cves = {}  # vc_node_id → set of CVE IDs that produced this VC
-        
+
         for node_id, data in self.graph.nodes(data=True):
             if data.get("node_type") == "VC":
                 vc_type = data.get("vc_type")
                 vc_value = data.get("value")
                 host_id = data.get("host_id")
                 key = (vc_type, vc_value, host_id)
-                vc_nodes[key] = node_id
+                vc_nodes.setdefault(key, []).append(node_id)
                 
                 # Track which CVEs produced this VC by tracing backwards
                 # VC ← TI ← CWE ← CVE
@@ -672,7 +682,7 @@ class KnowledgeGraphBuilder:
                         if level >= required_level:
                             vc_key = ("AV", av_value, lookup_host)
                             if vc_key in vc_nodes:
-                                satisfying_vcs.append(vc_nodes[vc_key])
+                                satisfying_vcs.extend(vc_nodes[vc_key])
 
                 elif vc_type == "PR":
                     # PR hierarchy: N < L < H
@@ -682,7 +692,7 @@ class KnowledgeGraphBuilder:
                         if level >= required_level:
                             vc_key = ("PR", pr_value, lookup_host)
                             if vc_key in vc_nodes:
-                                satisfying_vcs.append(vc_nodes[vc_key])
+                                satisfying_vcs.extend(vc_nodes[vc_key])
                 
                 # Create ENABLES edges from satisfying VCs to this CVE
                 # BUT NOT if this CVE produced that VC (no self-loops!)
@@ -801,15 +811,39 @@ class KnowledgeGraphBuilder:
             node_type="VC",
             vc_type="PR",
             value="N",
-            label="PR:N", 
+            label="PR:N",
             description="No privileges (unauthenticated access)",
             parent="ATTACKER_BOX",
             is_initial=True
         )
-        
+
+        self.graph.add_node(
+            "VC:UI:N",
+            node_type="VC",
+            vc_type="UI",
+            value="N",
+            label="UI:N",
+            description="No user interaction required",
+            parent="ATTACKER_BOX",
+            is_initial=True
+        )
+
+        self.graph.add_node(
+            "VC:AC:L",
+            node_type="VC",
+            vc_type="AC",
+            value="L",
+            label="AC:L",
+            description="Low attack complexity",
+            parent="ATTACKER_BOX",
+            is_initial=True
+        )
+
         # Connect initial VCs to attacker (VCs lead to attacker, showing initial capabilities)
         self.graph.add_edge("VC:AV:N", "ATTACKER", edge_type="HAS_STATE")
         self.graph.add_edge("VC:PR:N", "ATTACKER", edge_type="HAS_STATE")
+        self.graph.add_edge("VC:UI:N", "ATTACKER", edge_type="HAS_STATE")
+        self.graph.add_edge("VC:AC:L", "ATTACKER", edge_type="HAS_STATE")
         
         # Connect attacker to DMZ hosts (publicly accessible) in Layer 1 only
         dmz_hosts = [node_id for node_id, data in self.graph.nodes(data=True) 

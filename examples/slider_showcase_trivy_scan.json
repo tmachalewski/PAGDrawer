@@ -81,6 +81,38 @@
           }
         },
         {
+          "VulnerabilityID": "CVE-2024-3596",
+          "PkgName": "openssl",
+          "InstalledVersion": "3.1.4-r5",
+          "FixedVersion": "3.1.7-r0",
+          "Severity": "HIGH",
+          "Title": "OpenSSL: Authentication bypass via path traversal in certificate verification",
+          "Description": "A flaw in certificate chain validation allows an attacker to bypass authentication checks and traverse directory paths to access restricted resources.",
+          "CweIDs": ["CWE-22", "CWE-287"],
+          "CVSS": {
+            "nvd": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:L/A:N",
+              "V3Score": 8.2
+            }
+          }
+        },
+        {
+          "VulnerabilityID": "CVE-2022-2588",
+          "PkgName": "musl",
+          "InstalledVersion": "1.2.4_git20230717-r4",
+          "FixedVersion": "1.2.5-r0",
+          "Severity": "HIGH",
+          "Title": "Linux kernel: route4_change use-after-free local privilege escalation",
+          "Description": "A use-after-free flaw in the Linux kernel's route4_change function allows a local attacker with low privileges to escalate to root.",
+          "CweIDs": ["CWE-416"],
+          "CVSS": {
+            "nvd": {
+              "V3Vector": "CVSS:3.1/AV:L/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H",
+              "V3Score": 7.8
+            }
+          }
+        },
+        {
           "VulnerabilityID": "CVE-2024-6119",
           "PkgName": "openssl",
           "InstalledVersion": "3.1.4-r5",

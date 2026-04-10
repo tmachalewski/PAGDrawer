@@ -111,7 +111,7 @@ class TestLoadedData:
         assert any("missing 'epss_score'" in e for e in errors)
         assert any("missing 'cvss_vector'" in e for e in errors)
         assert any("missing 'cpe_id'" in e for e in errors)
-        assert any("missing 'cwe_id'" in e for e in errors)
+        assert any("missing 'cwe_ids' or 'cwe_id'" in e for e in errors)
         assert any("missing 'technical_impacts'" in e for e in errors)
 
     def test_validate_unknown_cpe_reference(self):

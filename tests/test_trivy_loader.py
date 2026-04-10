@@ -198,7 +198,7 @@ class TestLoadBasic:
             assert "epss_score" in cve
             assert "cvss_vector" in cve
             assert "cpe_id" in cve
-            assert "cwe_id" in cve
+            assert "cwe_ids" in cve
             assert "technical_impacts" in cve
 
     def test_load_extracts_cwes(self, loader_no_enrich):
@@ -432,7 +432,7 @@ class TestEdgeCases:
         result = loader.load()
 
         cve = result.cves[0]
-        assert cve["cwe_id"] == "CWE-noinfo"
+        assert cve["cwe_ids"] == ["CWE-noinfo"]
 
     def test_duplicate_vulnerabilities_deduplicated(self):
         """Test that duplicate CVEs across targets are deduplicated."""

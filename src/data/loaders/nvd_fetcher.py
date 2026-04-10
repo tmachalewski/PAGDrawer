@@ -521,8 +521,8 @@ class NVDFetcher:
         if not enriched.get("epss_score") and "epss_score" in nvd_data:
             enriched["epss_score"] = nvd_data["epss_score"]
 
-        if not enriched.get("cwe_id") and nvd_data.get("cwe_ids"):
-            enriched["cwe_id"] = nvd_data["cwe_ids"][0]
+        if not enriched.get("cwe_ids") and nvd_data.get("cwe_ids"):
+            enriched["cwe_ids"] = nvd_data["cwe_ids"]
 
         if not enriched.get("severity"):
             enriched["severity"] = nvd_data.get("severity", "UNKNOWN")

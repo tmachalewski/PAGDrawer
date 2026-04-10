@@ -206,7 +206,7 @@ class TrivyDataLoader(DataLoader):
             "id": host_id,
             "os_family": os_family,
             "criticality_score": self._host_config.get("criticality_score", 0.5),
-            "subnet_id": self._host_config.get("subnet_id", "default"),
+            "subnet_id": self._host_config.get("subnet_id", "dmz"),
             "target": target,
             "target_type": target_type,
         }
@@ -301,15 +301,20 @@ class TrivyDataLoader(DataLoader):
         # Get description
         description = vuln.Description or vuln.Title or f"Vulnerability {cve_id}"
 
-        # Determine CWE ID
-        cwe_id = vuln.CweIDs[0] if vuln.CweIDs else "CWE-noinfo"
+        # Determine CWE IDs (support multiple per CVE)
+        cwe_ids = list(vuln.CweIDs) if vuln.CweIDs else ["CWE-noinfo"]
 
-        # Get technical impacts from CWE (empty list if unknown - won't create TI nodes)
+        # Get technical impacts from all CWEs
         technical_impacts = []
-        if self._enrich_cwe and cwe_id != "CWE-noinfo":
-            technical_impacts = self.cwe_fetcher.get_technical_impacts(
-                cwe_id, severity=vuln.Severity, fetch_if_missing=True
-            )
+        if self._enrich_cwe:
+            for cwe_id in cwe_ids:
+                if cwe_id != "CWE-noinfo":
+                    impacts = self.cwe_fetcher.get_technical_impacts(
+                        cwe_id, severity=vuln.Severity, fetch_if_missing=True
+                    )
+                    for impact in impacts:
+                        if impact not in technical_impacts:
+                            technical_impacts.append(impact)
 
         # Try to enrich from NVD if missing data
         epss_score = 0.0
@@ -327,12 +332,16 @@ class TrivyDataLoader(DataLoader):
                 if description == f"Vulnerability {cve_id}" and nvd_data.get("description"):
                     description = nvd_data["description"]
                 # Get CWE from NVD if not in Trivy
-                if cwe_id == "CWE-noinfo" and nvd_data.get("cwe_ids"):
-                    cwe_id = nvd_data["cwe_ids"][0]
+                if cwe_ids == ["CWE-noinfo"] and nvd_data.get("cwe_ids"):
+                    cwe_ids = nvd_data["cwe_ids"]
                     if self._enrich_cwe:
-                        technical_impacts = self.cwe_fetcher.get_technical_impacts(
-                            cwe_id, severity=vuln.Severity, fetch_if_missing=True
-                        )
+                        for cwe_id in cwe_ids:
+                            impacts = self.cwe_fetcher.get_technical_impacts(
+                                cwe_id, severity=vuln.Severity, fetch_if_missing=True
+                            )
+                            for impact in impacts:
+                                if impact not in technical_impacts:
+                                    technical_impacts.append(impact)
 
         # Use default CVSS if still missing
         if not cvss_vector:
@@ -345,7 +354,7 @@ class TrivyDataLoader(DataLoader):
             "cvss_vector": cvss_vector,
             "cvss_score": cvss_score,
             "cpe_id": cpe_id,
-            "cwe_id": cwe_id,
+            "cwe_ids": cwe_ids,
             "technical_impacts": technical_impacts,
             "severity": vuln.Severity,
             "fixed_version": vuln.FixedVersion,
