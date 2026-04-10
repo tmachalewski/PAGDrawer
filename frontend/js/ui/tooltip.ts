@@ -282,10 +282,14 @@ function createTooltipHTML(node: NodeSingular, index: number): string {
     }
 
     // Show other properties
+    const keyDisplayNames: Record<string, string> = {
+        chain_depth: 'attack step',
+    };
     for (const [key, value] of Object.entries(data)) {
         if (key === 'id' || key === 'label') continue;
         if (typeof value === 'string' || typeof value === 'number') {
-            html += `<div class="tooltip-detail-row"><span class="tooltip-detail-key">${key}:</span> <span class="tooltip-detail-value">${value}</span></div>`;
+            const displayKey = keyDisplayNames[key] || key;
+            html += `<div class="tooltip-detail-row"><span class="tooltip-detail-key">${displayKey}:</span> <span class="tooltip-detail-value">${value}</span></div>`;
         }
     }
     html += '</div>';
