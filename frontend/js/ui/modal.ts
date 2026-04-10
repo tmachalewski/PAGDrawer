@@ -94,6 +94,27 @@ function sliderPositionToConfig(type: string, position: number): string {
 }
 
 /**
+ * Sync slider positions from backend config (without opening modal)
+ */
+export async function syncSlidersFromConfig(): Promise<void> {
+    try {
+        const response = await fetch('/api/config');
+        const config = await response.json();
+
+        NODE_TYPES.forEach(type => {
+            const slider = document.getElementById(`config-${type}`) as HTMLInputElement | null;
+            if (slider) {
+                const position = configToSliderPosition(type, config[type] || 'singular');
+                slider.value = String(position);
+                updateSliderLabels(type, position);
+            }
+        });
+    } catch (error) {
+        console.error('Error syncing sliders from config:', error);
+    }
+}
+
+/**
  * Open settings modal and load current config
  */
 export async function openSettings(): Promise<void> {

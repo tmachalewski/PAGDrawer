@@ -47,6 +47,8 @@ current_config = GraphConfig()
 current_data_source = "mock"  # "mock", "trivy", or "deployment"
 uploaded_trivy_scans: List[TrivyScan] = []
 uploaded_deployment_config: Optional[Dict[str, Any]] = None
+# Cache enriched data so config changes don't lose enrichment
+current_loaded_data: Optional[LoadedData] = None
 
 
 @app.on_event("startup")
@@ -141,40 +143,17 @@ async def update_config(config_data: Dict[str, str]):
     # Update config
     current_config = GraphConfig.from_dict(config_data)
 
-    # Rebuild graph with new config using current data source
-    if current_data_source == "mock" or not uploaded_trivy_scans:
+    # Rebuild graph with new config using cached enriched data or mock
+    if current_data_source == "mock" or not current_loaded_data:
         # Use mock data
         graph_builder = build_knowledge_graph(current_config)
     else:
-        # Rebuild from uploaded Trivy/deployment data
-        trivy_data_list = [scan.data for scan in uploaded_trivy_scans]
+        # Reuse cached enriched data (avoids re-loading and losing enrichment)
         try:
-            if current_data_source == "deployment" and uploaded_deployment_config:
-                loader = DeploymentLoader(
-                    deployment_config=uploaded_deployment_config,
-                    trivy_sources=trivy_data_list,
-                    enrich_from_nvd=False,  # Don't re-enrich on config change
-                    enrich_cwe=True,
-                )
-                loaded_data = loader.load()
-            else:
-                # Load Trivy data directly
-                all_data = LoadedData()
-                for trivy_json in trivy_data_list:
-                    data = load_trivy_json(trivy_json, enrich=False)
-                    all_data.hosts.extend(data.hosts)
-                    all_data.cpes.extend(data.cpes)
-                    all_data.cves.extend(data.cves)
-                    all_data.cwes.extend(data.cwes)
-                    for host_id, cpe_list in data.host_cpe_map.items():
-                        all_data.host_cpe_map.setdefault(host_id, []).extend(cpe_list)
-                    all_data.network_edges.extend(data.network_edges)
-                loaded_data = all_data
-
             graph_builder = KnowledgeGraphBuilder(config=current_config)
-            graph_builder.load_from_data(loaded_data)
+            graph_builder.load_from_data(current_loaded_data)
         except Exception as e:
-            print(f"Error rebuilding from uploaded data: {e}")
+            print(f"Error rebuilding from cached data: {e}")
             # Fall back to mock data
             graph_builder = build_knowledge_graph(current_config)
 
@@ -398,13 +377,16 @@ async def rebuild_from_uploaded_data(
         use_deployment: Whether to use uploaded deployment config.
         scan_ids: Optional list of scan IDs to use. If None, uses all scans.
     """
-    global graph_builder, current_data_source
+    global graph_builder, current_data_source, current_config, current_loaded_data
 
     if not uploaded_trivy_scans:
         raise HTTPException(
             status_code=400,
             detail="No Trivy data uploaded. Use /api/upload/trivy first."
         )
+
+    # Reset config to defaults when rebuilding with new data
+    current_config = GraphConfig()
 
     # Filter scans if scan_ids provided
     scans_to_use = uploaded_trivy_scans
@@ -446,6 +428,9 @@ async def rebuild_from_uploaded_data(
             loaded_data = all_data
             current_data_source = "trivy"
 
+        # Cache enriched data for future config changes
+        current_loaded_data = loaded_data
+
         # Create new builder and load data
         graph_builder = KnowledgeGraphBuilder(config=current_config)
         graph_builder.load_from_data(loaded_data)
@@ -459,6 +444,7 @@ async def rebuild_from_uploaded_data(
             "source": current_data_source,
             "scans_used": len(scans_to_use),
             "stats": graph_builder.get_stats(),
+            "config": current_config.to_dict(),
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -467,13 +453,15 @@ async def rebuild_from_uploaded_data(
 @app.post("/api/data/reset")
 async def reset_to_mock_data():
     """Reset to using mock data and clear uploaded data."""
-    global graph_builder, current_data_source, uploaded_trivy_scans, uploaded_deployment_config
+    global graph_builder, current_data_source, uploaded_trivy_scans, uploaded_deployment_config, current_config, current_loaded_data
 
     # Clear uploaded data
     uploaded_trivy_scans = []
     uploaded_deployment_config = None
+    current_loaded_data = None
 
-    # Rebuild with mock data
+    # Reset config to defaults and rebuild with mock data
+    current_config = GraphConfig()
     graph_builder = build_knowledge_graph(current_config)
     current_data_source = "mock"
 

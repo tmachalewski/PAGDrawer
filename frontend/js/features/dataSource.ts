@@ -8,6 +8,7 @@ import { initCytoscape } from '../graph/core';
 import { runLayout } from '../graph/layout';
 import { updateStats } from '../ui/sidebar';
 import { reapplyHiddenTypes } from './filter';
+import { syncSlidersFromConfig } from '../ui/modal';
 
 /**
  * Initialize data source panel - fetch and display current status
@@ -100,6 +101,9 @@ export async function rebuildGraph(): Promise<void> {
         }, 100);
         updateStats(stats);
 
+        // Sync sliders to match reset backend config
+        await syncSlidersFromConfig();
+
         setStatus('✅ Graph rebuilt successfully', 'success');
         await refreshDataStatus();
         console.log('Graph rebuilt with enrich=' + enrich + ', scanIds=' + (scanIds || 'all'));
@@ -128,6 +132,9 @@ export async function resetToMock(): Promise<void> {
             reapplyHiddenTypes();
         }, 100);
         updateStats(stats);
+
+        // Sync sliders to match reset backend config
+        await syncSlidersFromConfig();
 
         setStatus('✅ Reset to mock data', 'success');
         await refreshDataStatus();

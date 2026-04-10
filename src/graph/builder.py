@@ -643,6 +643,11 @@ class KnowledgeGraphBuilder:
                 
                 vc_producer_cves[node_id] = producer_cves
         
+        # Determine what host context VC nodes use based on granularity config
+        # When VC is universal (ATTACKER), VCs have host_id=None, so lookups
+        # must use None too. Otherwise use the CVE's host_id.
+        vc_includes_host = self.config.should_include_context("VC", "HOST")
+
         # For each CVE that requires specific VCs, find VCs that SATISFY those requirements
         # Using VC hierarchy: higher privilege satisfies lower privilege requirement
         for cve in cve_nodes:
@@ -652,27 +657,30 @@ class KnowledgeGraphBuilder:
                     continue
                 if vc_type == "PR" and required_value == "N":
                     continue
-                
+
+                # Use the CVE's host_id only if VC nodes include host context
+                lookup_host = cve["host_id"] if vc_includes_host else None
+
                 # Find all VCs that SATISFY this requirement (same or higher privilege)
                 satisfying_vcs = []
-                
+
                 if vc_type == "AV":
                     # AV hierarchy: N < A < L < P
                     # If CVE requires L, VCs with L or P satisfy it
                     required_level = AV_HIERARCHY.get(required_value, 0)
                     for av_value, level in AV_HIERARCHY.items():
                         if level >= required_level:
-                            vc_key = ("AV", av_value, cve["host_id"])
+                            vc_key = ("AV", av_value, lookup_host)
                             if vc_key in vc_nodes:
                                 satisfying_vcs.append(vc_nodes[vc_key])
-                
+
                 elif vc_type == "PR":
                     # PR hierarchy: N < L < H
                     # If CVE requires L, VCs with L or H satisfy it
                     required_level = PR_HIERARCHY.get(required_value, 0)
                     for pr_value, level in PR_HIERARCHY.items():
                         if level >= required_level:
-                            vc_key = ("PR", pr_value, cve["host_id"])
+                            vc_key = ("PR", pr_value, lookup_host)
                             if vc_key in vc_nodes:
                                 satisfying_vcs.append(vc_nodes[vc_key])
                 

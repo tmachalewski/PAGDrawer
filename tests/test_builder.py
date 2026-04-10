@@ -862,3 +862,71 @@ class TestVCHierarchyEnables:
         # This is a structural test - verifying the hierarchy exists
         assert True  # Just verify the logic runs without error
 
+
+class TestVCGranularityEnablesEdges:
+    """Verify ENABLES edges are created correctly at all VC granularity levels."""
+
+    def _build_with_vc_granularity(self, level):
+        """Build graph with a specific VC granularity level."""
+        config = GraphConfig()
+        config.node_modes["VC"] = level
+        return build_knowledge_graph(config)
+
+    def _count_enables_edges(self, builder):
+        """Count ENABLES edges in the graph."""
+        return sum(
+            1 for _, _, d in builder.graph.edges(data=True)
+            if d.get("edge_type") == "ENABLES"
+        )
+
+    def _count_vc_nodes(self, builder):
+        """Count VC nodes in the graph."""
+        return sum(
+            1 for _, d in builder.graph.nodes(data=True)
+            if d.get("node_type") == "VC"
+        )
+
+    def test_vc_universal_still_has_enables_edges(self):
+        """VC at ATTACKER (universal) must still create ENABLES edges."""
+        builder = self._build_with_vc_granularity("ATTACKER")
+        enables_count = self._count_enables_edges(builder)
+        vc_count = self._count_vc_nodes(builder)
+
+        assert vc_count > 0, "Universal VC should still create VC nodes"
+        assert enables_count > 0, "Universal VC should still create ENABLES edges"
+
+    def test_vc_universal_fewer_nodes_than_singular(self):
+        """Universal VC should have fewer VC nodes than most-granular VC."""
+        universal = self._build_with_vc_granularity("ATTACKER")
+        granular = self._build_with_vc_granularity("TI")
+
+        universal_vc = self._count_vc_nodes(universal)
+        granular_vc = self._count_vc_nodes(granular)
+
+        assert universal_vc <= granular_vc, (
+            f"Universal ({universal_vc}) should have <= nodes than granular ({granular_vc})"
+        )
+
+    def test_vc_at_host_level_has_enables_edges(self):
+        """VC at HOST level must still create ENABLES edges."""
+        builder = self._build_with_vc_granularity("HOST")
+        enables_count = self._count_enables_edges(builder)
+
+        assert enables_count > 0, "HOST-level VC should still create ENABLES edges"
+
+    def test_vc_at_cve_level_has_enables_edges(self):
+        """VC at CVE level must still create ENABLES edges."""
+        builder = self._build_with_vc_granularity("CVE")
+        enables_count = self._count_enables_edges(builder)
+
+        assert enables_count > 0, "CVE-level VC should still create ENABLES edges"
+
+    def test_enables_count_consistent_across_granularities(self):
+        """ENABLES edges should exist at every valid VC granularity level."""
+        for level in ["ATTACKER", "HOST", "CPE", "CVE", "CWE", "TI"]:
+            builder = self._build_with_vc_granularity(level)
+            enables_count = self._count_enables_edges(builder)
+            assert enables_count > 0, (
+                f"VC at {level} level should still produce ENABLES edges, got 0"
+            )
+
