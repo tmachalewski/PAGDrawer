@@ -307,6 +307,10 @@ Available at: `http://127.0.0.1:8000/docs`
 | **Enrichment cache** | Config changes no longer discard TI/VC enrichment data |
 | **ENABLES edge lookup** | Universal VC nodes correctly matched in multistage attack wiring |
 | **Slider reset** | New scan loads reset slider config to defaults |
+| **Multi-CWE per CVE** | All CWEs now processed per CVE, not just the first one |
+| **ENABLES edge dict collision** | VC nodes with same (type,value,host) but different context no longer overwritten |
+| **Attacker connectivity** | Default subnet_id changed to "dmz" for proper CAN_REACH edges |
+| **Tooltip after rebuild** | Tooltips now re-initialize after Trivy upload/graph rebuild |
 
 ### New Features
 
@@ -314,6 +318,10 @@ Available at: `http://127.0.0.1:8000/docs`
 |---------|-------------|
 | **SVG Export** | Export selected nodes/edges as SVG via `cytoscape-svg` extension |
 | **Light Theme** | Dark/light toggle for print-friendly graph images |
+| **Multi-CWE support** | CVEs can map to multiple CWEs with per-CWE TI/VC chains |
+| **Initial attacker VCs** | Attacker starts with AV:N, PR:N, UI:N, AC:L capabilities |
+| **Per-type node counts** | Live node counts next to sliders in settings modal |
+| **Multi-stage attacks** | AV:L CVE (CVE-2022-2588) demonstrates chained exploitation |
 
 ### New Files
 
@@ -321,8 +329,9 @@ Available at: `http://127.0.0.1:8000/docs`
 |------|-------------|
 | `frontend/js/features/exportSvg.ts` | SVG export logic with selection support |
 | `frontend/js/features/theme.ts` | Theme toggle with light-mode color maps |
-| `examples/slider_showcase_trivy_scan.json` | Single-host scan with 5 CVEs for slider demos |
+| `examples/slider_showcase_trivy_scan.json` | Single-host scan with 7 CVEs for slider/attack demos |
 | `Scripts/trivyscangeneration.txt` | Docker command for generating real Trivy scans |
+| `.claude/launch.json` | Dev server configurations for backend and frontend |
 
 ### New Dependencies
 
@@ -390,6 +399,8 @@ GROUPING_HIERARCHY = ["ATTACKER", "HOST", "CPE", "CVE", "CWE", "TI", "VC"]
 ## Git History (Recent Commits)
 
 ```
+0d99263 feat: Multi-CWE support, multi-stage attacks, node counts, and tooltip fix
+d99231d docs: Add daily note for SVG export and light theme, update project status
 2e1a8a4 feat: Add light theme toggle for print-friendly graph exports
 46b64ee feat: Add SVG export for selected graph elements
 aa9946e docs: Add Trivy scan generation command reference
