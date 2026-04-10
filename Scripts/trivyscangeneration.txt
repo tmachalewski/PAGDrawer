@@ -1,0 +1,1 @@
+docker run --rm aquasec/trivy image --format json nginx:1.25-alpine > trivy-report.json
