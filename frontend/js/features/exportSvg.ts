@@ -6,6 +6,7 @@
  */
 
 import { getCy } from '../graph/core';
+import { getTheme } from './theme';
 import type { Core } from 'cytoscape';
 
 // Register cytoscape-svg extension
@@ -65,10 +66,11 @@ export function exportSelectedSvg(): void {
 
     try {
         // Generate SVG using cytoscape-svg extension
+        const bg = getTheme() === 'light' ? '#ffffff' : '#0f0f23';
         const svgContent = (cy as any).svg({
             full: true,
             scale: 2,
-            bg: '#0f0f23',
+            bg,
         });
 
         downloadSvg(svgContent, generateFilename(hasSelection, exportNodes.length));

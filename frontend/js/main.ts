@@ -14,6 +14,7 @@ import { toggleExploitPaths } from './features/exploitPaths';
 import { initDataSource, triggerFileUpload, rebuildGraph, resetToMock, deleteScanItem } from './features/dataSource';
 import { setupSearch, clearSearch } from './features/search';
 import { exportSelectedSvg } from './features/exportSvg';
+import { toggleTheme } from './features/theme';
 import { openSettings, closeSettings, saveSettings } from './ui/modal';
 import { updateStats, hideLoading, showError } from './ui/sidebar';
 import { setupTooltip } from './ui/tooltip';
@@ -39,6 +40,7 @@ declare global {
         deleteScanItem: typeof deleteScanItem;
         clearSearch: typeof clearSearch;
         exportSelectedSvg: typeof exportSelectedSvg;
+        toggleTheme: typeof toggleTheme;
     }
 }
 
@@ -113,6 +115,7 @@ window.resetToMock = resetToMock;
 window.deleteScanItem = deleteScanItem;
 window.clearSearch = clearSearch;  // Expose for HTML
 window.exportSelectedSvg = exportSelectedSvg;  // Expose for HTML
+window.toggleTheme = toggleTheme;  // Expose for HTML
 window.getCy = getCy;  // Expose for testing
 
 // Initialize on page load

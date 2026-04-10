@@ -773,3 +773,223 @@ body {
     white-space: nowrap;
     padding: 0 4px;
 }
+
+/* =============================================================================
+   LIGHT THEME - for academic paper image exports
+   ============================================================================= */
+
+.light-theme {
+    background: #f0f0f0;
+    color: #222;
+}
+
+.light-theme .sidebar {
+    background: rgba(245, 245, 250, 0.98);
+    border-right: 1px solid #ccc;
+}
+
+.light-theme .logo {
+    background: linear-gradient(90deg, #4a44cc, #8833aa, #cc0055);
+    -webkit-background-clip: text;
+    background-clip: text;
+}
+
+.light-theme .logo-subtitle {
+    color: #666;
+}
+
+.light-theme .stats-panel,
+.light-theme .legend,
+.light-theme .node-details {
+    background: rgba(230, 230, 240, 0.6);
+    border-color: #ccc;
+}
+
+.light-theme .stats-title,
+.light-theme .legend-title,
+.light-theme .details-title {
+    color: #4a44cc;
+}
+
+.light-theme .stat-value {
+    color: #1a8a1a;
+}
+
+.light-theme .stat-row {
+    border-bottom-color: #ddd;
+}
+
+.light-theme .legend-filter-btn {
+    border-color: #ccc;
+    color: #333;
+}
+
+.light-theme .legend-filter-btn.active {
+    background: rgba(74, 68, 204, 0.15);
+    border-color: #4a44cc;
+}
+
+.light-theme .legend-filter-btn:hover {
+    background: rgba(74, 68, 204, 0.1);
+}
+
+.light-theme .filter-btn {
+    background: rgba(230, 230, 240, 0.8);
+    border-color: #ccc;
+    color: #333;
+}
+
+.light-theme .filter-btn.active {
+    background: rgba(74, 68, 204, 0.2);
+    border-color: #4a44cc;
+}
+
+.light-theme .visibility-toggle {
+    background: rgba(220, 220, 235, 0.6);
+    border-color: #bbb;
+    color: #333;
+}
+
+.light-theme .visibility-toggle:hover {
+    background: rgba(200, 200, 220, 0.8);
+}
+
+.light-theme .control-btn {
+    background: rgba(240, 240, 250, 0.95);
+    border-color: #bbb;
+    color: #333;
+}
+
+.light-theme .control-btn:hover {
+    background: rgba(220, 220, 240, 0.95);
+    border-color: #888;
+}
+
+.light-theme .search-container {
+    background: rgba(240, 240, 250, 0.95);
+    border-color: #bbb;
+}
+
+.light-theme .search-input {
+    color: #222;
+}
+
+.light-theme .search-input::placeholder {
+    color: #999;
+}
+
+.light-theme .search-match-count {
+    color: #1a8a1a;
+}
+
+.light-theme .loading {
+    color: #4a44cc;
+}
+
+.light-theme .modal-overlay {
+    background: rgba(0, 0, 0, 0.4);
+}
+
+.light-theme .modal-content {
+    background: #f5f5fa;
+    border-color: #bbb;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+}
+
+.light-theme .modal-header {
+    border-bottom-color: #ddd;
+}
+
+.light-theme .modal-title {
+    color: #222;
+}
+
+.light-theme .close-btn {
+    color: #666;
+}
+
+.light-theme .close-btn:hover {
+    color: #222;
+}
+
+.light-theme .setting-label,
+.light-theme .slider-row-label {
+    color: #333;
+}
+
+.light-theme .slider-header .slider-columns span {
+    color: #666;
+}
+
+.light-theme .node-slider-row {
+    background: rgba(220, 220, 240, 0.4);
+}
+
+.light-theme .setting-row {
+    border-bottom-color: #ddd;
+}
+
+.light-theme .detail-key {
+    color: #666;
+}
+
+.light-theme .detail-value {
+    color: #222;
+}
+
+.light-theme .upload-btn {
+    background: linear-gradient(135deg, #4a44cc, #7733aa);
+}
+
+.light-theme .upload-btn:hover {
+    background: linear-gradient(135deg, #3a34bb, #6622aa);
+}
+
+.light-theme .action-btn {
+    background: rgba(230, 230, 240, 0.9);
+    border-color: #bbb;
+    color: #333;
+}
+
+.light-theme .action-btn:hover:not(:disabled) {
+    background: rgba(210, 210, 230, 0.95);
+    border-color: #888;
+}
+
+.light-theme .action-btn.reset-btn {
+    background: rgba(240, 220, 220, 0.8);
+    border-color: rgba(200, 100, 100, 0.5);
+}
+
+.light-theme .scan-select {
+    background: rgba(240, 240, 250, 0.95);
+    border-color: #bbb;
+    color: #333;
+}
+
+.light-theme .scan-item {
+    background: rgba(230, 230, 240, 0.5);
+}
+
+.light-theme .scan-item .scan-name {
+    color: #333;
+}
+
+.light-theme .node-tooltip .tooltip-box {
+    background: rgba(250, 250, 255, 0.98);
+    border-color: #aaa;
+    color: #222;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+}
+
+.light-theme .node-tooltip .tooltip-detail-key {
+    color: #666;
+}
+
+.light-theme .node-tooltip .tooltip-detail-value {
+    color: #222;
+}
+
+.light-theme .node-tooltip .tooltip-header {
+    background: rgba(74, 68, 204, 0.2);
+}
