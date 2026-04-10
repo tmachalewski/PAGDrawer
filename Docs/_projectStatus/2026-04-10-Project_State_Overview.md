@@ -1,7 +1,7 @@
 # PAGDrawer - Project State Overview
 
 **Date:** 2026-04-10
-**Version:** 1.5.1
+**Version:** 1.6.0
 **Test Coverage:** 406 Python tests + 82 TypeScript unit tests = 488 total
 
 ---
@@ -62,10 +62,10 @@ PAGDrawer/
 │   ├── js/
 │   │   ├── config/             # Constants, slider config
 │   │   ├── graph/              # Cytoscape core, layout, events
-│   │   ├── features/           # Filter, visibility, search, exploitPaths
+│   │   ├── features/           # Filter, visibility, search, exploitPaths, exportSvg, theme
 │   │   ├── ui/                 # Modal, tooltip, sidebar
 │   │   └── services/api.ts     # Backend communication
-│   └── css/styles.css          # All styling (800+ lines)
+│   └── css/styles.css          # All styling (990+ lines, includes light theme)
 ├── examples/                   # Example data files
 │   ├── sample_trivy_scan.json  # Multi-target scan (nginx, python, postgres)
 │   └── slider_showcase_trivy_scan.json  # Single-host scan for slider demos
@@ -224,6 +224,21 @@ Filter by CVSS environmental factors:
 
 Settings modal shows **live** node/edge counts that update on all changes.
 
+### 9. SVG Export
+
+Export selected graph elements as SVG for academic papers:
+- Select nodes, click "Export SVG" — exports selection and connecting edges
+- If nothing selected, exports entire visible graph
+- Uses `cytoscape-svg` extension with 2x scale
+- SVG background adapts to active theme (dark/light)
+
+### 10. Light Theme
+
+Toggle between dark and light themes via toolbar button:
+- Light theme: white background, high-contrast node colors, dark text
+- Designed for print-ready images in academic papers
+- Both UI and Cytoscape graph styles update simultaneously
+
 ---
 
 ## API Reference
@@ -293,12 +308,27 @@ Available at: `http://127.0.0.1:8000/docs`
 | **ENABLES edge lookup** | Universal VC nodes correctly matched in multistage attack wiring |
 | **Slider reset** | New scan loads reset slider config to defaults |
 
+### New Features
+
+| Feature | Description |
+|---------|-------------|
+| **SVG Export** | Export selected nodes/edges as SVG via `cytoscape-svg` extension |
+| **Light Theme** | Dark/light toggle for print-friendly graph images |
+
 ### New Files
 
 | File | Description |
 |------|-------------|
+| `frontend/js/features/exportSvg.ts` | SVG export logic with selection support |
+| `frontend/js/features/theme.ts` | Theme toggle with light-mode color maps |
 | `examples/slider_showcase_trivy_scan.json` | Single-host scan with 5 CVEs for slider demos |
 | `Scripts/trivyscangeneration.txt` | Docker command for generating real Trivy scans |
+
+### New Dependencies
+
+| Package | Version | Purpose |
+|---------|---------|---------|
+| `cytoscape-svg` | 0.4.0 | SVG rendering from Cytoscape canvas |
 
 ### New Tests
 
@@ -360,6 +390,8 @@ GROUPING_HIERARCHY = ["ATTACKER", "HOST", "CPE", "CVE", "CWE", "TI", "VC"]
 ## Git History (Recent Commits)
 
 ```
+2e1a8a4 feat: Add light theme toggle for print-friendly graph exports
+46b64ee feat: Add SVG export for selected graph elements
 aa9946e docs: Add Trivy scan generation command reference
 bb5b488 fix: Preserve enrichment data when changing granularity sliders and reset config on rebuild
 6d59f37 chore: Clean up requirements.txt and update start script for venv
