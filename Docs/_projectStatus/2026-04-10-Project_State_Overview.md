@@ -1,8 +1,8 @@
 # PAGDrawer - Project State Overview
 
 **Date:** 2026-04-10
-**Version:** 1.6.0
-**Test Coverage:** 406 Python tests + 82 TypeScript unit tests = 488 total
+**Version:** 1.7.0
+**Test Coverage:** 330 Python tests + 82 TypeScript unit tests = 412 total
 
 ---
 
@@ -105,19 +105,23 @@ PAGDrawer/
 | **VC**       | Purple  | Vector Changers     | `AV:L`, `PR:H`, `EX:Y`          |
 | **BRIDGE**   | Teal    | L1->L2 transition   | `INSIDE_NETWORK`                |
 
-### Graph Flow
+### Graph Flow (Chain-Depth Aware)
 
 ```
-ATTACKER -ENTERS_NETWORK-> HOST -RUNS-> CPE -HAS_VULN-> CVE -IS_INSTANCE_OF-> CWE
-                                                                          |
-                                                                    HAS_IMPACT
-                                                                          v
-                         VC:EX:Y (terminal) <-LEADS_TO- TI <-------------+
-                              |
-                         ENABLES (enables next attack phase)
+ATTACKER -CAN_REACH-> HOST -RUNS-> CPE -HAS_VULN-> CVE:d0 -IS_INSTANCE_OF-> CWE:d0
+                                                                                |
+                                                                          HAS_IMPACT
+                                                                                v
+                         VC:EX:Y:d0 (terminal) <-LEADS_TO- TI:d0 <------------+
+                         VC:AV:L:d0             <-LEADS_TO-+
+                         VC:PR:H:d0             <-LEADS_TO-+
+                              |                      |
+                         ENABLES (depth 0 → depth 1)
                               v
-                         VC -> CVE (lateral movement)
+                         CVE:d1 → CWE:d1 → TI:d1 → VC:d1 (next attack stage)
 ```
+
+Nodes carry `:dN` depth suffix. ENABLES edges only go forward (depth N → N+1).
 
 ### Edge Types (9)
 
@@ -322,6 +326,9 @@ Available at: `http://127.0.0.1:8000/docs`
 | **Initial attacker VCs** | Attacker starts with AV:N, PR:N, UI:N, AC:L capabilities |
 | **Per-type node counts** | Live node counts next to sliders in settings modal |
 | **Multi-stage attacks** | AV:L CVE (CVE-2022-2588) demonstrates chained exploitation |
+| **Chain-depth BFS** | CVE/CWE/TI/VC nodes carry attack step depth; BFS replaces single-pass wiring |
+| **Depth in node IDs** | `:dN` suffix prevents incorrect merging across attack stages |
+| **Tooltip attack step** | Chain depth displayed as "attack step" in node tooltips |
 
 ### New Files
 
@@ -332,6 +339,8 @@ Available at: `http://127.0.0.1:8000/docs`
 | `examples/slider_showcase_trivy_scan.json` | Single-host scan with 7 CVEs for slider/attack demos |
 | `Scripts/trivyscangeneration.txt` | Docker command for generating real Trivy scans |
 | `.claude/launch.json` | Dev server configurations for backend and frontend |
+| `Docs/_domains/ChainDepthAttackStages.md` | Domain doc for chain-depth BFS attack wiring |
+| `Docs/Plans/Chain_Depth_Aware_Attack_Stages.md` | Design plan for chain-depth feature |
 
 ### New Dependencies
 
@@ -399,6 +408,7 @@ GROUPING_HIERARCHY = ["ATTACKER", "HOST", "CPE", "CVE", "CWE", "TI", "VC"]
 ## Git History (Recent Commits)
 
 ```
+xxxxxxx feat: Chain-depth-aware multi-stage attack wiring via BFS
 0d99263 feat: Multi-CWE support, multi-stage attacks, node counts, and tooltip fix
 d99231d docs: Add daily note for SVG export and light theme, update project status
 2e1a8a4 feat: Add light theme toggle for print-friendly graph exports

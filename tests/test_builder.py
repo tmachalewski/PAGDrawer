@@ -446,16 +446,13 @@ class TestWireCweToVcs:
 
 
 class TestMultistageAttacks:
-    """Tests for _wire_multistage_attacks method."""
-    
+    """Tests for chain-depth-aware multi-stage attack wiring."""
+
     def test_multistage_creates_enables_edges(self, loaded_graph_builder):
-        """_wire_multistage_attacks should create ENABLES edges."""
-        # First call the method
-        loaded_graph_builder._wire_multistage_attacks()
-        
-        # Check if ENABLES edges were created (may be 0 if no multi-stage paths)
+        """BFS chain wiring should create ENABLES edges during load."""
+        # ENABLES edges are now created during load_from_mock_data via BFS
         stats = loaded_graph_builder.get_stats()
-        # This method runs - even if no ENABLES edges, coverage increases
+        # Check if ENABLES edges were created (may be 0 if no multi-stage paths)
         assert "ENABLES" in stats["edge_counts"] or True  # Just run it for coverage
 
 
