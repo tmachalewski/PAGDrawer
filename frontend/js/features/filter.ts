@@ -202,62 +202,59 @@ function hideNodeType(type: string): void {
 
 /**
  * Show all nodes of a type, removing bridge edges
+ *
+ * Uses a full restore-then-rehide approach to ensure bridges are
+ * correctly recreated when other types remain hidden. This avoids
+ * the problem where restored nodes become dead ends because their
+ * edges to still-hidden types can't be restored and no bridges are
+ * created to bypass them.
  */
 function showNodeType(type: string): void {
     const cy = getCy();
     if (!cy) return;
 
-    hiddenTypes.delete(type);
+    // Determine which types should remain hidden after showing this one
+    const typesToRemainHidden = new Set(hiddenTypes);
+    typesToRemainHidden.delete(type);
 
-    // Remove bridge edges for this type
-    const bridges = typeBridgeEdges.get(type) || [];
-    bridges.forEach(edge => {
-        if (edge.inside()) edge.remove();
-    });
-    typeBridgeEdges.delete(type);
+    // Phase 1: Restore everything (all nodes, all edges, remove all bridges)
+    cy.edges('[isBridge]').remove();
 
-    // Also remove by selector in case any were missed
-    cy.edges(`[bridgeForType="${type}"]`).remove();
-
-    // Restore nodes
-    const data = hiddenByType.get(type);
-    if (data) {
-        // First restore nodes
+    // Restore all hidden nodes
+    hiddenByType.forEach((data) => {
         data.nodes.forEach(nodeData => {
             if (cy.getElementById(nodeData.data?.id as string).length === 0) {
                 cy.add(nodeData);
             }
         });
+    });
 
-        hiddenByType.delete(type);
-    }
+    // Clear hiddenTypes before restoring edges so all types are "visible"
+    hiddenTypes.clear();
 
-    // Now check ALL globally hidden edges for restoration
-    // An edge can be restored if both ends exist and neither type is hidden
-    const edgesToRestore: string[] = [];
+    // Restore all globally hidden edges
     globalHiddenEdges.forEach((edgeData, edgeId) => {
         const sourceId = edgeData.data?.source as string;
         const targetId = edgeData.data?.target as string;
-
         const sourceNode = cy.getElementById(sourceId);
         const targetNode = cy.getElementById(targetId);
-
         if (sourceNode.length && targetNode.length) {
-            const sourceType = sourceNode.data('type');
-            const targetType = targetNode.data('type');
-
-            // Restore if both ends are visible
-            if (!hiddenTypes.has(sourceType) && !hiddenTypes.has(targetType)) {
-                if (cy.getElementById(edgeId).length === 0) {
-                    cy.add(edgeData);
-                }
-                edgesToRestore.push(edgeId);
+            if (cy.getElementById(edgeId).length === 0) {
+                cy.add(edgeData);
             }
         }
     });
 
-    // Remove restored edges from global storage
-    edgesToRestore.forEach(edgeId => globalHiddenEdges.delete(edgeId));
+    // Clear all storage
+    hiddenByType.clear();
+    typeBridgeEdges.clear();
+    globalHiddenEdges.clear();
+
+    // Phase 2: Re-hide the types that should remain hidden
+    // hideNodeType creates correct bridges based on current visibility
+    typesToRemainHidden.forEach(t => {
+        hideNodeType(t);
+    });
 }
 
 /**
