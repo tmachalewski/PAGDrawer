@@ -120,6 +120,12 @@ export function getCytoscapeStyles(): any[] {
             }
         },
         {
+            selector: '.export-hidden',
+            style: {
+                'display': 'none'
+            }
+        },
+        {
             selector: '.env-filtered',
             style: {
                 'opacity': 0.25,
