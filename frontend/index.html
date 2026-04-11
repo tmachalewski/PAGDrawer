@@ -111,7 +111,13 @@
                         <div class="legend-dot" style="background: #eab308;"></div>
                         <span>CVE</span>
                     </button>
+                    <button class="merge-toggle disabled" id="cve-merge-btn" title="Hide CWE and TI nodes to enable merging" disabled>⊞</button>
                     <button class="visibility-toggle" data-type="CVE" title="Hide/Show CVE nodes">👁</button>
+                </div>
+                <div id="merge-popover" class="merge-popover" style="display: none;">
+                    <div class="merge-option active" data-mode="none">No Merge</div>
+                    <div class="merge-option" data-mode="prereqs">By Prerequisites (AV/AC/UI/PR)</div>
+                    <div class="merge-option" data-mode="outcomes">By Outcomes (same VCs)</div>
                 </div>
                 <div class="node-type-row">
                     <button class="filter-btn legend-filter-btn" data-type="CWE">

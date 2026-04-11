@@ -656,6 +656,19 @@ class KnowledgeGraphBuilder:
             actual_cve_id = f"{cve_data['id']}{depth_suffix}@{host_id}"
 
         if not self.graph.has_node(actual_cve_id):
+            # Parse CVSS prerequisites for frontend merge-by-prereqs
+            cvss_parts = {}
+            for part in (cve_data["cvss_vector"] or "").split("/"):
+                if ":" in part:
+                    k, v = part.split(":", 1)
+                    cvss_parts[k] = v
+            prereqs = {
+                "AV": cvss_parts.get("AV", "N"),
+                "AC": cvss_parts.get("AC", "L"),
+                "PR": cvss_parts.get("PR", "N"),
+                "UI": cvss_parts.get("UI", "N"),
+            }
+
             self.graph.add_node(
                 actual_cve_id,
                 node_type="CVE",
@@ -663,6 +676,7 @@ class KnowledgeGraphBuilder:
                 description=cve_data["description"],
                 epss_score=cve_data["epss_score"],
                 cvss_vector=cve_data["cvss_vector"],
+                prereqs=prereqs,
                 host_id=host_id if self.config.should_include_context("CVE", "HOST") else None,
                 cpe_id=actual_cpe_id if self.config.should_include_context("CVE", "CPE") else None,
                 layer="L2" if is_layer_2 else "L1",
@@ -725,6 +739,12 @@ class KnowledgeGraphBuilder:
                 chain_depth=chain_depth
             )
             all_vc_info.extend(vc_info)
+
+        # Store VC outcomes for frontend merge-by-outcomes
+        vc_outcomes = sorted(set((vt, vv) for vt, vv, _ in all_vc_info))
+        self.graph.nodes[actual_cve_id]["vc_outcomes"] = [
+            list(pair) for pair in vc_outcomes
+        ]
 
         return actual_cve_id, all_vc_info
 
@@ -1035,8 +1055,19 @@ class KnowledgeGraphBuilder:
         }
 
     def export_gexf(self, filepath: str):
-        """Export graph to GEXF format for Gephi."""
-        nx.write_gexf(self.graph, filepath)
+        """Export graph to GEXF format for Gephi.
+
+        Strips attributes that GEXF can't serialize (dicts, nested lists).
+        """
+        # GEXF only supports scalar and flat-list attributes
+        clean = self.graph.copy()
+        for _, data in clean.nodes(data=True):
+            for key in list(data.keys()):
+                if isinstance(data[key], (dict, set)):
+                    del data[key]
+                elif isinstance(data[key], list) and data[key] and isinstance(data[key][0], (list, dict)):
+                    del data[key]
+        nx.write_gexf(clean, filepath)
 
 
 # =============================================================================

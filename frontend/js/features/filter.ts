@@ -4,6 +4,7 @@
 
 import { getCy } from '../graph/core';
 import { edgeColors } from '../config/constants';
+import { updateMergeButtonVisibility, removeMerge } from './cveMerge';
 import type { EdgeSingular, ElementDefinition } from 'cytoscape';
 
 // Track hidden node types and their elements
@@ -198,6 +199,8 @@ function hideNodeType(type: string): void {
 
     // Remove nodes (edges are removed automatically)
     nodesToHide.remove();
+
+    updateMergeButtonVisibility();
 }
 
 /**
@@ -255,6 +258,12 @@ function showNodeType(type: string): void {
     typesToRemainHidden.forEach(t => {
         hideNodeType(t);
     });
+
+    // Auto-disable merge if CWE or TI is being shown
+    if (type === 'CWE' || type === 'TI') {
+        removeMerge();
+    }
+    updateMergeButtonVisibility();
 }
 
 /**
@@ -282,7 +291,7 @@ export function reapplyHiddenTypes(): void {
     typeBridgeEdges.clear();
     hiddenTypes.clear();
 
-    // Re-hide each type
+    // Re-hide each type (hideNodeType calls updateMergeButtonVisibility internally)
     typesToHide.forEach(type => {
         hideNodeType(type);
     });
@@ -345,6 +354,9 @@ export function resetVisibility(): void {
     document.querySelectorAll('.visibility-toggle').forEach(btn => {
         btn.classList.remove('hidden');
     });
+
+    removeMerge();
+    updateMergeButtonVisibility();
 }
 
 /**

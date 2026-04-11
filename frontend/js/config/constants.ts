@@ -185,6 +185,24 @@ export function getCytoscapeStyles(): any[] {
             }
         },
         {
+            selector: '[type="CVE_GROUP"]',
+            style: {
+                'background-color': 'rgba(234, 179, 8, 0.12)',
+                'border-color': '#eab308',
+                'border-width': 2,
+                'border-style': 'dashed',
+                'label': 'data(label)',
+                'text-valign': 'top',
+                'text-halign': 'center',
+                'font-size': '10px',
+                'color': '#eab308',
+                'text-outline-color': '#000000',
+                'text-outline-width': 1,
+                'padding': '12px',
+                'shape': 'round-rectangle'
+            }
+        },
+        {
             selector: 'node[?is_terminal]',
             style: {
                 'background-color': '#ff0000',
