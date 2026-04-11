@@ -27,7 +27,10 @@ export function initCytoscape(elements: ElementsDefinition): Core {
         boxSelectionEnabled: true,
         selectionType: 'additive',
         style: getCytoscapeStyles(),
-        layout: { name: 'preset' }
+        layout: { name: 'preset' },
+        wheelSensitivity: 0.3,
+        minZoom: 0.05,
+        maxZoom: 5
     });
 
     return cy;
