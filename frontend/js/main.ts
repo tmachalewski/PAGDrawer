@@ -13,6 +13,8 @@ import { hideSelectedNodes, restoreAllNodes } from './features/hideRestore';
 import { toggleExploitPaths } from './features/exploitPaths';
 import { initDataSource, triggerFileUpload, rebuildGraph, resetToMock, deleteScanItem } from './features/dataSource';
 import { setupSearch, clearSearch } from './features/search';
+import { setupMergeButton, injectGetHiddenTypes } from './features/cveMerge';
+import { getHiddenTypes } from './features/filter';
 import { exportSelectedSvg } from './features/exportSvg';
 import { toggleTheme } from './features/theme';
 import { openSettings, closeSettings, saveSettings } from './ui/modal';
@@ -72,6 +74,10 @@ async function init(): Promise<void> {
 
         // Setup filter buttons
         setupFilterButtons();
+
+        // Setup CVE merge button (inject dependency to break circular import)
+        injectGetHiddenTypes(getHiddenTypes);
+        setupMergeButton();
 
         // Setup environment listeners
         setupEnvironmentListeners();

@@ -190,6 +190,87 @@ body {
 }
 
 /* =============================================================================
+   CVE MERGE
+   ============================================================================= */
+
+.merge-toggle {
+    background: none;
+    border: 1px solid rgba(234, 179, 8, 0.3);
+    color: #eab308;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 6px;
+    font-size: 14px;
+    transition: all 0.2s;
+    line-height: 1;
+}
+
+.merge-toggle.disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+
+.merge-toggle:hover:not(.disabled) {
+    background: rgba(234, 179, 8, 0.15);
+}
+
+.merge-toggle.active {
+    background: rgba(234, 179, 8, 0.25);
+    border-color: #eab308;
+    box-shadow: 0 0 6px rgba(234, 179, 8, 0.4);
+}
+
+.merge-popover {
+    position: fixed;
+    background: #1e1e2e;
+    border: 1px solid rgba(234, 179, 8, 0.4);
+    border-radius: 8px;
+    padding: 4px 0;
+    z-index: 1000;
+    min-width: 220px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+.merge-option {
+    padding: 8px 16px;
+    cursor: pointer;
+    font-size: 12px;
+    color: #ccc;
+    transition: background 0.15s;
+}
+
+.merge-option:hover {
+    background: rgba(234, 179, 8, 0.15);
+}
+
+.merge-option.active {
+    color: #eab308;
+    font-weight: bold;
+}
+
+.merge-toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(234, 179, 8, 0.9);
+    color: #000;
+    padding: 10px 24px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    z-index: 10000;
+    opacity: 0;
+    transition: opacity 0.3s;
+    pointer-events: auto;
+    cursor: pointer;
+}
+
+.merge-toast.visible {
+    opacity: 1;
+}
+
+/* =============================================================================
    NODE DETAILS
    ============================================================================= */
 
@@ -862,6 +943,43 @@ body {
 
 .light-theme .visibility-toggle:hover {
     background: rgba(200, 200, 220, 0.8);
+}
+
+.light-theme .merge-toggle {
+    border-color: rgba(180, 140, 0, 0.4);
+    color: #a07800;
+}
+
+.light-theme .merge-toggle:hover {
+    background: rgba(234, 179, 8, 0.1);
+}
+
+.light-theme .merge-toggle.active {
+    background: rgba(234, 179, 8, 0.2);
+    border-color: #a07800;
+}
+
+.light-theme .merge-popover {
+    background: #f5f5fa;
+    border-color: rgba(180, 140, 0, 0.4);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.light-theme .merge-option {
+    color: #444;
+}
+
+.light-theme .merge-option:hover {
+    background: rgba(234, 179, 8, 0.1);
+}
+
+.light-theme .merge-option.active {
+    color: #a07800;
+}
+
+.light-theme .merge-toast {
+    background: rgba(234, 179, 8, 0.95);
+    color: #000;
 }
 
 .light-theme .control-btn {

@@ -11,6 +11,7 @@ import { setupEventHandlers } from '../graph/events';
 import { applyEnvironmentFilter } from '../features/environment';
 import { updateStats, updateLiveStats, hideLoading } from './sidebar';
 import { setupTooltip, clearSelectedNode } from './tooltip';
+import { resetMerge } from '../features/cveMerge';
 
 // Node types and their grouping options (chain from ATTACKER to parent)
 const SLIDER_OPTIONS: Record<string, string[]> = {
@@ -175,9 +176,10 @@ export async function saveSettings(): Promise<void> {
             fetchStats()
         ]);
 
-        // Clear tooltip and hidden state before destroying old graph
+        // Clear tooltip, hidden state, and merge before destroying old graph
         clearSelectedNode();
         clearHiddenElements();
+        resetMerge();
 
         // Reinitialize Cytoscape
         destroyCytoscape();

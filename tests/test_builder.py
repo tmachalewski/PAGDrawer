@@ -456,6 +456,98 @@ class TestMultistageAttacks:
         assert "ENABLES" in stats["edge_counts"] or True  # Just run it for coverage
 
 
+class TestCVEMergeAttributes:
+    """Tests for CVE node prereqs and vc_outcomes attributes (for frontend merge)."""
+
+    def test_cve_has_prereqs_attribute(self, loaded_graph_builder):
+        """CVE nodes should have a 'prereqs' dict with AV/AC/PR/UI."""
+        cve_nodes = [
+            (nid, data) for nid, data
+            in loaded_graph_builder.graph.nodes(data=True)
+            if data.get("node_type") == "CVE"
+        ]
+        assert len(cve_nodes) > 0, "No CVE nodes found"
+        for nid, data in cve_nodes:
+            assert "prereqs" in data, f"CVE {nid} missing prereqs"
+            prereqs = data["prereqs"]
+            assert isinstance(prereqs, dict)
+            assert set(prereqs.keys()) == {"AV", "AC", "PR", "UI"}, (
+                f"CVE {nid} prereqs keys: {set(prereqs.keys())}"
+            )
+
+    def test_prereqs_match_cvss_vector(self, loaded_graph_builder):
+        """prereqs values should match parsed CVSS vector components."""
+        for nid, data in loaded_graph_builder.graph.nodes(data=True):
+            if data.get("node_type") != "CVE":
+                continue
+            cvss = data.get("cvss_vector", "")
+            prereqs = data["prereqs"]
+            parts = {}
+            for p in cvss.split("/"):
+                if ":" in p:
+                    k, v = p.split(":", 1)
+                    parts[k] = v
+            assert prereqs["AV"] == parts.get("AV", "N"), f"CVE {nid} AV mismatch"
+            assert prereqs["PR"] == parts.get("PR", "N"), f"CVE {nid} PR mismatch"
+            assert prereqs["AC"] == parts.get("AC", "L"), f"CVE {nid} AC mismatch"
+            assert prereqs["UI"] == parts.get("UI", "N"), f"CVE {nid} UI mismatch"
+
+    def test_cve_has_vc_outcomes_attribute(self, loaded_graph_builder):
+        """CVE nodes should have a 'vc_outcomes' list."""
+        cve_nodes = [
+            (nid, data) for nid, data
+            in loaded_graph_builder.graph.nodes(data=True)
+            if data.get("node_type") == "CVE"
+        ]
+        assert len(cve_nodes) > 0, "No CVE nodes found"
+        for nid, data in cve_nodes:
+            assert "vc_outcomes" in data, f"CVE {nid} missing vc_outcomes"
+            assert isinstance(data["vc_outcomes"], list), f"CVE {nid} vc_outcomes not list"
+
+    def test_vc_outcomes_match_actual_vc_chain(self, loaded_graph_builder):
+        """vc_outcomes should match the actual VC nodes reachable via CVE→CWE→TI→VC."""
+        g = loaded_graph_builder.graph
+        for nid, data in g.nodes(data=True):
+            if data.get("node_type") != "CVE":
+                continue
+            stored = set(tuple(x) for x in data["vc_outcomes"])
+            # Trace CVE → CWE → TI → VC manually
+            actual = set()
+            for cwe in g.successors(nid):
+                if g.nodes[cwe].get("node_type") != "CWE":
+                    continue
+                for ti in g.successors(cwe):
+                    if g.nodes[ti].get("node_type") != "TI":
+                        continue
+                    for vc in g.successors(ti):
+                        vc_data = g.nodes[vc]
+                        if vc_data.get("node_type") == "VC":
+                            actual.add((vc_data["vc_type"], vc_data["value"]))
+            assert stored == actual, f"CVE {nid}: stored {stored} != actual {actual}"
+
+    def test_vc_outcomes_sorted(self, loaded_graph_builder):
+        """vc_outcomes should be sorted for stable merge keys."""
+        for nid, data in loaded_graph_builder.graph.nodes(data=True):
+            if data.get("node_type") != "CVE":
+                continue
+            outcomes = data["vc_outcomes"]
+            assert outcomes == sorted(outcomes), f"CVE {nid} outcomes not sorted"
+
+    def test_prereqs_consistent_across_duplicate_cve_nodes(self, loaded_graph_builder):
+        """CVEs with the same original_cve should have identical prereqs."""
+        by_original = {}
+        for nid, data in loaded_graph_builder.graph.nodes(data=True):
+            if data.get("node_type") != "CVE":
+                continue
+            original = data.get("original_cve")
+            if original not in by_original:
+                by_original[original] = data["prereqs"]
+            else:
+                assert data["prereqs"] == by_original[original], (
+                    f"CVE {nid} prereqs differ from other instances of {original}"
+                )
+
+
 class TestCrossHostPivoting:
     """Tests for _wire_cross_host_pivoting method."""
     

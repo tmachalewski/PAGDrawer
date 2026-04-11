@@ -13,7 +13,16 @@
       "Bash(uvicorn src.viz.app:app:*)",
       "Bash(D:/_DEV/_PYTHON/PAGDrawer/Scripts/start-backend.sh)",
       "Bash(D:/_DEV/_PYTHON/PAGDrawer/Scripts/start-frontend.sh)",
-      "Bash(D:/_DEV/_PYTHON/PAGDrawer/Scripts/kill-backend.sh)"
+      "Bash(D:/_DEV/_PYTHON/PAGDrawer/Scripts/kill-backend.sh)",
+      "Bash(npx vitest:*)",
+      "Bash(bash E:/_DEV/_PYTHON/PAGDrawer/Scripts/kill-backend.sh)",
+      "Bash(bash E:/_DEV/_PYTHON/PAGDrawer/Scripts/kill-frontend.sh)",
+      "Bash(npx vite:*)",
+      "Bash(bash \"E:\\\\_DEV\\\\_PYTHON\\\\PAGDrawer\\\\Scripts\\\\kill-backend.sh\")",
+      "Bash(bash \"E:\\\\_DEV\\\\_PYTHON\\\\PAGDrawer\\\\Scripts\\\\kill-frontend.sh\")",
+      "Bash(bash Scripts/start-frontend.sh)",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(bash Scripts/start-backend.sh)"
     ]
   }
 }
