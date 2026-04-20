@@ -135,6 +135,10 @@ export async function openSettings(): Promise<void> {
                 updateSliderLabels(type, position);
             }
         });
+
+        // Set skip_layer_2 checkbox
+        const skipL2 = document.getElementById('config-skip-layer-2') as HTMLInputElement | null;
+        if (skipL2) skipL2.checked = !!config.skip_layer_2;
     } catch (error) {
         console.error('Error loading config:', error);
     }
@@ -159,12 +163,16 @@ export function closeSettings(): void {
  */
 export async function saveSettings(): Promise<void> {
     // Read each slider position and convert to config value
-    const config: Record<string, string> = { HOST: 'universal' };
+    const config: Record<string, unknown> = { HOST: 'universal' };
     NODE_TYPES.forEach(type => {
         const slider = document.getElementById(`config-${type}`) as HTMLInputElement | null;
         const position = slider ? parseInt(slider.value, 10) : SLIDER_OPTIONS[type].length - 1;
         config[type] = sliderPositionToConfig(type, position);
     });
+
+    // Read skip_layer_2 checkbox
+    const skipL2 = document.getElementById('config-skip-layer-2') as HTMLInputElement | null;
+    config.skip_layer_2 = !!skipL2?.checked;
 
     try {
         // Update config on server

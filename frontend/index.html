@@ -197,6 +197,7 @@
                     Paths</button>
                 <button class="control-btn" id="theme-toggle-btn" onclick="toggleTheme()">☀️ Light</button>
                 <button class="control-btn" onclick="exportSelectedSvg()">📷 Export SVG</button>
+                <button class="control-btn" onclick="openStatistics()" style="background: #22c55e;">📊 Statistics</button>
                 <button class="control-btn" onclick="openSettings()" style="background: #6366f1;">⚙️ Settings</button>
             </div>
         </div>
@@ -205,25 +206,92 @@
     <!-- Tooltip for dimmed nodes -->
     <div id="node-tooltip" class="node-tooltip"></div>
 
+    <!-- Statistics Modal -->
+    <div id="statistics-modal" class="modal-overlay" onclick="if(event.target===this)closeStatistics()"
+        style="display: none;">
+        <div class="modal-content" style="max-width: 680px;">
+            <div class="modal-header">
+                <span class="modal-title">📊 Graph Statistics</span>
+                <button class="close-btn" onclick="closeStatistics()">×</button>
+            </div>
+
+            <!-- Totals: live vs backend -->
+            <div class="stats-grid">
+                <div class="stats-card">
+                    <div class="stats-card-label">Visible (Live)</div>
+                    <div class="stats-card-row">
+                        <span>Nodes</span>
+                        <span class="stats-card-value" id="stats-live-nodes">-</span>
+                    </div>
+                    <div class="stats-card-row">
+                        <span>Edges</span>
+                        <span class="stats-card-value" id="stats-live-edges">-</span>
+                    </div>
+                    <div class="stats-card-hint">From Cytoscape view (includes env VCs, merge groups)</div>
+                </div>
+                <div class="stats-card">
+                    <div class="stats-card-label">Backend Graph</div>
+                    <div class="stats-card-row">
+                        <span>Nodes</span>
+                        <span class="stats-card-value" id="stats-backend-nodes">-</span>
+                    </div>
+                    <div class="stats-card-row">
+                        <span>Edges</span>
+                        <span class="stats-card-value" id="stats-backend-edges">-</span>
+                    </div>
+                    <div class="stats-card-hint">From /api/stats (NetworkX graph only)</div>
+                </div>
+            </div>
+
+            <!-- Per-type node counts -->
+            <div class="stats-section">
+                <div class="stats-section-title">Nodes by Type (Live)</div>
+                <table class="stats-table" id="stats-node-table">
+                    <tbody></tbody>
+                </table>
+            </div>
+
+            <!-- Per-type edge counts -->
+            <div class="stats-section">
+                <div class="stats-section-title">Edges by Type (Live)</div>
+                <table class="stats-table" id="stats-edge-table">
+                    <tbody></tbody>
+                </table>
+            </div>
+
+            <!-- Derived / cleaned metrics -->
+            <div class="stats-section">
+                <div class="stats-section-title">Clean Attack Graph Metrics</div>
+                <table class="stats-table" id="stats-clean-table">
+                    <tbody></tbody>
+                </table>
+                <div class="stats-card-hint" style="margin-top: 8px;">
+                    Excludes ATTACKER, COMPOUND, BRIDGE, CVE_GROUP, and synthetic merge edges.
+                </div>
+            </div>
+
+            <!-- Interpretation notes -->
+            <details class="stats-notes">
+                <summary>⚠️ Interpretation notes</summary>
+                <ul>
+                    <li><b>Live vs Backend</b> — Live includes UI/AC env VCs and active merge groups; Backend doesn't.</li>
+                    <li><b>Structural artifacts</b> — ATTACKER, COMPOUND (Initial State), and BRIDGE (INSIDE_NETWORK) are counted as nodes.</li>
+                    <li><b>Duplication</b> — 2-layer model duplicates CVEs across L1/L2. Chain depth produces `:d0`/`:d1` nodes. Granularity sliders multiply further.</li>
+                    <li><b>Visibility toggles</b> — Hiding a type removes its nodes/edges and adds bridge edges. Net edge count can go up or down.</li>
+                    <li><b>Environment filtering (UI/AC)</b> — Dims, does not remove. Filtered CVEs still appear in counts.</li>
+                    <li><b>CAN_REACH</b> — Mixes ATTACKER→HOST and INSIDE_NETWORK→L2-host edges.</li>
+                    <li><b>HAS_STATE</b> — Backend: 2 (AV:N, PR:N). Live: 4 (+UI, +AC env VCs).</li>
+                </ul>
+            </details>
+        </div>
+    </div>
+
     <!-- Settings Modal -->
     <div id="settings-modal" class="modal-overlay" onclick="if(event.target===this)closeSettings()">
         <div class="modal-content">
             <div class="modal-header">
                 <span class="modal-title">⚙️ Settings</span>
                 <button class="close-btn" onclick="closeSettings()">×</button>
-            </div>
-
-            <!-- Graph Statistics -->
-            <div
-                style="display: flex; gap: 24px; margin-bottom: 16px; padding: 12px; background: rgba(100, 100, 200, 0.1); border-radius: 8px;">
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <span style="font-size: 12px; color: #aaa;">📊 Total Nodes:</span>
-                    <span style="font-weight: bold; color: white;" id="total-nodes">-</span>
-                </div>
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <span style="font-size: 12px; color: #aaa;">🔗 Total Edges:</span>
-                    <span style="font-weight: bold; color: white;" id="total-edges">-</span>
-                </div>
             </div>
 
             <p style="color: #888; font-size: 12px; margin-bottom: 16px;">
@@ -283,6 +351,16 @@
                     <input type="range" id="config-VC" min="0" max="5" value="1" step="1" class="node-slider"
                         style="grid-column: 1 / 7;">
                 </div>
+            </div>
+
+            <div style="margin-top: 16px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.1);">
+                <label style="display: flex; align-items: center; gap: 8px; color: #ccc; font-size: 13px; cursor: pointer;">
+                    <input type="checkbox" id="config-skip-layer-2" style="cursor: pointer;">
+                    Skip Layer 2 (internal network)
+                </label>
+                <p style="color: #888; font-size: 11px; margin: 4px 0 0 24px;">
+                    Build only the external attack surface. INSIDE_NETWORK bridge remains as a terminal node.
+                </p>
             </div>
 
             <button class="save-btn" onclick="saveSettings()">💾 Save & Rebuild Graph</button>

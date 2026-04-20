@@ -6,35 +6,23 @@ import type { Stats } from '../types';
 import { getCy } from '../graph/core';
 
 /**
- * Update stats panel with graph statistics from backend
+ * Update stats panel with graph statistics from backend.
+ * Total counts now live in the Statistics modal (see ui/statistics.ts);
+ * this is kept for API compatibility but only refreshes per-type counts.
  */
-export function updateStats(stats: Stats): void {
-    const nodesEl = document.getElementById('total-nodes');
-    const edgesEl = document.getElementById('total-edges');
-    if (nodesEl) nodesEl.textContent = String(stats.total_nodes);
-    if (edgesEl) edgesEl.textContent = String(stats.total_edges);
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function updateStats(_stats: Stats): void {
+    updateLiveStats();
 }
 
 /**
- * Update stats panel with LIVE graph statistics from Cytoscape
- * This reflects current visible state including visibility toggles and filters
+ * Update per-type node counts next to sliders in the settings modal.
+ * Total counts live in the Statistics modal.
  */
 export function updateLiveStats(): void {
     const cy = getCy();
     if (!cy) return;
 
-    const nodesEl = document.getElementById('total-nodes');
-    const edgesEl = document.getElementById('total-edges');
-
-    // Count visible nodes (excluding exploit-hidden)
-    const visibleNodes = cy.nodes().filter(n => !n.hasClass('exploit-hidden')).length;
-    // Count visible edges (excluding exploit-hidden)
-    const visibleEdges = cy.edges().filter(e => !e.hasClass('exploit-hidden')).length;
-
-    if (nodesEl) nodesEl.textContent = String(visibleNodes);
-    if (edgesEl) edgesEl.textContent = String(visibleEdges);
-
-    // Update per-type counts in settings modal slider labels
     const types = ['CPE', 'CVE', 'CWE', 'TI', 'VC'];
     types.forEach(type => {
         const countEl = document.getElementById(`count-${type}`);
