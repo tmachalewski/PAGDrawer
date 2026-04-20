@@ -25,6 +25,7 @@ from src.data.loaders import (
     load_trivy_json,
     load_deployment,
 )
+from src.data.mongo_client import init_mongo
 from src.data.schemas.deployment import DeploymentConfig
 
 app = FastAPI(title="PAGDrawer", description="Knowledge Graph Visualization")
@@ -54,6 +55,12 @@ current_loaded_data: Optional[LoadedData] = None
 @app.on_event("startup")
 async def startup_event():
     global graph_builder, current_config
+    # Verify MongoDB is reachable. Raises RuntimeError with a clear message
+    # otherwise — the app must not start without its persistence layer.
+    # Skip during pytest runs so unit tests don't require a live Mongo.
+    if not os.environ.get("PAGDRAWER_SKIP_MONGO"):
+        init_mongo()
+        print("MongoDB connection verified.")
     graph_builder = build_knowledge_graph(current_config)
     print(f"Graph loaded: {graph_builder.get_stats()}")
 

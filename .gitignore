@@ -26,6 +26,9 @@ frontend/.vite/
 # Claude Code
 .claude/worktrees/
 
+# Environment
+.env
+
 # IDE
 .vscode/
 .idea/
