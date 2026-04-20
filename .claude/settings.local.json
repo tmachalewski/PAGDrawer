@@ -25,7 +25,8 @@
       "Bash(bash Scripts/start-backend.sh)",
       "Bash(bash \"E:\\\\_DEV\\\\_PYTHON\\\\PAGDrawer\\\\Scripts\\\\start-backend.sh\")",
       "Bash(bash \"E:\\\\_DEV\\\\_PYTHON\\\\PAGDrawer\\\\Scripts\\\\start-frontend.sh\")",
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "Bash(grep -rn \"NVDFetcher\\\\|CWEFetcher\" E:\\\\\\\\_DEV\\\\\\\\_PYTHON\\\\\\\\PAGDrawer\\\\\\\\tests --include=\"*.py\")"
     ]
   }
 }

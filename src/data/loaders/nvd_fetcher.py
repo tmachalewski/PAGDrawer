@@ -12,18 +12,22 @@ import json
 import logging
 import time
 from datetime import datetime, timedelta
-from pathlib import Path
 from typing import Dict, List, Optional, Any
 from urllib.request import urlopen, Request
 from urllib.error import URLError, HTTPError
 from urllib.parse import urlencode
 
-logger = logging.getLogger(__name__)
+from src.data.mongo_client import (
+    COLLECTION_NVD_CVES,
+    COLLECTION_EPSS,
+    TTL_NVD_DAYS,
+    TTL_EPSS_DAYS,
+    cached_doc_if_fresh,
+    upsert_cached_doc,
+    get_db,
+)
 
-# Cache directory
-CACHE_DIR = Path(__file__).parent.parent / "cache"
-NVD_CACHE_FILE = CACHE_DIR / "nvd_cache.json"
-EPSS_CACHE_FILE = CACHE_DIR / "epss_cache.json"
+logger = logging.getLogger(__name__)
 
 # API endpoints
 NVD_API_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
@@ -35,8 +39,9 @@ EPSS_API_URL = "https://api.first.org/data/v1/epss"
 NVD_REQUEST_DELAY = 6.0  # seconds between requests (conservative)
 EPSS_REQUEST_DELAY = 0.5  # seconds between requests
 
-# Cache TTL (time-to-live)
-CACHE_TTL_DAYS = 7  # Re-fetch after 7 days
+# Cache TTL (time-to-live) — kept for backwards-compatible import but unused;
+# TTL_NVD_DAYS from mongo_client is authoritative.
+CACHE_TTL_DAYS = TTL_NVD_DAYS
 
 
 class NVDFetcher:
@@ -52,77 +57,22 @@ class NVDFetcher:
 
     def __init__(
         self,
-        nvd_cache_file: Optional[Path] = None,
-        epss_cache_file: Optional[Path] = None,
         nvd_api_key: Optional[str] = None,
+        force_refresh: bool = False,
     ):
         """
         Initialize the NVD fetcher.
 
         Args:
-            nvd_cache_file: Path to NVD cache file
-            epss_cache_file: Path to EPSS cache file
             nvd_api_key: Optional NVD API key for higher rate limits
+            force_refresh: When True, bypass the Mongo cache and fetch fresh
+                for every call. Default False.
         """
-        self.nvd_cache_file = nvd_cache_file or NVD_CACHE_FILE
-        self.epss_cache_file = epss_cache_file or EPSS_CACHE_FILE
         self.nvd_api_key = nvd_api_key
+        self.force_refresh = force_refresh
 
-        self._nvd_cache: Dict[str, Dict] = {}
-        self._epss_cache: Dict[str, Dict] = {}
         self._last_nvd_request: float = 0
         self._last_epss_request: float = 0
-
-        self._load_caches()
-
-    def _load_caches(self):
-        """Load cached data from disk."""
-        # Load NVD cache
-        if self.nvd_cache_file.exists():
-            try:
-                with open(self.nvd_cache_file, "r") as f:
-                    self._nvd_cache = json.load(f)
-                logger.info(f"Loaded {len(self._nvd_cache)} cached NVD entries")
-            except (json.JSONDecodeError, IOError) as e:
-                logger.warning(f"Failed to load NVD cache: {e}")
-                self._nvd_cache = {}
-
-        # Load EPSS cache
-        if self.epss_cache_file.exists():
-            try:
-                with open(self.epss_cache_file, "r") as f:
-                    self._epss_cache = json.load(f)
-                logger.info(f"Loaded {len(self._epss_cache)} cached EPSS entries")
-            except (json.JSONDecodeError, IOError) as e:
-                logger.warning(f"Failed to load EPSS cache: {e}")
-                self._epss_cache = {}
-
-    def _save_nvd_cache(self):
-        """Save NVD cache to disk."""
-        self.nvd_cache_file.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            with open(self.nvd_cache_file, "w") as f:
-                json.dump(self._nvd_cache, f, indent=2)
-        except IOError as e:
-            logger.warning(f"Failed to save NVD cache: {e}")
-
-    def _save_epss_cache(self):
-        """Save EPSS cache to disk."""
-        self.epss_cache_file.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            with open(self.epss_cache_file, "w") as f:
-                json.dump(self._epss_cache, f, indent=2)
-        except IOError as e:
-            logger.warning(f"Failed to save EPSS cache: {e}")
-
-    def _is_cache_valid(self, cached_entry: Dict) -> bool:
-        """Check if a cached entry is still valid based on TTL."""
-        if "cached_at" not in cached_entry:
-            return False
-
-        cached_at = datetime.fromisoformat(cached_entry["cached_at"])
-        expires_at = cached_at + timedelta(days=CACHE_TTL_DAYS)
-        return datetime.now() < expires_at
 
     def _rate_limit_nvd(self):
         """Apply rate limiting for NVD requests."""
@@ -169,17 +119,22 @@ class NVDFetcher:
         """
         cve_id = cve_id.upper()
 
-        # Check cache first
-        if use_cache and cve_id in self._nvd_cache:
-            cached = self._nvd_cache[cve_id]
-            if self._is_cache_valid(cached):
+        # Check Mongo cache first
+        if use_cache:
+            cached = cached_doc_if_fresh(
+                COLLECTION_NVD_CVES, cve_id, TTL_NVD_DAYS, self.force_refresh
+            )
+            if cached is not None:
                 logger.debug(f"Using cached data for {cve_id}")
-                # Optionally refresh EPSS
+                # Optionally add EPSS to a cache entry that lacks it
                 if fetch_epss and "epss_score" not in cached:
                     epss = self.fetch_epss(cve_id)
                     if epss is not None:
                         cached["epss_score"] = epss
-                        self._save_nvd_cache()
+                        upsert_cached_doc(
+                            COLLECTION_NVD_CVES, cve_id,
+                            {k: v for k, v in cached.items() if k not in ("_id", "cached_at")}
+                        )
                 return cached
 
         # Fetch from NVD API
@@ -195,10 +150,8 @@ class NVDFetcher:
             if epss is not None:
                 cve_data["epss_score"] = epss
 
-        # Cache the result
-        cve_data["cached_at"] = datetime.now().isoformat()
-        self._nvd_cache[cve_id] = cve_data
-        self._save_nvd_cache()
+        # Persist (cached_at is set by the helper)
+        upsert_cached_doc(COLLECTION_NVD_CVES, cve_id, cve_data)
 
         return cve_data
 
@@ -359,10 +312,12 @@ class NVDFetcher:
         """
         cve_id = cve_id.upper()
 
-        # Check cache
-        if use_cache and cve_id in self._epss_cache:
-            cached = self._epss_cache[cve_id]
-            if self._is_cache_valid(cached):
+        # Check Mongo cache
+        if use_cache:
+            cached = cached_doc_if_fresh(
+                COLLECTION_EPSS, cve_id, TTL_EPSS_DAYS, self.force_refresh
+            )
+            if cached is not None:
                 return cached.get("epss_score")
 
         # Fetch from FIRST API
@@ -383,12 +338,8 @@ class NVDFetcher:
 
             epss_score = float(epss_data[0].get("epss", 0))
 
-            # Cache the result
-            self._epss_cache[cve_id] = {
-                "epss_score": epss_score,
-                "cached_at": datetime.now().isoformat(),
-            }
-            self._save_epss_cache()
+            # Persist
+            upsert_cached_doc(COLLECTION_EPSS, cve_id, {"epss_score": epss_score})
 
             return epss_score
 
@@ -423,9 +374,12 @@ class NVDFetcher:
         for cve_id in cve_ids:
             data = self.fetch_cve(cve_id, use_cache=use_cache, fetch_epss=False)
             if data:
-                # Add EPSS from cache
-                if cve_id.upper() in self._epss_cache:
-                    data["epss_score"] = self._epss_cache[cve_id.upper()].get("epss_score")
+                # Pull EPSS from Mongo cache if present
+                epss_doc = cached_doc_if_fresh(
+                    COLLECTION_EPSS, cve_id.upper(), TTL_EPSS_DAYS, self.force_refresh
+                )
+                if epss_doc is not None:
+                    data["epss_score"] = epss_doc.get("epss_score")
                 results[cve_id] = data
 
         return results
@@ -436,13 +390,16 @@ class NVDFetcher:
 
         FIRST API supports comma-separated CVE IDs for batch requests.
         """
-        # Filter out cached CVEs
-        if use_cache:
-            cve_ids = [
-                cve for cve in cve_ids
-                if cve.upper() not in self._epss_cache
-                or not self._is_cache_valid(self._epss_cache[cve.upper()])
-            ]
+        # Filter out CVEs whose EPSS score is still fresh in Mongo
+        if use_cache and not self.force_refresh:
+            missing: List[str] = []
+            for cve in cve_ids:
+                fresh = cached_doc_if_fresh(
+                    COLLECTION_EPSS, cve.upper(), TTL_EPSS_DAYS, False
+                )
+                if fresh is None:
+                    missing.append(cve)
+            cve_ids = missing
 
         if not cve_ids:
             return
@@ -465,18 +422,14 @@ class NVDFetcher:
                 for item in data.get("data", []):
                     cve_id = item.get("cve", "").upper()
                     epss_score = float(item.get("epss", 0))
-
-                    self._epss_cache[cve_id] = {
-                        "epss_score": epss_score,
-                        "cached_at": datetime.now().isoformat(),
-                    }
+                    upsert_cached_doc(
+                        COLLECTION_EPSS, cve_id, {"epss_score": epss_score}
+                    )
 
                 logger.info(f"Batch fetched EPSS for {len(batch)} CVEs")
 
             except (URLError, json.JSONDecodeError) as e:
                 logger.warning(f"Failed to batch fetch EPSS: {e}")
-
-        self._save_epss_cache()
 
     def enrich_cve_data(
         self,
@@ -503,8 +456,11 @@ class NVDFetcher:
         nvd_data = None
         if fetch_if_missing:
             nvd_data = self.fetch_cve(cve_id, fetch_epss=True)
-        elif cve_id.upper() in self._nvd_cache:
-            nvd_data = self._nvd_cache[cve_id.upper()]
+        else:
+            # Cache-only: look up Mongo without fetching
+            nvd_data = cached_doc_if_fresh(
+                COLLECTION_NVD_CVES, cve_id.upper(), TTL_NVD_DAYS, self.force_refresh
+            )
 
         if not nvd_data:
             return cve_data
@@ -530,22 +486,18 @@ class NVDFetcher:
         return enriched
 
     def clear_cache(self):
-        """Clear all cached data."""
-        self._nvd_cache = {}
-        self._epss_cache = {}
-
-        if self.nvd_cache_file.exists():
-            self.nvd_cache_file.unlink()
-        if self.epss_cache_file.exists():
-            self.epss_cache_file.unlink()
-
+        """Delete all cached NVD and EPSS documents from MongoDB."""
+        db = get_db()
+        db[COLLECTION_NVD_CVES].delete_many({})
+        db[COLLECTION_EPSS].delete_many({})
         logger.info("NVD/EPSS caches cleared")
 
     def get_cache_stats(self) -> Dict[str, int]:
         """Get cache statistics."""
+        db = get_db()
         return {
-            "nvd_entries": len(self._nvd_cache),
-            "epss_entries": len(self._epss_cache),
+            "nvd_entries": db[COLLECTION_NVD_CVES].count_documents({}),
+            "epss_entries": db[COLLECTION_EPSS].count_documents({}),
         }
 
 
