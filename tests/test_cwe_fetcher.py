@@ -88,6 +88,29 @@ class TestCWEFetcher:
         impacts = fetcher.get_technical_impacts("CWE-78", fetch_if_missing=False)
         assert "Execute Unauthorized Code or Commands" in impacts
 
+    def test_static_lookup_is_persisted_to_mongo(self, mock_mongo, fetcher):
+        """First static lookup should also write the mapping to Mongo so the
+        cwe_impacts collection reflects every CWE actually used."""
+        # Starts empty
+        assert mock_mongo[COLLECTION_CWE_IMPACTS].count_documents({}) == 0
+
+        fetcher.get_technical_impacts("CWE-78", fetch_if_missing=False)
+
+        doc = mock_mongo[COLLECTION_CWE_IMPACTS].find_one({"_id": "CWE-78"})
+        assert doc is not None
+        assert doc["source"] == "static"
+        assert "Execute Unauthorized Code or Commands" in doc["technical_impacts"]
+
+    def test_static_lookup_does_not_rewrite_existing(self, mock_mongo, fetcher):
+        """Once written, a subsequent static lookup must not touch the doc."""
+        fetcher.get_technical_impacts("CWE-78", fetch_if_missing=False)
+        doc_before = mock_mongo[COLLECTION_CWE_IMPACTS].find_one({"_id": "CWE-78"})
+        timestamp_before = doc_before["cached_at"]
+
+        fetcher.get_technical_impacts("CWE-78", fetch_if_missing=False)
+        doc_after = mock_mongo[COLLECTION_CWE_IMPACTS].find_one({"_id": "CWE-78"})
+        assert doc_after["cached_at"] == timestamp_before
+
     def test_get_technical_impacts_normalized_id(self, fetcher):
         impacts1 = fetcher.get_technical_impacts("CWE-78", fetch_if_missing=False)
         impacts2 = fetcher.get_technical_impacts("78", fetch_if_missing=False)

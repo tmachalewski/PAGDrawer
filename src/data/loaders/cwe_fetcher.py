@@ -253,9 +253,15 @@ class CWEFetcher:
         # Normalize CWE ID
         cwe_id = self._normalize_cwe_id(cwe_id)
 
-        # Try static mapping first (fastest; in-memory, no network/DB)
+        # Try static mapping first (fastest; in-memory). Persist the mapping
+        # to Mongo on first encounter so the cwe_impacts collection reflects
+        # every CWE actually seen by the system. Subsequent lookups still
+        # prefer the in-code constant; the Mongo write is a one-off per CWE.
         if cwe_id in STATIC_CWE_MAPPING:
-            return STATIC_CWE_MAPPING[cwe_id]
+            static_impacts = STATIC_CWE_MAPPING[cwe_id]
+            if self._get_cached(cwe_id) is None:
+                self._upsert_impacts(cwe_id, static_impacts, source="static")
+            return static_impacts
 
         # Try Mongo cache
         cached = self._get_cached(cwe_id)
