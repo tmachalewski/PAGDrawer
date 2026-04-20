@@ -158,34 +158,86 @@ describe('API Service Module', () => {
         });
     });
 
-    describe('rebuildData', () => {
-        it('should POST to /api/data/rebuild with query params', async () => {
+    describe('startRebuild', () => {
+        it('should POST to /api/data/rebuild and return job_id', async () => {
             mockFetch.mockResolvedValueOnce({
                 ok: true,
-                json: () => Promise.resolve({ status: 'ok' })
+                json: () => Promise.resolve({ status: 'started', job_id: 'job-xyz' })
             });
 
-            const { rebuildData } = await import('../services/api');
-            await rebuildData(true);
+            const { startRebuild } = await import('../services/api');
+            const result = await startRebuild(true);
 
             expect(mockFetch).toHaveBeenCalledWith(
                 expect.stringContaining('/api/data/rebuild'),
                 { method: 'POST' }
             );
+            expect(result.job_id).toBe('job-xyz');
         });
 
         it('should include scan_ids in query params when provided', async () => {
             mockFetch.mockResolvedValueOnce({
                 ok: true,
-                json: () => Promise.resolve({ status: 'ok' })
+                json: () => Promise.resolve({ status: 'started', job_id: 'x' })
             });
 
-            const { rebuildData } = await import('../services/api');
-            await rebuildData(true, ['scan1', 'scan2']);
+            const { startRebuild } = await import('../services/api');
+            await startRebuild(true, ['scan1', 'scan2']);
 
             const callUrl = mockFetch.mock.calls[0][0];
             expect(callUrl).toContain('scan_ids=scan1');
             expect(callUrl).toContain('scan_ids=scan2');
+        });
+
+        it('should include force_refresh query param when true', async () => {
+            mockFetch.mockResolvedValueOnce({
+                ok: true,
+                json: () => Promise.resolve({ status: 'started', job_id: 'x' })
+            });
+
+            const { startRebuild } = await import('../services/api');
+            await startRebuild(true, undefined, true);
+
+            const callUrl = mockFetch.mock.calls[0][0];
+            expect(callUrl).toContain('force_refresh=true');
+        });
+    });
+
+    describe('fetchRebuildProgress', () => {
+        it('should GET /api/data/rebuild/progress/<job_id>', async () => {
+            mockFetch.mockResolvedValueOnce({
+                ok: true,
+                json: () => Promise.resolve({
+                    job_id: 'job-xyz',
+                    status: 'running',
+                    phase: 'enriching_nvd',
+                    processed_cves: 5,
+                    total_cves: 10,
+                })
+            });
+
+            const { fetchRebuildProgress } = await import('../services/api');
+            const progress = await fetchRebuildProgress('job-xyz');
+
+            expect(mockFetch).toHaveBeenCalledWith('/api/data/rebuild/progress/job-xyz');
+            expect(progress.processed_cves).toBe(5);
+        });
+    });
+
+    describe('cancelRebuild', () => {
+        it('should POST to /api/data/rebuild/cancel/<job_id>', async () => {
+            mockFetch.mockResolvedValueOnce({
+                ok: true,
+                json: () => Promise.resolve({ status: 'cancel_requested' })
+            });
+
+            const { cancelRebuild } = await import('../services/api');
+            await cancelRebuild('job-abc');
+
+            expect(mockFetch).toHaveBeenCalledWith(
+                '/api/data/rebuild/cancel/job-abc',
+                { method: 'POST' }
+            );
         });
     });
 

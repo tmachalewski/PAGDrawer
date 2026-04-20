@@ -739,6 +739,92 @@ body {
     border-color: rgba(200, 100, 100, 0.7);
 }
 
+/* ============================================================= */
+/* Rebuild Progress Bar                                           */
+/* ============================================================= */
+
+.rebuild-progress {
+    margin-top: 12px;
+    padding: 10px 12px;
+    background: rgba(100, 100, 200, 0.12);
+    border: 1px solid rgba(100, 100, 200, 0.35);
+    border-radius: 6px;
+    font-size: 11px;
+    color: #ccc;
+}
+
+.rebuild-progress-phase {
+    font-weight: bold;
+    color: #fff;
+    margin-bottom: 6px;
+}
+
+.rebuild-progress-bar {
+    position: relative;
+    height: 10px;
+    background: rgba(0, 0, 0, 0.35);
+    border-radius: 5px;
+    overflow: hidden;
+    margin-bottom: 6px;
+}
+
+.rebuild-progress-fill {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #6366f1 0%, #22c55e 100%);
+    transition: width 0.3s ease-out;
+}
+
+.rebuild-progress-count {
+    color: #aaa;
+    margin-bottom: 4px;
+    font-variant-numeric: tabular-nums;
+}
+
+.rebuild-progress-current {
+    color: #888;
+    font-family: monospace;
+    font-size: 10px;
+    word-break: break-all;
+    margin-bottom: 6px;
+}
+
+.rebuild-progress-cancel {
+    width: 100%;
+    background: rgba(180, 60, 60, 0.6);
+    color: white;
+    border: 1px solid rgba(200, 100, 100, 0.5);
+    padding: 4px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 11px;
+}
+
+.rebuild-progress-cancel:hover {
+    background: rgba(200, 70, 70, 0.8);
+}
+
+.light-theme .rebuild-progress {
+    background: rgba(99, 102, 241, 0.08);
+    border-color: rgba(99, 102, 241, 0.3);
+    color: #444;
+}
+
+.light-theme .rebuild-progress-phase {
+    color: #111;
+}
+
+.light-theme .rebuild-progress-count {
+    color: #555;
+}
+
+.light-theme .rebuild-progress-current {
+    color: #777;
+}
+
 /* Scan Selector Dropdown */
 .scan-select {
     width: 100%;

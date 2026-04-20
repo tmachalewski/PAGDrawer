@@ -1,0 +1,27 @@
+# MongoDB for PAGDrawer persistent NVD/EPSS/CWE caches.
+#
+# Usage:
+#   bash Scripts/start-mongo.sh    # up in detached mode
+#   bash Scripts/kill-mongo.sh     # stop
+#
+# The backend and frontend continue to run locally via
+# Scripts/start-backend.sh and Scripts/start-frontend.sh.
+#
+# No authentication is configured for local development.
+# Set a real MONGODB_URI in production.
+
+services:
+  mongodb:
+    image: mongo:7
+    container_name: pagdrawer-mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    # Tune WiredTiger cache for a dev laptop
+    command: ["mongod", "--wiredTigerCacheSizeGB", "0.5"]
+
+volumes:
+  mongodb_data:
+    name: pagdrawer_mongodb_data

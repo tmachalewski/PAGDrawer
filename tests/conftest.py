@@ -5,10 +5,33 @@ Shared test fixtures for PAGDrawer tests.
 import pytest
 from typing import Dict, List
 
+import mongomock
+
 # Import modules under test
 from src.core.schema import NodeType, EdgeType, VCType
 from src.core.config import GraphConfig
 from src.graph.builder import KnowledgeGraphBuilder
+from src.data import mongo_client as _mongo_client
+
+
+# =============================================================================
+# MONGOMOCK FIXTURE
+# =============================================================================
+
+@pytest.fixture
+def mock_mongo():
+    """Install an in-memory mongomock client as the singleton for one test.
+
+    The fixture yields the mocked Database so tests can insert or inspect
+    documents directly. The singleton is torn down after each test, so
+    tests that don't use Mongo are unaffected.
+    """
+    _mongo_client.close_mongo()
+    fake_client = mongomock.MongoClient()
+    _mongo_client._client = fake_client
+    _mongo_client._db = fake_client[_mongo_client.DEFAULT_DB_NAME]
+    yield _mongo_client._db
+    _mongo_client.close_mongo()
 
 
 # =============================================================================
