@@ -9,16 +9,19 @@ Technical Impact values for the consensual matrix transformation.
 import json
 import logging
 import re
-from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 from urllib.request import urlopen, Request
 from urllib.error import URLError, HTTPError
 
-logger = logging.getLogger(__name__)
+from src.data.mongo_client import (
+    COLLECTION_CWE_IMPACTS,
+    TTL_CWE_DAYS,
+    cached_doc_if_fresh,
+    upsert_cached_doc,
+    get_db,
+)
 
-# Cache directory for CWE data
-CACHE_DIR = Path(__file__).parent.parent / "cache"
-CWE_CACHE_FILE = CACHE_DIR / "cwe_cache.json"
+logger = logging.getLogger(__name__)
 
 # CWE REST API base URL
 CWE_API_BASE_URL = "https://cwe-api.mitre.org/api/v1"
@@ -190,53 +193,45 @@ class CWEFetcher:
     3. REST API from cwe-api.mitre.org for missing CWEs
     """
 
-    def __init__(self, cache_file: Optional[Path] = None, timeout: int = 30):
+    def __init__(self, timeout: int = 30, force_refresh: bool = False):
         """
         Initialize the CWE fetcher.
 
         Args:
-            cache_file: Optional path to cache file. Defaults to src/data/cache/cwe_cache.json
             timeout: Request timeout in seconds for API calls
+            force_refresh: When True, bypass the Mongo cache on every call
         """
-        self.cache_file = cache_file or CWE_CACHE_FILE
         self.timeout = timeout
-        self._cache: Dict[str, List[str]] = {}
-        self._info_cache: Dict[str, Dict[str, Any]] = {}
-        self._load_cache()
+        self.force_refresh = force_refresh
 
-    def _load_cache(self):
-        """Load cached CWE mappings from disk."""
-        if self.cache_file.exists():
-            try:
-                with open(self.cache_file, "r") as f:
-                    data = json.load(f)
-                    # Support both old format (just impacts) and new format (with info)
-                    if isinstance(data, dict):
-                        if "impacts" in data:
-                            self._cache = data.get("impacts", {})
-                            self._info_cache = data.get("info", {})
-                        else:
-                            # Old format - just impact mappings
-                            self._cache = data
-                logger.info(f"Loaded {len(self._cache)} cached CWE mappings")
-            except (json.JSONDecodeError, IOError) as e:
-                logger.warning(f"Failed to load CWE cache: {e}")
-                self._cache = {}
-                self._info_cache = {}
+    def _get_cached(self, cwe_id: str) -> Optional[Dict[str, Any]]:
+        """Return the full cached document for a CWE or None if stale/absent."""
+        return cached_doc_if_fresh(
+            COLLECTION_CWE_IMPACTS, cwe_id, TTL_CWE_DAYS, self.force_refresh
+        )
 
-    def _save_cache(self):
-        """Save CWE mappings to disk cache."""
-        self.cache_file.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            data = {
-                "impacts": self._cache,
-                "info": self._info_cache,
-            }
-            with open(self.cache_file, "w") as f:
-                json.dump(data, f, indent=2)
-            logger.debug(f"Saved {len(self._cache)} CWE mappings to cache")
-        except IOError as e:
-            logger.warning(f"Failed to save CWE cache: {e}")
+    def _upsert_impacts(self, cwe_id: str, impacts: List[str], source: str = "rest") -> None:
+        """Persist the impact list for a CWE, preserving any cached full info."""
+        existing = get_db()[COLLECTION_CWE_IMPACTS].find_one({"_id": cwe_id}) or {}
+        payload = {
+            "technical_impacts": impacts,
+            "source": source,
+        }
+        # Preserve info fields if previously cached
+        for field in ("name", "description"):
+            if field in existing:
+                payload[field] = existing[field]
+        upsert_cached_doc(COLLECTION_CWE_IMPACTS, cwe_id, payload)
+
+    def _upsert_info(self, cwe_id: str, info: Dict[str, Any]) -> None:
+        """Persist the full info dict (name, description, impacts) for a CWE."""
+        payload = {
+            "name": info.get("name", ""),
+            "description": info.get("description", ""),
+            "technical_impacts": info.get("technical_impacts", []),
+            "source": "rest",
+        }
+        upsert_cached_doc(COLLECTION_CWE_IMPACTS, cwe_id, payload)
 
     def get_technical_impacts(
         self,
@@ -258,20 +253,20 @@ class CWEFetcher:
         # Normalize CWE ID
         cwe_id = self._normalize_cwe_id(cwe_id)
 
-        # Try static mapping first (fastest)
+        # Try static mapping first (fastest; in-memory, no network/DB)
         if cwe_id in STATIC_CWE_MAPPING:
             return STATIC_CWE_MAPPING[cwe_id]
 
-        # Try cache
-        if cwe_id in self._cache:
-            return self._cache[cwe_id]
+        # Try Mongo cache
+        cached = self._get_cached(cwe_id)
+        if cached is not None and cached.get("technical_impacts"):
+            return cached["technical_impacts"]
 
         # Try fetching from API
         if fetch_if_missing:
             impacts = self._fetch_from_api(cwe_id)
             if impacts:
-                self._cache[cwe_id] = impacts
-                self._save_cache()
+                self._upsert_impacts(cwe_id, impacts, source="rest")
                 return impacts
 
         # Fallback to severity-based mapping
@@ -520,13 +515,14 @@ class CWEFetcher:
         """
         count = 0
         for cwe_id, impacts in STATIC_CWE_MAPPING.items():
-            if cwe_id not in self._cache:
-                self._cache[cwe_id] = impacts
-                count += 1
+            # Skip if a fresh doc already exists
+            if self._get_cached(cwe_id) is not None:
+                continue
+            self._upsert_impacts(cwe_id, impacts, source="static")
+            count += 1
 
         if count > 0:
-            self._save_cache()
-            logger.info(f"Preloaded {count} CWEs into cache")
+            logger.info(f"Preloaded {count} CWEs into Mongo cache")
 
         return count
 
@@ -543,9 +539,15 @@ class CWEFetcher:
         """
         cwe_id = self._normalize_cwe_id(cwe_id)
 
-        # Check info cache first
-        if cwe_id in self._info_cache:
-            return self._info_cache[cwe_id]
+        # Check Mongo cache first — return stored info if we have name/description
+        cached = self._get_cached(cwe_id)
+        if cached is not None and cached.get("name"):
+            return {
+                "id": cwe_id,
+                "name": cached.get("name", ""),
+                "description": cached.get("description", ""),
+                "technical_impacts": cached.get("technical_impacts", []),
+            }
 
         if not fetch_if_missing:
             return None
@@ -584,9 +586,8 @@ class CWEFetcher:
                 "technical_impacts": impacts,
             }
 
-            # Cache the info
-            self._info_cache[cwe_id] = info
-            self._save_cache()
+            # Cache the info in Mongo
+            self._upsert_info(cwe_id, info)
 
             return info
 
@@ -622,8 +623,10 @@ class CWEFetcher:
             normalized = self._normalize_cwe_id(cwe_id)
             if normalized in STATIC_CWE_MAPPING:
                 results[normalized] = STATIC_CWE_MAPPING[normalized]
-            elif normalized in self._cache:
-                results[normalized] = self._cache[normalized]
+                continue
+            cached = self._get_cached(normalized)
+            if cached is not None and cached.get("technical_impacts"):
+                results[normalized] = cached["technical_impacts"]
             else:
                 uncached_ids.append(normalized)
 
@@ -645,12 +648,9 @@ class CWEFetcher:
         return results
 
     def clear_cache(self):
-        """Clear the local cache."""
-        self._cache = {}
-        self._info_cache = {}
-        if self.cache_file.exists():
-            self.cache_file.unlink()
-        logger.info("CWE cache cleared")
+        """Delete all cached CWE documents from MongoDB."""
+        get_db()[COLLECTION_CWE_IMPACTS].delete_many({})
+        logger.info("CWE cache cleared (Mongo)")
 
 
 # =============================================================================
