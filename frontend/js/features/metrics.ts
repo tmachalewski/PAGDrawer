@@ -20,6 +20,7 @@ export interface DrawingMetrics {
     crossingsNormalized: number;  // [0, 1], 1 = no crossings (Purchase 2002)
     crossingsPerEdge: number;      // raw crossings / |E|, 0 if |E| = 0
     drawingArea: number;           // logical units squared, center-point method
+    areaPerNode: number;           // drawing area / |V|, 0 if |V| = 0
     edgeLengthCV: number;          // std / mean, 0 if undefined
 }
 
@@ -130,6 +131,7 @@ export function computeMetrics(): DrawingMetrics | null {
 
     // 2. Drawing area (center-point bounding box)
     const drawingArea = computeDrawingArea(points);
+    const areaPerNode = nodeCount > 0 ? drawingArea / nodeCount : 0;
 
     // 3. Edge length CV
     const edgeLengthCV = computeEdgeLengthCV(edges);
@@ -141,6 +143,7 @@ export function computeMetrics(): DrawingMetrics | null {
         crossingsNormalized,
         crossingsPerEdge,
         drawingArea,
+        areaPerNode,
         edgeLengthCV
     };
 }
@@ -352,7 +355,7 @@ export function computeEdgeLengthCV(edges: EdgeEndpoints[]): number {
  * Produce a CSV representation of the metrics (header row + single data row).
  */
 export function metricsToCSV(m: DrawingMetrics): string {
-    const header = 'nodes,edges,crossings_raw,crossings_normalized,crossings_per_edge,drawing_area,edge_length_cv';
+    const header = 'nodes,edges,crossings_raw,crossings_normalized,crossings_per_edge,drawing_area,area_per_node,edge_length_cv';
     const row = [
         m.nodes,
         m.edges,
@@ -360,6 +363,7 @@ export function metricsToCSV(m: DrawingMetrics): string {
         m.crossingsNormalized.toFixed(4),
         m.crossingsPerEdge.toFixed(4),
         m.drawingArea.toFixed(2),
+        m.areaPerNode.toFixed(2),
         m.edgeLengthCV.toFixed(4)
     ].join(',');
     return header + '\n' + row + '\n';

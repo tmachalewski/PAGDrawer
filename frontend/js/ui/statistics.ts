@@ -224,6 +224,7 @@ function populateDrawingMetrics(): void {
         ['Edge crossings (normalized, Purchase)', m.crossingsNormalized.toFixed(4) + '   (1 = no crossings)'],
         ['Edge crossings per edge', m.crossingsPerEdge.toFixed(4) + '   (lower = cleaner)'],
         ['Drawing area (logical units²)', m.drawingArea.toFixed(2)],
+        ['Area per node (logical units²)', m.areaPerNode.toFixed(2) + '   (lower = denser)'],
         ['Edge length CV', m.edgeLengthCV.toFixed(4) + '   (0 = uniform)']
     ];
 
