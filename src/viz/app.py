@@ -2,7 +2,7 @@
 FastAPI backend for serving the Knowledge Graph visualization.
 """
 
-from fastapi import FastAPI, UploadFile, File, HTTPException, Query
+from fastapi import FastAPI, UploadFile, File, HTTPException, Query, BackgroundTasks
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse
 from pathlib import Path
@@ -12,6 +12,7 @@ from datetime import datetime
 import json
 import os
 import tempfile
+import threading
 import uuid
 
 import yaml
@@ -25,7 +26,14 @@ from src.data.loaders import (
     load_trivy_json,
     load_deployment,
 )
+from src.data.loaders.trivy_loader import CancelledError
 from src.data.mongo_client import init_mongo
+from src.data.jobs import (
+    JobManager,
+    JobExistsError,
+    PHASE_BUILDING,
+    PHASE_DONE,
+)
 from src.data.schemas.deployment import DeploymentConfig
 
 app = FastAPI(title="PAGDrawer", description="Knowledge Graph Visualization")
@@ -371,60 +379,49 @@ async def delete_scan(scan_id: str):
     return {"status": "ok", "remaining": len(uploaded_trivy_scans)}
 
 
-@app.post("/api/data/rebuild")
-async def rebuild_from_uploaded_data(
-    enrich: bool = True,
-    use_deployment: bool = True,
-    scan_ids: Optional[List[str]] = Query(default=None),
+def _run_rebuild_job(
+    job_id: str,
+    scans_data: List[Dict[str, Any]],
+    scan_names: List[str],
+    enrich: bool,
+    use_deployment: bool,
+    deployment_cfg: Optional[Dict[str, Any]],
+    force_refresh: bool,
 ):
-    """Rebuild the graph from uploaded Trivy data and deployment config.
+    """Background worker that performs the rebuild and updates the job doc.
 
-    Args:
-        enrich: Whether to enrich data from NVD/CWE sources.
-        use_deployment: Whether to use uploaded deployment config.
-        scan_ids: Optional list of scan IDs to use. If None, uses all scans.
+    Runs in a thread (not the FastAPI event loop) so blocking urllib calls
+    inside the fetchers don't stall the event loop.
     """
     global graph_builder, current_data_source, current_config, current_loaded_data
 
-    if not uploaded_trivy_scans:
-        raise HTTPException(
-            status_code=400,
-            detail="No Trivy data uploaded. Use /api/upload/trivy first."
-        )
-
-    # Reset config to defaults when rebuilding with new data
-    current_config = GraphConfig()
-
-    # Filter scans if scan_ids provided
-    scans_to_use = uploaded_trivy_scans
-    if scan_ids:
-        scans_to_use = [s for s in uploaded_trivy_scans if s.id in scan_ids]
-        if not scans_to_use:
-            raise HTTPException(
-                status_code=400,
-                detail="No matching scans found for provided scan_ids"
-            )
-
-    # Extract raw data from scans
-    trivy_data_list = [scan.data for scan in scans_to_use]
-
+    jm = JobManager()
     try:
-        if use_deployment and uploaded_deployment_config:
-            # Use DeploymentLoader
+        # Reset config to defaults when rebuilding with new data
+        current_config = GraphConfig()
+
+        if use_deployment and deployment_cfg:
             loader = DeploymentLoader(
-                deployment_config=uploaded_deployment_config,
-                trivy_sources=trivy_data_list,
+                deployment_config=deployment_cfg,
+                trivy_sources=scans_data,
                 enrich_from_nvd=enrich,
                 enrich_cwe=enrich,
             )
             loaded_data = loader.load()
             current_data_source = "deployment"
         else:
-            # Load Trivy data directly without deployment config
+            # Load Trivy data directly and merge. One TrivyDataLoader per scan.
             all_data = LoadedData()
-            for trivy_json in trivy_data_list:
-                data = load_trivy_json(trivy_json, enrich=enrich)
-                # Merge data
+            for trivy_json in scans_data:
+                loader = TrivyDataLoader(
+                    source=trivy_json,
+                    enrich_from_nvd=enrich,
+                    enrich_cwe=enrich,
+                    job_manager=jm,
+                    job_id=job_id,
+                    force_refresh=force_refresh,
+                )
+                data = loader.load()
                 all_data.hosts.extend(data.hosts)
                 all_data.cpes.extend(data.cpes)
                 all_data.cves.extend(data.cves)
@@ -438,23 +435,132 @@ async def rebuild_from_uploaded_data(
         # Cache enriched data for future config changes
         current_loaded_data = loaded_data
 
-        # Create new builder and load data
+        jm.update_progress(job_id, phase=PHASE_BUILDING)
+
         graph_builder = KnowledgeGraphBuilder(config=current_config)
         graph_builder.load_from_data(loaded_data)
 
-        print(f"Graph rebuilt from {current_data_source} data")
-        print(f"Using {len(scans_to_use)} scan(s): {[s.name for s in scans_to_use]}")
-        print(f"Stats: {graph_builder.get_stats()}")
+        stats = graph_builder.get_stats()
+        stats["source"] = current_data_source
+        stats["scans_used"] = len(scan_names)
+        stats["config"] = current_config.to_dict()
 
-        return {
-            "status": "ok",
-            "source": current_data_source,
-            "scans_used": len(scans_to_use),
-            "stats": graph_builder.get_stats(),
-            "config": current_config.to_dict(),
-        }
+        print(f"Graph rebuilt from {current_data_source} data "
+              f"(job {job_id}, scans={scan_names})")
+
+        jm.complete_job(job_id, stats=stats)
+
+    except CancelledError:
+        jm.cancel_finalize(job_id)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        jm.fail_job(job_id, error=str(e))
+        print(f"Rebuild job {job_id} failed: {e}")
+
+
+@app.post("/api/data/rebuild")
+async def rebuild_from_uploaded_data(
+    background_tasks: BackgroundTasks,
+    enrich: bool = True,
+    use_deployment: bool = True,
+    force_refresh: bool = False,
+    scan_ids: Optional[List[str]] = Query(default=None),
+):
+    """Start a rebuild job and return a job_id. Poll /api/data/rebuild/progress
+    for status.
+
+    Args:
+        enrich: Whether to enrich data from NVD/CWE sources.
+        use_deployment: Whether to use uploaded deployment config.
+        force_refresh: When True, bypass the Mongo cache and refetch everything.
+        scan_ids: Optional list of scan IDs. If None, uses all scans.
+    """
+    if not uploaded_trivy_scans:
+        raise HTTPException(
+            status_code=400,
+            detail="No Trivy data uploaded. Use /api/upload/trivy first."
+        )
+
+    # Filter scans
+    scans_to_use = uploaded_trivy_scans
+    if scan_ids:
+        scans_to_use = [s for s in uploaded_trivy_scans if s.id in scan_ids]
+        if not scans_to_use:
+            raise HTTPException(
+                status_code=400,
+                detail="No matching scans found for provided scan_ids"
+            )
+
+    # Create the job document. This raises JobExistsError if another job
+    # is already running.
+    jm = JobManager()
+    try:
+        job = jm.create_job()
+    except JobExistsError as e:
+        existing = jm.get_running_job()
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": str(e),
+                "running_job_id": existing.job_id if existing else None,
+            },
+        )
+
+    # Dispatch the worker on a thread so pymongo + urllib stay synchronous.
+    scans_data = [s.data for s in scans_to_use]
+    scan_names = [s.name for s in scans_to_use]
+    deployment_cfg = uploaded_deployment_config
+
+    def _launch():
+        thread = threading.Thread(
+            target=_run_rebuild_job,
+            kwargs=dict(
+                job_id=job.job_id,
+                scans_data=scans_data,
+                scan_names=scan_names,
+                enrich=enrich,
+                use_deployment=use_deployment,
+                deployment_cfg=deployment_cfg,
+                force_refresh=force_refresh,
+            ),
+            daemon=True,
+        )
+        thread.start()
+
+    background_tasks.add_task(_launch)
+
+    return {
+        "status": "started",
+        "job_id": job.job_id,
+    }
+
+
+@app.get("/api/data/rebuild/progress/{job_id}")
+async def rebuild_progress(job_id: str):
+    """Return current progress for a rebuild job."""
+    jm = JobManager()
+    job = jm.get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    doc = job.to_doc()
+    # datetime -> isoformat for JSON
+    for k in ("started_at", "completed_at"):
+        if doc.get(k):
+            doc[k] = doc[k].isoformat()
+    # Keep the Mongo _id as job_id for the frontend
+    doc["job_id"] = doc.pop("_id")
+    return doc
+
+
+@app.post("/api/data/rebuild/cancel/{job_id}")
+async def rebuild_cancel(job_id: str):
+    """Request cancellation of a running rebuild job."""
+    jm = JobManager()
+    if not jm.request_cancel(job_id):
+        raise HTTPException(
+            status_code=404,
+            detail="Job not found or not running",
+        )
+    return {"status": "cancel_requested", "job_id": job_id}
 
 
 @app.post("/api/data/reset")

@@ -61,6 +61,10 @@
                             <input type="checkbox" id="enrich-checkbox" checked />
                             Enrich from NVD/CWE (slower)
                         </label>
+                        <label style="font-size: 11px; color: #aaa; display: flex; align-items: center; gap: 6px; margin-top: 4px;">
+                            <input type="checkbox" id="force-refresh-checkbox" />
+                            Force refresh (ignore cache)
+                        </label>
                     </div>
 
                     <!-- Action Buttons -->
@@ -71,6 +75,17 @@
                         <button class="action-btn reset-btn" onclick="resetToMock()">
                             ↩️ Reset
                         </button>
+                    </div>
+
+                    <!-- Progress bar (shown during rebuild) -->
+                    <div id="rebuild-progress" class="rebuild-progress" style="display: none;">
+                        <div class="rebuild-progress-phase" id="rebuild-progress-phase">Starting...</div>
+                        <div class="rebuild-progress-bar">
+                            <div class="rebuild-progress-fill" id="rebuild-progress-fill"></div>
+                        </div>
+                        <div class="rebuild-progress-count" id="rebuild-progress-count"></div>
+                        <div class="rebuild-progress-current" id="rebuild-progress-current"></div>
+                        <button id="rebuild-progress-cancel" class="rebuild-progress-cancel">Cancel</button>
                     </div>
 
                     <!-- Status -->

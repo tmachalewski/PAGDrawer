@@ -22,6 +22,10 @@ from .cwe_fetcher import CWEFetcher
 from .nvd_fetcher import NVDFetcher
 
 
+class CancelledError(RuntimeError):
+    """Raised when a rebuild job is cancelled mid-flight."""
+
+
 class TrivyDataLoader(DataLoader):
     """Loads vulnerability data from Trivy JSON scan results.
 
@@ -47,12 +51,18 @@ class TrivyDataLoader(DataLoader):
         enrich_cwe: bool = True,
         host_config: Optional[Dict[str, Any]] = None,
         nvd_api_key: Optional[str] = None,
+        job_manager: Optional[Any] = None,
+        job_id: Optional[str] = None,
+        force_refresh: bool = False,
     ):
         self._source = source
         self._enrich_from_nvd = enrich_from_nvd
         self._enrich_cwe = enrich_cwe
         self._host_config = host_config or {}
         self._nvd_api_key = nvd_api_key
+        self._job_manager = job_manager
+        self._job_id = job_id
+        self._force_refresh = force_refresh
 
         # Lazily initialized fetchers
         self._nvd_fetcher: Optional[NVDFetcher] = None
@@ -67,15 +77,46 @@ class TrivyDataLoader(DataLoader):
     def nvd_fetcher(self) -> NVDFetcher:
         """Lazy initialization of NVD fetcher."""
         if self._nvd_fetcher is None:
-            self._nvd_fetcher = NVDFetcher(nvd_api_key=self._nvd_api_key)
+            self._nvd_fetcher = NVDFetcher(
+                nvd_api_key=self._nvd_api_key,
+                force_refresh=self._force_refresh,
+            )
         return self._nvd_fetcher
 
     @property
     def cwe_fetcher(self) -> CWEFetcher:
         """Lazy initialization of CWE fetcher."""
         if self._cwe_fetcher is None:
-            self._cwe_fetcher = CWEFetcher()
+            self._cwe_fetcher = CWEFetcher(force_refresh=self._force_refresh)
         return self._cwe_fetcher
+
+    # -------------------------------------------------------------------------
+    # Progress reporting helpers
+    # -------------------------------------------------------------------------
+
+    def _report_phase(self, phase: str) -> None:
+        """Report the current phase to the job manager, if any."""
+        if self._job_manager is not None and self._job_id is not None:
+            self._job_manager.update_progress(self._job_id, phase=phase)
+
+    def _report_progress(self, processed: int, current_cve: Optional[str] = None) -> None:
+        """Report per-CVE progress."""
+        if self._job_manager is not None and self._job_id is not None:
+            self._job_manager.update_progress(
+                self._job_id,
+                processed_cves=processed,
+                current_cve=current_cve,
+            )
+
+    def _report_total(self, total: int) -> None:
+        if self._job_manager is not None and self._job_id is not None:
+            self._job_manager.update_progress(self._job_id, total_cves=total)
+
+    def _check_cancel(self) -> bool:
+        """Return True if the job has been cancelled."""
+        if self._job_manager is not None and self._job_id is not None:
+            return self._job_manager.is_cancelled(self._job_id)
+        return False
 
     def validate_source(self) -> bool:
         """Validate that the Trivy JSON source is accessible and valid."""
@@ -98,13 +139,27 @@ class TrivyDataLoader(DataLoader):
 
     def load(self) -> LoadedData:
         """Load and transform Trivy scan results into LoadedData format."""
+        # Import here to avoid circular at module level
+        from src.data.jobs import PHASE_LOADING, PHASE_NVD
+
         # Parse the source
+        self._report_phase(PHASE_LOADING)
         report = self._parse_source()
 
         # Reset tracking sets
         self._seen_cpes.clear()
         self._seen_cves.clear()
         self._seen_cwes.clear()
+
+        # Count unique CVEs up-front so the frontend can show N/total
+        unique_cve_ids: Set[str] = set()
+        for result in report.Results:
+            if not result.Vulnerabilities:
+                continue
+            for vuln in result.Vulnerabilities:
+                unique_cve_ids.add(vuln.VulnerabilityID)
+        self._report_total(len(unique_cve_ids))
+        self._report_phase(PHASE_NVD)
 
         # Build data structures
         hosts: List[Dict[str, Any]] = []
@@ -113,6 +168,8 @@ class TrivyDataLoader(DataLoader):
         cwes: List[Dict[str, Any]] = []
         host_cpe_map: Dict[str, List[str]] = {}
         network_edges: List[Tuple[str, str]] = []
+
+        processed = 0
 
         # Process each scan result (target)
         for result in report.Results:
@@ -127,6 +184,9 @@ class TrivyDataLoader(DataLoader):
 
             # Process vulnerabilities
             for vuln in result.Vulnerabilities:
+                if self._check_cancel():
+                    raise CancelledError(f"Rebuild job {self._job_id} cancelled")
+
                 # Create CPE from package info
                 cpe_id = self._create_cpe_id(vuln.PkgName, vuln.InstalledVersion, result.Type)
 
@@ -142,8 +202,15 @@ class TrivyDataLoader(DataLoader):
                 # Create CVE entry
                 if vuln.VulnerabilityID not in self._seen_cves:
                     self._seen_cves.add(vuln.VulnerabilityID)
+
+                    # Report *before* the slow enrichment so the UI updates
+                    self._report_progress(processed, current_cve=vuln.VulnerabilityID)
+
                     cve = self._create_cve(vuln, cpe_id)
                     cves.append(cve)
+
+                    processed += 1
+                    self._report_progress(processed, current_cve=vuln.VulnerabilityID)
 
                     # Process CWE IDs
                     if vuln.CweIDs:

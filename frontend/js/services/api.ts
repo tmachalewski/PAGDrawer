@@ -73,15 +73,20 @@ export async function uploadTrivyFile(file: File): Promise<UploadResponse> {
 }
 
 /**
- * Rebuild graph from uploaded data
+ * Start a rebuild job. Returns immediately with { status: "started", job_id }.
+ * Poll fetchRebuildProgress(job_id) to track completion.
  */
-export async function rebuildData(enrich: boolean = true, scanIds?: string[]): Promise<RebuildResponse> {
+export async function startRebuild(
+    enrich: boolean = true,
+    scanIds?: string[],
+    forceRefresh: boolean = false
+): Promise<{ status: string; job_id: string }> {
     const params = new URLSearchParams({
         enrich: String(enrich),
-        use_deployment: 'false'
+        use_deployment: 'false',
+        force_refresh: String(forceRefresh),
     });
 
-    // Add scan_ids as query params if provided
     if (scanIds && scanIds.length > 0) {
         scanIds.forEach(id => params.append('scan_ids', id));
     }
@@ -92,9 +97,79 @@ export async function rebuildData(enrich: boolean = true, scanIds?: string[]): P
     );
     if (!response.ok) {
         const error = await response.json().catch(() => ({ detail: `Rebuild failed: ${response.status}` }));
-        throw new Error(error.detail || `Rebuild failed: ${response.status}`);
+        const detailMsg = typeof error.detail === 'object'
+            ? (error.detail.message || JSON.stringify(error.detail))
+            : error.detail;
+        throw new Error(detailMsg || `Rebuild failed: ${response.status}`);
     }
     return response.json();
+}
+
+/**
+ * Progress response shape from /api/data/rebuild/progress/{job_id}.
+ */
+export interface RebuildProgress {
+    job_id: string;
+    status: 'running' | 'completed' | 'failed' | 'cancelled';
+    phase: string;
+    current_cve: string | null;
+    processed_cves: number;
+    total_cves: number;
+    error: string | null;
+    stats: Record<string, unknown> | null;
+    started_at: string;
+    completed_at: string | null;
+    cancel_requested: boolean;
+}
+
+/**
+ * Fetch current progress for a rebuild job.
+ */
+export async function fetchRebuildProgress(jobId: string): Promise<RebuildProgress> {
+    const response = await fetch(`${API_BASE}/api/data/rebuild/progress/${jobId}`);
+    if (!response.ok) {
+        throw new Error(`Progress fetch failed: ${response.status}`);
+    }
+    return response.json();
+}
+
+/**
+ * Request cancellation of a running rebuild job.
+ */
+export async function cancelRebuild(jobId: string): Promise<void> {
+    const response = await fetch(
+        `${API_BASE}/api/data/rebuild/cancel/${jobId}`,
+        { method: 'POST' }
+    );
+    if (!response.ok) {
+        throw new Error(`Cancel failed: ${response.status}`);
+    }
+}
+
+/**
+ * Legacy synchronous rebuild wrapper — kept for backward compatibility.
+ * Internally it kicks off a job and polls until completion.
+ * Prefer startRebuild + fetchRebuildProgress for UI with a progress bar.
+ */
+export async function rebuildData(enrich: boolean = true, scanIds?: string[]): Promise<RebuildResponse> {
+    const { job_id } = await startRebuild(enrich, scanIds);
+    while (true) {
+        const progress = await fetchRebuildProgress(job_id);
+        if (progress.status === 'completed') {
+            return {
+                status: 'ok',
+                source: (progress.stats?.source as string) ?? 'unknown',
+                stats: progress.stats as unknown as Stats,
+            };
+        }
+        if (progress.status === 'failed') {
+            throw new Error(progress.error || 'Rebuild failed');
+        }
+        if (progress.status === 'cancelled') {
+            throw new Error('Rebuild cancelled');
+        }
+        await new Promise(r => setTimeout(r, 500));
+    }
 }
 
 /**
