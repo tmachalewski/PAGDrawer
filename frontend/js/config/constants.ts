@@ -185,6 +185,86 @@ export function getCytoscapeStyles(): any[] {
             }
         },
         {
+            selector: '[type="CROSSING_DEBUG"]',
+            style: {
+                'background-color': '#ff2d55',
+                'border-color': '#ffffff',
+                'border-width': 1,
+                'width': 10,
+                'height': 10,
+                'shape': 'ellipse',
+                'label': '',
+                'z-index': 9999,
+                'events': 'no'
+            }
+        },
+        {
+            selector: '[type="AREA_DEBUG"]',
+            style: {
+                'background-opacity': 0,
+                'border-color': '#3b82f6',
+                'border-width': 2,
+                'border-style': 'dashed',
+                'shape': 'rectangle',
+                'label': 'data(label)',
+                'text-valign': 'top',
+                'text-halign': 'center',
+                'text-margin-y': -8,
+                'font-size': '13px',
+                'font-weight': 'bold',
+                'color': '#3b82f6',
+                'text-outline-color': '#000000',
+                'text-outline-width': 2,
+                'z-index': 9997,
+                'events': 'no'
+            }
+        },
+        {
+            selector: '[type="UNIT_EDGE_NODE"]',
+            style: {
+                'background-opacity': 0,
+                'border-width': 0,
+                'width': 1,
+                'height': 1,
+                'label': '',
+                'events': 'no'
+            }
+        },
+        {
+            selector: 'edge[type="UNIT_EDGE"]',
+            style: {
+                'line-color': '#10b981',
+                'line-style': 'solid',
+                'width': 4,
+                'label': 'data(label)',
+                'font-size': '13px',
+                'font-weight': 'bold',
+                'color': '#10b981',
+                'text-outline-color': '#000000',
+                'text-outline-width': 2,
+                'curve-style': 'straight',
+                'target-arrow-shape': 'none',
+                'z-index': 9998
+            }
+        },
+        {
+            selector: 'edge[type="UNIT_EDGE_STD"]',
+            style: {
+                'line-color': '#f59e0b',
+                'line-style': 'dashed',
+                'width': 3,
+                'label': 'data(label)',
+                'font-size': '12px',
+                'font-weight': 'bold',
+                'color': '#f59e0b',
+                'text-outline-color': '#000000',
+                'text-outline-width': 2,
+                'curve-style': 'straight',
+                'target-arrow-shape': 'none',
+                'z-index': 9998
+            }
+        },
+        {
             selector: '[type="CVE_GROUP"]',
             style: {
                 'background-color': 'rgba(234, 179, 8, 0.12)',
