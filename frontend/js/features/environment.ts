@@ -3,6 +3,7 @@
  */
 
 import { getCy } from '../graph/core';
+import { compactCompoundChildren } from '../graph/layout';
 import type { Core, NodeSingular } from 'cytoscape';
 
 /**
@@ -29,8 +30,9 @@ export function applyEnvironmentFilter(): void {
     const uiSetting = uiSelect?.value || 'N';
     const acSetting = acSelect?.value || 'L';
 
-    // Update the environment VC nodes
+    // Update the environment VC nodes and compact the attacker box
     updateEnvironmentVCs(uiSetting, acSetting);
+    compactCompoundChildren(cy);
 
     // Clear all filter classes
     cy.elements().removeClass('env-filtered unreachable');
@@ -188,80 +190,76 @@ function applyReachabilityFilter(cy: Core): void {
 
 
 /**
- * Update or create environment VC nodes in the attacker box
+ * Update or create environment VC nodes (UI/AC) in the attacker box.
+ *
+ * These use a stable ID scheme: when the setting changes (e.g. UI:N → UI:R),
+ * the old node is removed and a new one is created with the updated ID/label.
  */
 function updateEnvironmentVCs(uiSetting: string, acSetting: string): void {
     const cy = getCy();
     if (!cy) return;
 
-    const uiLabel = 'UI:' + uiSetting;
-    const acLabel = 'AC:' + acSetting;
-    const uiId = 'VC:ENV:UI';
-    const acId = 'VC:ENV:AC';
+    upsertEnvVC(cy, 'UI', uiSetting,
+        uiSetting === 'R' ? 'User interaction available' : 'No user interaction');
+    upsertEnvVC(cy, 'AC', acSetting,
+        acSetting === 'H' ? 'High complexity tolerable' : 'Only low complexity');
+}
 
-    // Update or create UI node
-    let uiNode = cy.getElementById(uiId);
-    if (uiNode.length === 0) {
-        cy.add({
-            group: 'nodes',
-            data: {
-                id: uiId,
-                type: 'VC',
-                node_type: 'VC',
-                vc_type: 'UI',
-                value: uiSetting,
-                label: uiLabel,
-                description: uiSetting === 'R' ? 'User interaction available' : 'No user interaction',
-                parent: 'ATTACKER_BOX',
-                is_initial: true,
-                is_env: true
-            }
-        });
-        cy.add({
-            group: 'edges',
-            data: {
-                source: uiId,
-                target: 'ATTACKER',
-                type: 'HAS_STATE',
-                edge_type: 'HAS_STATE'
-            }
-        });
-    } else {
-        uiNode.data('value', uiSetting);
-        uiNode.data('label', uiLabel);
-        uiNode.data('description', uiSetting === 'R' ? 'User interaction available' : 'No user interaction');
+/**
+ * Create or update a single environment VC node.
+ * Removes the previous node for this vc_type if the value changed.
+ */
+function upsertEnvVC(cy: any, vcType: string, value: string, description: string): void {
+    const newId = `VC:${vcType}:${value}`;
+    const label = `${vcType}:${value}`;
+
+    // Check if the correct node already exists
+    const existing = cy.getElementById(newId);
+    if (existing.length > 0 && existing.data('is_env')) {
+        return; // Already correct
     }
 
-    // Update or create AC node
-    let acNode = cy.getElementById(acId);
-    if (acNode.length === 0) {
-        cy.add({
-            group: 'nodes',
-            data: {
-                id: acId,
-                type: 'VC',
-                node_type: 'VC',
-                vc_type: 'AC',
-                value: acSetting,
-                label: acLabel,
-                description: acSetting === 'H' ? 'High complexity tolerable' : 'Only low complexity',
-                parent: 'ATTACKER_BOX',
-                is_initial: true,
-                is_env: true
-            }
-        });
-        cy.add({
-            group: 'edges',
-            data: {
-                source: acId,
-                target: 'ATTACKER',
-                type: 'HAS_STATE',
-                edge_type: 'HAS_STATE'
-            }
-        });
-    } else {
-        acNode.data('value', acSetting);
-        acNode.data('label', acLabel);
-        acNode.data('description', acSetting === 'H' ? 'High complexity tolerable' : 'Only low complexity');
+    // Remove any previous env node for this vc_type
+    cy.nodes('[type="VC"]').forEach((n: any) => {
+        if (n.data('is_env') && n.data('vc_type') === vcType) {
+            n.connectedEdges().remove();
+            n.remove();
+        }
+    });
+
+    // Find position near existing ATTACKER_BOX children
+    const siblings = cy.nodes('[parent="ATTACKER_BOX"]');
+    let posX = 0, posY = 0;
+    if (siblings.length > 0) {
+        const bb = siblings.boundingBox();
+        posX = bb.x1 + bb.w / 2;
+        posY = bb.y2 + 45; // below existing siblings
     }
+
+    // Create new node
+    cy.add({
+        group: 'nodes',
+        data: {
+            id: newId,
+            type: 'VC',
+            node_type: 'VC',
+            vc_type: vcType,
+            value: value,
+            label: label,
+            description: description,
+            parent: 'ATTACKER_BOX',
+            is_initial: true,
+            is_env: true
+        },
+        position: { x: posX, y: posY }
+    });
+    cy.add({
+        group: 'edges',
+        data: {
+            source: newId,
+            target: 'ATTACKER',
+            type: 'HAS_STATE',
+            edge_type: 'HAS_STATE'
+        }
+    });
 }

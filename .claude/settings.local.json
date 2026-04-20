@@ -22,7 +22,9 @@
       "Bash(bash \"E:\\\\_DEV\\\\_PYTHON\\\\PAGDrawer\\\\Scripts\\\\kill-frontend.sh\")",
       "Bash(bash Scripts/start-frontend.sh)",
       "mcp__Claude_Preview__preview_start",
-      "Bash(bash Scripts/start-backend.sh)"
+      "Bash(bash Scripts/start-backend.sh)",
+      "Bash(bash \"E:\\\\_DEV\\\\_PYTHON\\\\PAGDrawer\\\\Scripts\\\\start-backend.sh\")",
+      "Bash(bash \"E:\\\\_DEV\\\\_PYTHON\\\\PAGDrawer\\\\Scripts\\\\start-frontend.sh\")"
     ]
   }
 }

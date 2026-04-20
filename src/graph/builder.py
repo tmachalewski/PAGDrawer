@@ -921,11 +921,11 @@ class KnowledgeGraphBuilder:
         The attacker starts with:
         - AV:N (Network access)
         - PR:N (No privileges needed)
-        - UI:N (No user interaction required)
-        - AC:L (Low attack complexity)
+
+        UI and AC VCs are managed by the frontend's environment settings
+        panel, not created here, to avoid duplicate nodes.
 
         These are grouped in a visual box to show initial state.
-        AC/UI are graph-wide constants, not chain-depth participants.
         """
         # Create parent box (compound node)
         self.graph.add_node(
@@ -945,7 +945,7 @@ class KnowledgeGraphBuilder:
             parent="ATTACKER_BOX"
         )
 
-        # Add initial VCs as children of the box
+        # Add initial VCs as children of the box (state mutators only)
         self.graph.add_node(
             "VC:AV:N",
             node_type="VC",
@@ -968,33 +968,10 @@ class KnowledgeGraphBuilder:
             is_initial=True
         )
 
-        self.graph.add_node(
-            "VC:UI:N",
-            node_type="VC",
-            vc_type="UI",
-            value="N",
-            label="UI:N",
-            description="No user interaction required",
-            parent="ATTACKER_BOX",
-            is_initial=True
-        )
-
-        self.graph.add_node(
-            "VC:AC:L",
-            node_type="VC",
-            vc_type="AC",
-            value="L",
-            label="AC:L",
-            description="Low attack complexity",
-            parent="ATTACKER_BOX",
-            is_initial=True
-        )
-
         # Connect initial VCs to attacker (showing initial capabilities)
+        # Note: UI and AC VCs are created by the frontend environment settings
         self.graph.add_edge("VC:AV:N", "ATTACKER", edge_type="HAS_STATE")
         self.graph.add_edge("VC:PR:N", "ATTACKER", edge_type="HAS_STATE")
-        self.graph.add_edge("VC:UI:N", "ATTACKER", edge_type="HAS_STATE")
-        self.graph.add_edge("VC:AC:L", "ATTACKER", edge_type="HAS_STATE")
 
         # Connect attacker to DMZ hosts (publicly accessible) in Layer 1 only
         dmz_hosts = [node_id for node_id, data in self.graph.nodes(data=True)

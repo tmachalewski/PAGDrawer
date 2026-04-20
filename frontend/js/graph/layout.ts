@@ -76,8 +76,11 @@ export function runLayout(): void {
             rankSep: 100,
             edgeSep: 20,
             ranker: 'tight-tree',
-            animate: true,
-            animationDuration: 500
+            animate: false,
+            stop: () => {
+                compactCompoundChildren(cy);
+                cy.animate({ duration: 300 });
+            }
         };
     } else if (currentLayout === 'breadthfirst') {
         layoutConfig = {
@@ -108,6 +111,45 @@ export function runLayout(): void {
 
     // Run layout only on visible elements
     visibleElements.layout(layoutConfig).run();
+}
+
+/**
+ * Reposition children of compound nodes so they stack tightly around
+ * their centroid. This prevents children from spreading across the
+ * full graph height due to edge-based positioning.
+ */
+export function compactCompoundChildren(cy: any): void {
+    const NODE_SEP = 15;
+    const NODE_HEIGHT = 30;
+
+    // Find all compound parent nodes (COMPOUND = Initial State, CVE_GROUP = merged CVEs)
+    const compoundParents = cy.nodes().filter((n: any) => n.isParent());
+
+    compoundParents.forEach((parent: any) => {
+        const children = parent.children().filter((c: any) => c.style('display') !== 'none');
+        if (children.length < 2) return;
+
+        // Keep X position from dagre (correct column), restack Y positions tightly
+        const positions: { node: any; x: number; y: number }[] = [];
+        children.forEach((child: any) => {
+            positions.push({ node: child, x: child.position('x'), y: child.position('y') });
+        });
+
+        // Sort by original Y to preserve relative order
+        positions.sort((a, b) => a.y - b.y);
+
+        // Compute centroid Y
+        const centroidY = positions.reduce((sum, p) => sum + p.y, 0) / positions.length;
+
+        // Stack children tightly around centroid
+        const totalHeight = positions.length * NODE_HEIGHT + (positions.length - 1) * NODE_SEP;
+        let startY = centroidY - totalHeight / 2 + NODE_HEIGHT / 2;
+
+        positions.forEach(p => {
+            p.node.position({ x: p.x, y: startY });
+            startY += NODE_HEIGHT + NODE_SEP;
+        });
+    });
 }
 
 /**
