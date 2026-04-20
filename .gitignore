@@ -20,6 +20,11 @@ node_modules/
 frontend/dist/
 frontend/coverage/
 *.log
+.vite/
+frontend/.vite/
+
+# Claude Code
+.claude/worktrees/
 
 # IDE
 .vscode/
