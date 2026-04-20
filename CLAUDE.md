@@ -1,1 +1,2 @@
 - Use scripts present at @Scripts\ to turn on/of servers
+- MongoDB is required for persistent NVD/EPSS/CWE caches. Start it with `bash Scripts/start-mongo.sh` (docker-compose). Backend will fail-fast on startup if Mongo is unreachable. Set `PAGDRAWER_SKIP_MONGO=1` to bypass the check during isolated tests.
