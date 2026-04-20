@@ -209,7 +209,7 @@
     <!-- Statistics Modal -->
     <div id="statistics-modal" class="modal-overlay" onclick="if(event.target===this)closeStatistics()"
         style="display: none;">
-        <div class="modal-content" style="max-width: 680px;">
+        <div class="modal-content stats-modal-content">
             <div class="modal-header">
                 <span class="modal-title">📊 Graph Statistics</span>
                 <button class="close-btn" onclick="closeStatistics()">×</button>
@@ -243,30 +243,45 @@
                 </div>
             </div>
 
-            <!-- Per-type node counts -->
-            <div class="stats-section">
-                <div class="stats-section-title">Nodes by Type (Live)</div>
-                <table class="stats-table" id="stats-node-table">
-                    <tbody></tbody>
-                </table>
+            <!-- Two-column: per-type node and edge counts side-by-side -->
+            <div class="stats-two-column">
+                <div class="stats-section">
+                    <div class="stats-section-title">Nodes by Type (Live)</div>
+                    <table class="stats-table" id="stats-node-table">
+                        <tbody></tbody>
+                    </table>
+                </div>
+                <div class="stats-section">
+                    <div class="stats-section-title">Edges by Type (Live)</div>
+                    <table class="stats-table" id="stats-edge-table">
+                        <tbody></tbody>
+                    </table>
+                </div>
             </div>
 
-            <!-- Per-type edge counts -->
-            <div class="stats-section">
-                <div class="stats-section-title">Edges by Type (Live)</div>
-                <table class="stats-table" id="stats-edge-table">
-                    <tbody></tbody>
-                </table>
-            </div>
-
-            <!-- Derived / cleaned metrics -->
-            <div class="stats-section">
-                <div class="stats-section-title">Clean Attack Graph Metrics</div>
-                <table class="stats-table" id="stats-clean-table">
-                    <tbody></tbody>
-                </table>
-                <div class="stats-card-hint" style="margin-top: 8px;">
-                    Excludes ATTACKER, COMPOUND, BRIDGE, CVE_GROUP, and synthetic merge edges.
+            <!-- Two-column: clean metrics and drawing quality side-by-side -->
+            <div class="stats-two-column">
+                <div class="stats-section">
+                    <div class="stats-section-title">Clean Attack Graph Metrics</div>
+                    <table class="stats-table" id="stats-clean-table">
+                        <tbody></tbody>
+                    </table>
+                    <div class="stats-card-hint" style="margin-top: 8px;">
+                        Excludes ATTACKER, COMPOUND, BRIDGE, CVE_GROUP, and synthetic merge edges.
+                    </div>
+                </div>
+                <div class="stats-section">
+                    <div class="stats-section-title">Drawing Quality Metrics</div>
+                    <table class="stats-table" id="stats-drawing-table">
+                        <tbody></tbody>
+                    </table>
+                    <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px;">
+                        <button class="control-btn" id="stats-toggle-crossings" style="background: #ff2d55; font-size: 12px; padding: 6px 12px;">🔍 Show debug overlay</button>
+                        <button class="control-btn" id="stats-export-csv" style="background: #22c55e; font-size: 12px; padding: 6px 12px;">📥 Export CSV</button>
+                    </div>
+                    <div class="stats-card-hint" style="margin-top: 6px;">
+                        Per Purchase (2002). Logical coordinates — invariant under zoom/pan.
+                    </div>
                 </div>
             </div>
 
@@ -281,6 +296,7 @@
                     <li><b>Environment filtering (UI/AC)</b> — Dims, does not remove. Filtered CVEs still appear in counts.</li>
                     <li><b>CAN_REACH</b> — Mixes ATTACKER→HOST and INSIDE_NETWORK→L2-host edges.</li>
                     <li><b>HAS_STATE</b> — Backend: 2 (AV:N, PR:N). Live: 4 (+UI, +AC env VCs).</li>
+                    <li><b>Drawing quality metrics</b> — Purchase (2002). Crossings excludes edge pairs sharing a node. Area uses center-point method in logical coordinates (zoom-invariant). Edge length CV uses population std dev.</li>
                 </ul>
             </details>
         </div>
