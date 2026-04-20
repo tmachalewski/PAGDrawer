@@ -357,6 +357,10 @@ class KnowledgeGraphBuilder:
         """
         Load the complete graph from mock data using 2-layer model
         with chain-depth-aware multi-stage attack wiring.
+
+        If config.skip_layer_2 is True, only Layer 1 (external attack surface)
+        is built. The INSIDE_NETWORK bridge is still created as a terminal node
+        so that EX:Y → INSIDE_NETWORK edges are preserved.
         """
         # Phase 1: Build infrastructure + collect CVE entries for L1
         l1_entries = self._build_layer_infrastructure(layer_suffix="")
@@ -367,6 +371,11 @@ class KnowledgeGraphBuilder:
         # Phase 2: BFS chain building for L1
         initial_vcs_l1 = {("AV", "N"), ("PR", "N")}
         self._build_attack_chains_bfs(l1_entries, "", initial_vcs_l1)
+
+        if self.config.skip_layer_2:
+            # Single-layer mode: only create bridge node + ENTERS_NETWORK edges
+            self._create_inside_network_bridge()
+            return
 
         # Phase 3: L2 infrastructure
         l2_entries = self._build_layer_infrastructure(layer_suffix=":INSIDE_NETWORK")
@@ -384,6 +393,9 @@ class KnowledgeGraphBuilder:
         """
         Load the complete graph from a LoadedData instance using 2-layer model
         with chain-depth-aware multi-stage attack wiring.
+
+        If config.skip_layer_2 is True, only Layer 1 (external attack surface)
+        is built. The INSIDE_NETWORK bridge is still created as a terminal node.
         """
         self._loaded_data = data
 
@@ -396,6 +408,11 @@ class KnowledgeGraphBuilder:
         # Phase 2: BFS chain building for L1
         initial_vcs_l1 = {("AV", "N"), ("PR", "N")}
         self._build_attack_chains_bfs(l1_entries, "", initial_vcs_l1)
+
+        if self.config.skip_layer_2:
+            # Single-layer mode: only create bridge node + ENTERS_NETWORK edges
+            self._create_inside_network_bridge()
+            return
 
         # Phase 3: L2 infrastructure
         l2_entries = self._build_layer_infrastructure(layer_suffix=":INSIDE_NETWORK")

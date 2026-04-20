@@ -45,6 +45,12 @@ class GraphConfig:
         "VC": "TI",              # VC per TI (state follows technical impact)
     })
 
+    # When True, skip Layer 2 (internal network) construction.
+    # INSIDE_NETWORK bridge is still created with ENTERS_NETWORK edges from
+    # L1 EX:Y nodes, but no L2 hosts/CPEs/CVEs are built. Useful for
+    # simpler graphs focused on external attack surface only.
+    skip_layer_2: bool = False
+
     def _normalize_mode(self, node_type: str, mode: str) -> str:
         """Normalize legacy modes to new format."""
         if mode == "universal":
@@ -94,18 +100,26 @@ class GraphConfig:
         """Set the duplication mode for a node type."""
         self.node_modes[node_type] = mode
 
-    def to_dict(self) -> Dict[str, str]:
+    def to_dict(self) -> Dict[str, object]:
         """Export config as dictionary."""
-        return dict(self.node_modes)
+        result: Dict[str, object] = dict(self.node_modes)
+        result["skip_layer_2"] = self.skip_layer_2
+        return result
 
     @classmethod
-    def from_dict(cls, data: Dict[str, str]) -> "GraphConfig":
+    def from_dict(cls, data: Dict[str, object]) -> "GraphConfig":
         """Create config from dictionary."""
         config = cls()
-        for node_type, mode in data.items():
-            # Accept both legacy and new formats
-            if mode in ("universal", "singular", "ATTACKER", "HOST", "CPE", "CVE", "CWE", "TI"):
-                config.node_modes[node_type] = mode
+        for key, value in data.items():
+            if key == "skip_layer_2":
+                config.skip_layer_2 = bool(value)
+                continue
+            # Node mode entries — accept both legacy and new formats
+            if isinstance(value, str) and value in (
+                "universal", "singular", "ATTACKER", "HOST", "CPE",
+                "CVE", "CWE", "TI"
+            ):
+                config.node_modes[key] = value
         return config
 
 

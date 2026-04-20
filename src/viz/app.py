@@ -136,7 +136,7 @@ async def get_config():
 
 
 @app.post("/api/config")
-async def update_config(config_data: Dict[str, str]):
+async def update_config(config_data: Dict[str, Any]):
     """Update configuration and rebuild graph with current data source."""
     global graph_builder, current_config
 

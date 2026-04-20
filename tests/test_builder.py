@@ -168,6 +168,72 @@ class TestTwoLayerModel:
         assert stats["edge_counts"].get("ENTERS_NETWORK", 0) > 0
 
 
+class TestSkipLayer2:
+    """Tests for skip_layer_2 config option."""
+
+    @pytest.fixture
+    def l1_only_builder(self):
+        """Graph builder with skip_layer_2=True."""
+        config = GraphConfig()
+        config.skip_layer_2 = True
+        builder = KnowledgeGraphBuilder(config=config)
+        builder.load_from_mock_data()
+        return builder
+
+    def test_no_layer_2_hosts(self, l1_only_builder):
+        """Should have no L2 hosts when skip_layer_2=True."""
+        l2_hosts = [
+            node_id for node_id, data
+            in l1_only_builder.graph.nodes(data=True)
+            if data.get("node_type") == "HOST" and data.get("layer") == "L2"
+        ]
+        assert len(l2_hosts) == 0
+
+    def test_l1_hosts_still_exist(self, l1_only_builder):
+        """L1 hosts should still exist when skip_layer_2=True."""
+        l1_hosts = [
+            node_id for node_id, data
+            in l1_only_builder.graph.nodes(data=True)
+            if data.get("node_type") == "HOST" and data.get("layer") == "L1"
+        ]
+        assert len(l1_hosts) > 0
+
+    def test_inside_network_bridge_still_exists(self, l1_only_builder):
+        """INSIDE_NETWORK bridge node should still be created."""
+        assert l1_only_builder.graph.has_node("INSIDE_NETWORK")
+
+    def test_enters_network_edges_still_exist(self, l1_only_builder):
+        """ENTERS_NETWORK edges from L1 EX:Y to bridge should still exist."""
+        stats = l1_only_builder.get_stats()
+        assert stats["edge_counts"].get("ENTERS_NETWORK", 0) > 0
+
+    def test_no_inside_network_node_ids(self, l1_only_builder):
+        """No node IDs should contain :INSIDE_NETWORK suffix (except the bridge itself)."""
+        inside_network_nodes = [
+            node_id for node_id in l1_only_builder.graph.nodes()
+            if ":INSIDE_NETWORK" in node_id
+        ]
+        assert inside_network_nodes == []
+
+    def test_can_reach_edges_absent(self, l1_only_builder):
+        """CAN_REACH edges from INSIDE_NETWORK should be absent (no L2 hosts)."""
+        edges = l1_only_builder.graph.out_edges("INSIDE_NETWORK", data=True)
+        can_reach_edges = [e for e in edges if e[2].get("edge_type") == "CAN_REACH"]
+        assert len(can_reach_edges) == 0
+
+    def test_skip_layer_2_default_false(self):
+        """Default config should have skip_layer_2=False."""
+        config = GraphConfig()
+        assert config.skip_layer_2 is False
+
+    def test_skip_layer_2_roundtrip(self):
+        """skip_layer_2 should survive to_dict/from_dict roundtrip."""
+        config = GraphConfig()
+        config.skip_layer_2 = True
+        restored = GraphConfig.from_dict(config.to_dict())
+        assert restored.skip_layer_2 is True
+
+
 class TestTINodes:
     """Tests for Technical Impact node creation."""
     
