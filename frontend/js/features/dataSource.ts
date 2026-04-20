@@ -3,7 +3,8 @@
  * Handles Trivy file uploads, scan selection, and graph rebuilding from the UI
  */
 
-import { uploadTrivyFile, rebuildData, resetData, getDataStatus, getScans, deleteScan, fetchGraph, fetchStats } from '../services/api';
+import { uploadTrivyFile, resetData, getDataStatus, getScans, deleteScan, fetchGraph, fetchStats } from '../services/api';
+import { rebuildWithProgress } from './rebuildProgress';
 import { initCytoscape, destroyCytoscape } from '../graph/core';
 import { runLayout } from '../graph/layout';
 import { setupEventHandlers } from '../graph/events';
@@ -84,17 +85,19 @@ function getSelectedScanIds(): string[] | undefined {
  */
 export async function rebuildGraph(): Promise<void> {
     const enrichCheckbox = document.getElementById('enrich-checkbox') as HTMLInputElement;
+    const forceCheckbox = document.getElementById('force-refresh-checkbox') as HTMLInputElement;
     const enrich = enrichCheckbox?.checked ?? true;
+    const forceRefresh = forceCheckbox?.checked ?? false;
     const scanIds = getSelectedScanIds();
 
     const statusMsg = enrich
-        ? 'Rebuilding with enrichment (may take a minute)...'
+        ? 'Rebuilding with enrichment...'
         : 'Rebuilding...';
     setStatus(statusMsg, 'pending');
     disableRebuildButton();
 
     try {
-        await rebuildData(enrich, scanIds);
+        await rebuildWithProgress(enrich, scanIds, forceRefresh);
 
         // Reload graph with new data
         const [graphData, stats] = await Promise.all([fetchGraph(), fetchStats()]);
@@ -111,12 +114,11 @@ export async function rebuildGraph(): Promise<void> {
         }, 100);
         updateStats(stats);
 
-        // Sync sliders to match reset backend config
         await syncSlidersFromConfig();
 
         setStatus('✅ Graph rebuilt successfully', 'success');
         await refreshDataStatus();
-        console.log('Graph rebuilt with enrich=' + enrich + ', scanIds=' + (scanIds || 'all'));
+        console.log('Graph rebuilt with enrich=' + enrich + ', forceRefresh=' + forceRefresh + ', scanIds=' + (scanIds || 'all'));
     } catch (error) {
         const message = error instanceof Error ? error.message : 'Rebuild failed';
         setStatus(`❌ ${message}`, 'error');

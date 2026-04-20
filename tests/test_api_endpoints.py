@@ -45,9 +45,12 @@ SAMPLE_DEPLOYMENT_CONFIG = {
 
 
 @pytest.fixture
-def client():
-    """Create a test client with fresh state."""
-    # Reset global state before each test
+def client(mock_mongo):
+    """Create a test client with fresh state.
+
+    Depends on mock_mongo so endpoints that touch MongoDB (such as
+    /api/data/rebuild) see an initialized in-memory database.
+    """
     from src.viz import app as app_module
     app_module.uploaded_trivy_scans = []
     app_module.uploaded_deployment_config = None
@@ -191,58 +194,53 @@ class TestRebuildEndpoint:
         assert response.status_code == 400
         assert "No Trivy data" in response.json()["detail"]
 
-    @patch("src.viz.app.load_trivy_json")
-    def test_rebuild_with_trivy_only(self, mock_load_trivy, client):
-        """Test rebuilding with Trivy data only."""
-        from src.data.loaders import LoadedData
-
-        # Mock the load function
-        mock_load_trivy.return_value = LoadedData(
-            hosts=[{"id": "test-host", "os_family": "Linux", "criticality_score": 0.5, "subnet_id": "default"}],
-            cpes=[{"id": "cpe:2.3:a:test:test:1.0:*", "vendor": "test", "product": "test", "version": "1.0"}],
-            cves=[],
-            cwes=[],
-            host_cpe_map={"test-host": ["cpe:2.3:a:test:test:1.0:*"]},
-            network_edges=[],
-        )
-
-        # Upload Trivy data
+    def test_rebuild_returns_job_id(self, client):
+        """Rebuild is now async; the endpoint returns a job_id immediately."""
         client.post("/api/upload/trivy/json", json=SAMPLE_TRIVY_REPORT)
-
-        # Rebuild without enrichment
         response = client.post("/api/data/rebuild?enrich=false&use_deployment=false")
         assert response.status_code == 200
         data = response.json()
-        assert data["status"] == "ok"
-        assert data["source"] == "trivy"
+        assert data["status"] == "started"
+        assert "job_id" in data
 
-    @patch("src.viz.app.DeploymentLoader")
-    def test_rebuild_with_deployment(self, mock_loader_class, client):
-        """Test rebuilding with deployment config."""
-        from src.data.loaders import LoadedData
+    def test_rebuild_rejects_concurrent_jobs_with_409(self, mock_mongo, client):
+        """A second rebuild while one is running should return 409 Conflict."""
+        from src.data.jobs import JobManager
+        # Start a fake running job directly in mongomock
+        JobManager().create_job()
 
-        # Mock the loader
-        mock_loader = MagicMock()
-        mock_loader.load.return_value = LoadedData(
-            hosts=[{"id": "web-server", "os_family": "Linux", "criticality_score": 0.7, "subnet_id": "dmz"}],
-            cpes=[{"id": "cpe:2.3:a:test:test:1.0:*", "vendor": "test", "product": "test", "version": "1.0"}],
-            cves=[],
-            cwes=[],
-            host_cpe_map={"web-server": ["cpe:2.3:a:test:test:1.0:*"]},
-            network_edges=[],
-        )
-        mock_loader_class.return_value = mock_loader
-
-        # Upload both Trivy and deployment
         client.post("/api/upload/trivy/json", json=SAMPLE_TRIVY_REPORT)
-        client.post("/api/upload/deployment/json", json=SAMPLE_DEPLOYMENT_CONFIG)
+        response = client.post("/api/data/rebuild?enrich=false&use_deployment=false")
+        assert response.status_code == 409
+        assert "running_job_id" in response.json()["detail"]
 
-        # Rebuild
-        response = client.post("/api/data/rebuild?enrich=false")
+    def test_rebuild_progress_endpoint_returns_job(self, mock_mongo, client):
+        """GET /api/data/rebuild/progress/{job_id} returns the job document."""
+        from src.data.jobs import JobManager
+        job = JobManager().create_job(total_cves=10)
+        response = client.get(f"/api/data/rebuild/progress/{job.job_id}")
         assert response.status_code == 200
         data = response.json()
-        assert data["status"] == "ok"
-        assert data["source"] == "deployment"
+        assert data["job_id"] == job.job_id
+        assert data["status"] == "running"
+        assert data["total_cves"] == 10
+
+    def test_rebuild_progress_unknown_job_returns_404(self, client):
+        response = client.get("/api/data/rebuild/progress/nonexistent-id")
+        assert response.status_code == 404
+
+    def test_rebuild_cancel_requests_flag(self, mock_mongo, client):
+        from src.data.jobs import JobManager
+        jm = JobManager()
+        job = jm.create_job()
+        response = client.post(f"/api/data/rebuild/cancel/{job.job_id}")
+        assert response.status_code == 200
+        assert response.json()["status"] == "cancel_requested"
+        assert jm.is_cancelled(job.job_id)
+
+    def test_rebuild_cancel_unknown_job_returns_404(self, client):
+        response = client.post("/api/data/rebuild/cancel/nope")
+        assert response.status_code == 404
 
 
 class TestResetEndpoint:
@@ -362,10 +360,9 @@ class TestScanSelectionEndpoints:
 
     @patch("src.viz.app.load_trivy_json")
     def test_rebuild_with_specific_scan_ids(self, mock_load_trivy, client):
-        """Test rebuilding with specific scan IDs."""
+        """Rebuild with specific scan_ids now returns a job_id immediately."""
         from src.data.loaders import LoadedData
 
-        # Mock the load function
         mock_load_trivy.return_value = LoadedData(
             hosts=[{"id": "test-host", "os_family": "Linux", "criticality_score": 0.5, "subnet_id": "default"}],
             cpes=[{"id": "cpe:2.3:a:test:test:1.0:*", "vendor": "test", "product": "test", "version": "1.0"}],
@@ -375,24 +372,20 @@ class TestScanSelectionEndpoints:
             network_edges=[],
         )
 
-        # Upload two scans
         client.post("/api/upload/trivy/json", json=SAMPLE_TRIVY_REPORT)
         client.post("/api/upload/trivy/json", json=SAMPLE_TRIVY_REPORT)
 
-        # Get scan IDs
         scans = client.get("/api/data/scans").json()["scans"]
         first_scan_id = scans[0]["id"]
 
-        # Rebuild with only first scan (note: use Query for list params)
         response = client.post(
             "/api/data/rebuild",
-            params={"enrich": "false", "use_deployment": "false", "scan_ids": first_scan_id}
+            params={"enrich": "false", "use_deployment": "false", "scan_ids": first_scan_id},
         )
         assert response.status_code == 200
         data = response.json()
-        assert data["status"] == "ok"
-        # Verify only one scan was used from response
-        assert data["scans_used"] == 1
+        assert data["status"] == "started"
+        assert "job_id" in data
 
     @patch("src.viz.app.load_trivy_json")
     def test_rebuild_with_invalid_scan_ids(self, mock_load_trivy, client):
