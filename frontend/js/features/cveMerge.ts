@@ -155,7 +155,11 @@ export function applyMerge(): void {
     const cy = getCy();
     if (!cy || currentMergeMode === 'none') return;
 
-    const cveNodes = cy.nodes('[type="CVE"]');
+    // Only merge CVEs that are actually rendered. Exploit-Paths filter
+    // adds `exploit-hidden` (display:none) to CVEs off any EX:Y path; if
+    // we merged those too, the resulting compound would have children
+    // that are all invisible and dagre would strand it at (0,0).
+    const cveNodes = cy.nodes('[type="CVE"]').filter(n => !n.hasClass('exploit-hidden'));
     const groups: Map<string, string[]> = new Map();
 
     // Group CVEs by computed key (layer-aware)

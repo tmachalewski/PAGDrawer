@@ -278,6 +278,7 @@ describe('cveMerge', () => {
                         if (key === 'type') return 'CVE';
                         return undefined;
                     },
+                    hasClass: (_cls: string) => false,
                     move: ({ parent }: { parent: string | null }) => {
                         movedParents.set(n.id, parent);
                     },
@@ -287,14 +288,21 @@ describe('cveMerge', () => {
                 };
             });
 
+            // Build a minimal collection object with forEach + filter that
+            // returns another collection so applyMerge's chain works.
+            function makeCollection(items: any[]): any {
+                return {
+                    forEach: (cb: Function) => items.forEach(cb),
+                    filter: (pred: (n: any) => boolean) => makeCollection(items.filter(pred)),
+                };
+            }
+
             return {
                 nodes: (selector: string) => {
                     if (selector === '[type="CVE"]') {
-                        return {
-                            forEach: (cb: Function) => nodeObjects.forEach(cb)
-                        };
+                        return makeCollection(nodeObjects);
                     }
-                    return { forEach: () => {} };
+                    return makeCollection([]);
                 },
                 add: (data: any) => {
                     addedNodes.push(data);
@@ -430,6 +438,33 @@ describe('cveMerge', () => {
         it('removeMerge is safe to call when no merge is active', () => {
             mockedGetCy.mockReturnValue(null as any);
             expect(() => removeMerge()).not.toThrow();
+        });
+
+        it('excludes exploit-hidden CVEs from merge groups', () => {
+            // Build a mock where one of the same-prereqs CVEs is exploit-hidden.
+            const nodes = [
+                { id: 'cve1', prereqs: { AV: 'N', AC: 'L', PR: 'N', UI: 'N' }, vc_outcomes: [], chain_depth: 0 },
+                { id: 'cve2', prereqs: { AV: 'N', AC: 'L', PR: 'N', UI: 'N' }, vc_outcomes: [], chain_depth: 0 },
+                { id: 'cve3', prereqs: { AV: 'N', AC: 'L', PR: 'N', UI: 'N' }, vc_outcomes: [], chain_depth: 0 },
+            ];
+            const mockCy = makeMockCy(nodes);
+            // Mark cve3 as exploit-hidden by overriding its hasClass
+            // via the _addedNodes / node objects accessor: simplest way
+            // is to patch the node object directly.
+            mockedGetCy.mockReturnValue(mockCy);
+            const cveCollection = mockCy.nodes('[type="CVE"]');
+            cveCollection.forEach((n: any) => {
+                if (n.id() === 'cve3') {
+                    n.hasClass = (cls: string) => cls === 'exploit-hidden';
+                }
+            });
+
+            setMergeMode('prereqs');
+
+            // Only cve1 + cve2 should form a group (2 members, not 3)
+            const groupNodes = mockCy._addedNodes.filter((e: any) => e.data?.type === 'CVE_GROUP');
+            expect(groupNodes.length).toBe(1);
+            expect(groupNodes[0].data.label).toContain('×2');
         });
     });
 
