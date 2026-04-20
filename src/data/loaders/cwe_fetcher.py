@@ -193,6 +193,12 @@ class CWEFetcher:
     3. REST API from cwe-api.mitre.org for missing CWEs
     """
 
+    # TODO(mongo-persistence): re-enable the static STATIC_CWE_MAPPING
+    # short-circuit once the user is happy with live REST API fetches.
+    # Currently disabled so that cwe_impacts always reflects authoritative
+    # data from cwe-api.mitre.org rather than the in-code constant.
+    USE_STATIC_MAPPING: bool = False
+
     def __init__(self, timeout: int = 30, force_refresh: bool = False):
         """
         Initialize the CWE fetcher.
@@ -253,11 +259,10 @@ class CWEFetcher:
         # Normalize CWE ID
         cwe_id = self._normalize_cwe_id(cwe_id)
 
-        # Try static mapping first (fastest; in-memory). Persist the mapping
-        # to Mongo on first encounter so the cwe_impacts collection reflects
-        # every CWE actually seen by the system. Subsequent lookups still
-        # prefer the in-code constant; the Mongo write is a one-off per CWE.
-        if cwe_id in STATIC_CWE_MAPPING:
+        # Static mapping short-circuit (disabled — see USE_STATIC_MAPPING TODO
+        # on the class). When re-enabled, it should also persist to Mongo on
+        # first encounter so cwe_impacts reflects every CWE actually used.
+        if self.USE_STATIC_MAPPING and cwe_id in STATIC_CWE_MAPPING:
             static_impacts = STATIC_CWE_MAPPING[cwe_id]
             if self._get_cached(cwe_id) is None:
                 self._upsert_impacts(cwe_id, static_impacts, source="static")
@@ -627,7 +632,9 @@ class CWEFetcher:
         uncached_ids = []
         for cwe_id in cwe_ids:
             normalized = self._normalize_cwe_id(cwe_id)
-            if normalized in STATIC_CWE_MAPPING:
+            # TODO(mongo-persistence): re-enable static mapping short-circuit
+            # (see USE_STATIC_MAPPING on the class).
+            if self.USE_STATIC_MAPPING and normalized in STATIC_CWE_MAPPING:
                 results[normalized] = STATIC_CWE_MAPPING[normalized]
                 continue
             cached = self._get_cached(normalized)

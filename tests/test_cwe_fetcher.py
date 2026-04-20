@@ -84,14 +84,23 @@ class TestCWEFetcher:
     def test_normalize_cwe_id_no_hyphen(self, fetcher):
         assert fetcher._normalize_cwe_id("CWE78") == "CWE-78"
 
-    def test_get_technical_impacts_from_static(self, fetcher):
+    def test_static_mapping_is_disabled_by_default(self, fetcher):
+        """TODO(mongo-persistence): currently USE_STATIC_MAPPING is False so
+        CWE lookups must go through Mongo or the REST API. When this is
+        flipped back on, these assertions need to update."""
+        assert fetcher.USE_STATIC_MAPPING is False
+
+    def test_get_technical_impacts_from_static_when_enabled(self, mock_mongo):
+        """With the static path enabled, lookups return the in-code mapping."""
+        fetcher = CWEFetcher()
+        fetcher.USE_STATIC_MAPPING = True
         impacts = fetcher.get_technical_impacts("CWE-78", fetch_if_missing=False)
         assert "Execute Unauthorized Code or Commands" in impacts
 
-    def test_static_lookup_is_persisted_to_mongo(self, mock_mongo, fetcher):
-        """First static lookup should also write the mapping to Mongo so the
-        cwe_impacts collection reflects every CWE actually used."""
-        # Starts empty
+    def test_static_lookup_is_persisted_to_mongo_when_enabled(self, mock_mongo):
+        """When the static path is active, first lookup also writes to Mongo."""
+        fetcher = CWEFetcher()
+        fetcher.USE_STATIC_MAPPING = True
         assert mock_mongo[COLLECTION_CWE_IMPACTS].count_documents({}) == 0
 
         fetcher.get_technical_impacts("CWE-78", fetch_if_missing=False)
@@ -101,17 +110,25 @@ class TestCWEFetcher:
         assert doc["source"] == "static"
         assert "Execute Unauthorized Code or Commands" in doc["technical_impacts"]
 
-    def test_static_lookup_does_not_rewrite_existing(self, mock_mongo, fetcher):
-        """Once written, a subsequent static lookup must not touch the doc."""
-        fetcher.get_technical_impacts("CWE-78", fetch_if_missing=False)
-        doc_before = mock_mongo[COLLECTION_CWE_IMPACTS].find_one({"_id": "CWE-78"})
-        timestamp_before = doc_before["cached_at"]
+    def test_static_disabled_no_fetch_returns_fallback(self, mock_mongo, fetcher):
+        """With static path disabled and no Mongo cache and no API fetch,
+        we fall back to 'Other'."""
+        impacts = fetcher.get_technical_impacts("CWE-78", fetch_if_missing=False)
+        assert impacts == ["Other"]
 
-        fetcher.get_technical_impacts("CWE-78", fetch_if_missing=False)
-        doc_after = mock_mongo[COLLECTION_CWE_IMPACTS].find_one({"_id": "CWE-78"})
-        assert doc_after["cached_at"] == timestamp_before
+    def test_static_disabled_uses_mongo_cache_if_present(self, mock_mongo, fetcher):
+        """With static disabled, a previously cached Mongo entry is returned."""
+        upsert_cached_doc(COLLECTION_CWE_IMPACTS, "CWE-78", {
+            "technical_impacts": ["From-Mongo Impact"],
+            "source": "rest",
+        })
+        impacts = fetcher.get_technical_impacts("CWE-78", fetch_if_missing=False)
+        assert impacts == ["From-Mongo Impact"]
 
-    def test_get_technical_impacts_normalized_id(self, fetcher):
+    def test_get_technical_impacts_normalized_id(self, mock_mongo):
+        """ID normalization works regardless of which resolution path wins."""
+        fetcher = CWEFetcher()
+        fetcher.USE_STATIC_MAPPING = True  # use the fastest deterministic path
         impacts1 = fetcher.get_technical_impacts("CWE-78", fetch_if_missing=False)
         impacts2 = fetcher.get_technical_impacts("78", fetch_if_missing=False)
         impacts3 = fetcher.get_technical_impacts("cwe-78", fetch_if_missing=False)
@@ -127,7 +144,9 @@ class TestCWEFetcher:
         impacts = fetcher.get_technical_impacts("CWE-99999", fetch_if_missing=False)
         assert impacts == ["Other"]
 
-    def test_get_primary_impact(self, fetcher):
+    def test_get_primary_impact(self, mock_mongo):
+        fetcher = CWEFetcher()
+        fetcher.USE_STATIC_MAPPING = True
         impact = fetcher.get_primary_impact("CWE-78", fetch_if_missing=False)
         assert isinstance(impact, str)
         assert len(impact) > 0
