@@ -8,13 +8,19 @@ PAGDrawer models how attackers exploit CVEs to escalate privileges and move late
 
 ## Screenshots
 
-Rich view of a real `alpine:edge` scan — all node types visible, full duplication across hosts and layers:
+The application in action — Node.js Alpine scan reduced with CVE merging and exploit-paths filter:
 
-![Full alpine_edge attack graph](examples/alpine_edge/pagdrawer-full-graph-2026-04-21-13-26.svg)
+![PAGDrawer UI](examples/_UI/UI%202026-04-21%20183058.jpg)
 
-The same graph after progressive simplification (hide intermediate layers, merge similar CVEs, filter to exploit paths):
+Example SVG exports of the pure graph (no UI chrome):
 
-![Reduced alpine_edge graph](examples/alpine_edge/pagdrawer-full-graph-2026-04-21-13-28%20%282%29.svg)
+- Rich view of an `alpine:edge` scan, all node types visible:
+
+  ![Full alpine_edge attack graph](examples/alpine_edge/pagdrawer-full-graph-2026-04-21-13-26.svg)
+
+- Same graph after progressive simplification (hide intermediate layers, merge similar CVEs, filter to exploit paths):
+
+  ![Reduced alpine_edge graph](examples/alpine_edge/pagdrawer-full-graph-2026-04-21-13-28%20%282%29.svg)
 
 ---
 
