@@ -1,6 +1,6 @@
 # PAGDrawer
 
-**Privilege-based Attack Graph Drawer** — transform vulnerability scan data into interactive attack graphs.
+**Probabilistic Attack Graph Drawer** — transform vulnerability scan data into interactive attack graphs.
 
 PAGDrawer models how attackers exploit CVEs to escalate privileges and move laterally through networks, using the **Consensual Transformation Matrix** from [Machalewski et al. (2024)](Docs/EXPRESSING%20IMPACT%20OF%20VULNERABILITIES%20AN%20EXPERT-FILLED%20DATASET%20AND%20VECTOR%20CHANGER%20FRAMEWORK%20FOR%20MODELLING%20MULTISTAGE%20ATTACKS%2C%20BASED%20ON%20CVE%2C%20CVSS%20and%20CWE.pdf) to map technical impacts to privilege changes.
 
