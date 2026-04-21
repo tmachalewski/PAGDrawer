@@ -4,7 +4,7 @@
  */
 
 import { getCy } from '../graph/core';
-import { fetchStats } from '../services/api';
+import { fetchStats, getScans } from '../services/api';
 import {
     computeMetrics,
     downloadMetricsCSV,
@@ -19,6 +19,10 @@ import {
 
 // Most recently computed metrics — used by Export CSV button
 let lastMetrics: DrawingMetrics | null = null;
+
+// Sum of Trivy-reported vulnerabilities across all uploaded scans. Populated
+// when the Statistics modal opens; included in CSV export.
+let lastTrivyVulnCount: number | null = null;
 
 // Tracks IDs of every debug element we add so we can clean them up.
 let debugElementIds: string[] = [];
@@ -55,9 +59,26 @@ export function closeStatistics(): void {
 export async function refreshStatistics(): Promise<void> {
     populateLiveStats();
     await populateBackendStats();
+    await populateTrivyVulnCount();
     populateCleanMetrics();
     populateDrawingMetrics();
     wireExportButton();
+}
+
+/**
+ * Fetch the sum of Trivy-reported per-package vulnerability entries across
+ * all uploaded scans. This is the raw Trivy count (e.g. the "189 vulns" label
+ * in the data source panel) — distinct from the unique CVE count derived
+ * from the live graph. Persisted in lastTrivyVulnCount for CSV export.
+ */
+async function populateTrivyVulnCount(): Promise<void> {
+    try {
+        const { scans } = await getScans();
+        lastTrivyVulnCount = scans.reduce((sum, s) => sum + (s.vuln_count || 0), 0);
+    } catch (err) {
+        console.error('Failed to fetch scan list for Trivy vuln count:', err);
+        lastTrivyVulnCount = null;
+    }
 }
 
 /**
@@ -219,7 +240,12 @@ function populateDrawingMetrics(): void {
     }
 
     const m = lastMetrics;
+    const trivyLabel = lastTrivyVulnCount !== null
+        ? `${lastTrivyVulnCount}   (all uploaded scans)`
+        : '—';
     const rows: Array<[string, string]> = [
+        ['Unique CVEs (graph)', String(m.uniqueCves)],
+        ['Trivy vulnerabilities (scans)', trivyLabel],
         ['Edge crossings (raw)', String(m.crossingsRaw)],
         ['Edge crossings (normalized, Purchase)', m.crossingsNormalized.toFixed(4) + '   (1 = no crossings)'],
         ['Edge crossings per edge', m.crossingsPerEdge.toFixed(4) + '   (lower = cleaner)'],
@@ -252,7 +278,11 @@ function wireExportButton(): void {
 
     // Replace handler (avoids stacking listeners on repeated opens)
     btn.onclick = () => {
-        if (lastMetrics) downloadMetricsCSV(lastMetrics);
+        if (lastMetrics) {
+            downloadMetricsCSV(lastMetrics, {
+                trivyVulnCount: lastTrivyVulnCount ?? undefined,
+            });
+        }
     };
 
     wireCrossingsToggle();

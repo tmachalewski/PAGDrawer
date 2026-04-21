@@ -22,6 +22,7 @@ export interface DrawingMetrics {
     drawingArea: number;           // logical units squared, center-point method
     areaPerNode: number;           // drawing area / |V|, 0 if |V| = 0
     edgeLengthCV: number;          // std / mean, 0 if undefined
+    uniqueCves: number;            // distinct base CVE IDs in the live graph (:dN/@... stripped)
 }
 
 export interface Point {
@@ -136,6 +137,16 @@ export function computeMetrics(): DrawingMetrics | null {
     // 3. Edge length CV
     const edgeLengthCV = computeEdgeLengthCV(edges);
 
+    // 4. Unique CVE count — strip :dN depth and @... context suffixes
+    const uniqueCveBases = new Set<string>();
+    visibleNodes.forEach(n => {
+        if (n.data('type') === 'CVE') {
+            const id = n.id();
+            uniqueCveBases.add(id.replace(/[:@].*$/, ''));
+        }
+    });
+    const uniqueCves = uniqueCveBases.size;
+
     return {
         nodes: nodeCount,
         edges: edgeCount,
@@ -144,7 +155,8 @@ export function computeMetrics(): DrawingMetrics | null {
         crossingsPerEdge,
         drawingArea,
         areaPerNode,
-        edgeLengthCV
+        edgeLengthCV,
+        uniqueCves
     };
 }
 
@@ -354,17 +366,39 @@ export function computeEdgeLengthCV(edges: EdgeEndpoints[]): number {
 /**
  * Produce a CSV representation of the metrics (header row + single data row).
  */
-export function metricsToCSV(m: DrawingMetrics): string {
-    const header = 'nodes,edges,crossings_raw,crossings_normalized,crossings_per_edge,drawing_area,area_per_node,edge_length_cv';
+/**
+ * Extra counts supplied by the caller (e.g. Trivy vulnerability total
+ * which lives on the backend scan metadata, not on the live graph).
+ */
+export interface MetricsCsvContext {
+    /** Sum of Trivy's per-package Vulnerabilities entries across loaded scans. */
+    trivyVulnCount?: number;
+}
+
+export function metricsToCSV(m: DrawingMetrics, context: MetricsCsvContext = {}): string {
+    const header = [
+        'nodes',
+        'edges',
+        'unique_cves',
+        'trivy_vuln_count',
+        'crossings_raw',
+        'crossings_normalized',
+        'crossings_per_edge',
+        'drawing_area',
+        'area_per_node',
+        'edge_length_cv',
+    ].join(',');
     const row = [
         m.nodes,
         m.edges,
+        m.uniqueCves,
+        context.trivyVulnCount ?? '',
         m.crossingsRaw,
         m.crossingsNormalized.toFixed(4),
         m.crossingsPerEdge.toFixed(4),
         m.drawingArea.toFixed(2),
         m.areaPerNode.toFixed(2),
-        m.edgeLengthCV.toFixed(4)
+        m.edgeLengthCV.toFixed(4),
     ].join(',');
     return header + '\n' + row + '\n';
 }
@@ -372,8 +406,8 @@ export function metricsToCSV(m: DrawingMetrics): string {
 /**
  * Trigger a CSV download in the browser.
  */
-export function downloadMetricsCSV(m: DrawingMetrics): void {
-    const csv = metricsToCSV(m);
+export function downloadMetricsCSV(m: DrawingMetrics, context: MetricsCsvContext = {}): void {
+    const csv = metricsToCSV(m, context);
     const timestamp = formatTimestamp(new Date());
     const filename = `pagdrawer-metrics-${timestamp}.csv`;
 

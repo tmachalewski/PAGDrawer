@@ -304,21 +304,29 @@ describe('computeEdgeLengthStd', () => {
 });
 
 describe('metricsToCSV', () => {
-    it('produces header + one data row including all crossing variants and area_per_node', () => {
-        const m: DrawingMetrics = {
-            nodes: 10,
-            edges: 15,
-            crossingsRaw: 3,
-            crossingsNormalized: 0.95,
-            crossingsPerEdge: 0.2,
-            drawingArea: 12345.67,
-            areaPerNode: 1234.567,
-            edgeLengthCV: 0.42
-        };
-        const csv = metricsToCSV(m);
+    const baseMetrics: DrawingMetrics = {
+        nodes: 10,
+        edges: 15,
+        crossingsRaw: 3,
+        crossingsNormalized: 0.95,
+        crossingsPerEdge: 0.2,
+        drawingArea: 12345.67,
+        areaPerNode: 1234.567,
+        edgeLengthCV: 0.42,
+        uniqueCves: 7,
+    };
+
+    it('emits all columns with unique_cves and empty trivy_vuln_count when context missing', () => {
+        const csv = metricsToCSV(baseMetrics);
         const lines = csv.trim().split('\n');
         expect(lines.length).toBe(2);
-        expect(lines[0]).toBe('nodes,edges,crossings_raw,crossings_normalized,crossings_per_edge,drawing_area,area_per_node,edge_length_cv');
-        expect(lines[1]).toBe('10,15,3,0.9500,0.2000,12345.67,1234.57,0.4200');
+        expect(lines[0]).toBe('nodes,edges,unique_cves,trivy_vuln_count,crossings_raw,crossings_normalized,crossings_per_edge,drawing_area,area_per_node,edge_length_cv');
+        expect(lines[1]).toBe('10,15,7,,3,0.9500,0.2000,12345.67,1234.57,0.4200');
+    });
+
+    it('populates trivy_vuln_count when provided via context', () => {
+        const csv = metricsToCSV(baseMetrics, { trivyVulnCount: 189 });
+        const lines = csv.trim().split('\n');
+        expect(lines[1]).toBe('10,15,7,189,3,0.9500,0.2000,12345.67,1234.57,0.4200');
     });
 });
