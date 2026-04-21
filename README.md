@@ -8,13 +8,13 @@ PAGDrawer models how attackers exploit CVEs to escalate privileges and move late
 
 ## Screenshots
 
-Rich view of a real nginx scan (189 vulnerabilities, ~103 unique CVEs):
+Rich view of a real `alpine:edge` scan — all node types visible, full duplication across hosts and layers:
 
-![Full nginx attack graph](examples/nginx_stable-trixie-perl/pagdrawer-full-graph-2026-04-21-13-23.svg)
+![Full alpine_edge attack graph](examples/alpine_edge/pagdrawer-full-graph-2026-04-21-13-26.svg)
 
-Reduced view after hiding intermediate layers and merging similar CVEs:
+The same graph after progressive simplification (hide intermediate layers, merge similar CVEs, filter to exploit paths):
 
-![Reduced alpine_edge graph](examples/alpine_edge/pagdrawer-full-graph-2026-04-21-13-28.svg)
+![Reduced alpine_edge graph](examples/alpine_edge/pagdrawer-full-graph-2026-04-21-13-28%20%282%29.svg)
 
 ---
 
