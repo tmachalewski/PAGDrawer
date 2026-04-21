@@ -1,0 +1,41 @@
+https://hub.docker.com/search?badges=official&type=image
+docker run --rm aquasec/trivy image --format json nginx:1.25-alpine > trivy-report.json
+
+https://hub.docker.com/_/memcached/tags
+https://hub.docker.com/layers/library/memcached/trixie/images/sha256-14a8e0dca582269247d9148e01b5245b21dec2272071ca4f0de57bfe5da798ea
+docker run --rm aquasec/trivy image --format json memcached:trixie > memcached_trixie.json
+
+https://hub.docker.com/_/nginx/tags?page=3
+https://hub.docker.com/layers/library/nginx/stable-alpine3.23-perl/images/sha256-c19c639248847fce74f2cf57cd36e9989956882fc1e4171abc1c018829d326f3
+docker run --rm aquasec/trivy image --format json nginx:stable-alpine3.23-perl > nginx_stable-alpine3_23-perl.json	// 0 vulns according to trivy
+docker run --rm aquasec/trivy image --format json nginx:stable-alpine3.23-otel > nginx_stable-alpine3_23-otel.json	// 0 vulns according to trivy
+https://hub.docker.com/layers/library/nginx/stable-trixie-perl/images/sha256-a31f185acec6c4b00cddf5abc99ff7110a04449a7b0845429789ba49a3b84b6c
+docker run --rm aquasec/trivy image --format json nginx:stable-trixie-perl > nginx_stable-trixie-perl.json
+
+https://hub.docker.com/_/busybox/tags?page=9 BusyBox had no known vulnerabilities or no analysis were available
+
+https://hub.docker.com/_/alpine/tags
+https://hub.docker.com/layers/library/alpine/edge/images/sha256-5341c946ac4831b0f78b5bdf8c9ac06984111cbbf4073764ed68cc913f61f47f
+docker run --rm aquasec/trivy image --format json alpine:edge > alpine_edge.json
+
+https://hub.docker.com/_/redis/tags
+https://hub.docker.com/layers/library/redis/7.4.8-alpine3.21/images/sha256-45618f30cc2ba1ba735ed4e26e47e85d6ea739637deb880df6d4a5aab7c54bfd
+docker run --rm aquasec/trivy image --format json redis:7.4.8-alpine3.21 > redis_7_4_8-alpine3_21.json
+
+https://hub.docker.com/_/postgres/tags
+https://hub.docker.com/layers/library/postgres/15.17-alpine3.22/images/sha256-445792951710df38ff301c406c9962c9491c0cd3baa77e2068c5001d1f9a2501
+docker run --rm aquasec/trivy image --format json postgres:15.17-alpine3.22 > postgres_15_17-alpine3_22.json
+
+https://hub.docker.com/_/ubuntu/tags
+https://hub.docker.com/layers/library/ubuntu/resolute-20260413/images/sha256-0a8aa7e675b331b09dfe80f7a44a02642035aefca58b0034ad17ca2db8f952e6
+docker run --rm aquasec/trivy image --format json ubuntu:resolute-20260413 > ubuntu_resolute-20260413.json
+
+https://hub.docker.com/_/python/tags
+https://hub.docker.com/layers/library/python/3.15-rc-alpine3.23/images/sha256-ec538e5b28685f75600d2cba73911fd7e045a1ad0b44cd586050025b3d0bb02f
+docker run --rm aquasec/trivy image --format json python:3.15-rc-alpine3.23 > python_3_15-rc-alpine3_23.json	// 0 vulns according to trivy
+https://hub.docker.com/layers/library/python/latest/images/sha256-8fb5e430c7994a3119c146d448eae1808becd478703630172a9578ec1f7bdf3a
+docker run --rm aquasec/trivy image --format json python:latest > python_latest.json
+
+https://hub.docker.com/_/node/tags
+https://hub.docker.com/layers/library/node/iron-alpine3.22/images/sha256-8182324b1c8f1b225f78c847b31adcffc3e4f496952c172b8993472d06e49be7
+docker run --rm aquasec/trivy image --format json node:iron-alpine3.22 > node_iron-alpine3_22.json
