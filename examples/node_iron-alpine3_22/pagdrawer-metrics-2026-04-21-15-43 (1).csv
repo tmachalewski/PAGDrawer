@@ -1,0 +1,2 @@
+nodes,edges,unique_cves,trivy_vuln_count,crossings_raw,crossings_normalized,crossings_per_edge,drawing_area,area_per_node,edge_length_cv
+65,122,8,14,379,0.9430,3.1066,3517700.25,54118.47,0.8048

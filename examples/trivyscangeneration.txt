@@ -1,5 +1,5 @@
 https://hub.docker.com/search?badges=official&type=image
-docker run --rm aquasec/trivy image --format json nginx:1.25-alpine > trivy-report.json
+docker run --rm aquasec/trivy image --format json nginx:1.25-alpine > trivy-report.json	//example command - not used in the dataset
 
 https://hub.docker.com/_/memcached/tags
 https://hub.docker.com/layers/library/memcached/trixie/images/sha256-14a8e0dca582269247d9148e01b5245b21dec2272071ca4f0de57bfe5da798ea
