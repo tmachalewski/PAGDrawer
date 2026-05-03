@@ -14,7 +14,7 @@ Extend the Statistics modal's CSV export with a parallel **JSON export** option.
 2. A **settings snapshot** describing the graph state at export time — granularity sliders, visibility toggles, CVE merge mode, environment filter, exploit-paths state, scan selection, etc.
 3. Bookkeeping metadata — timestamp, app version, source data identifier
 
-The CSV export is unchanged and remains the default for spreadsheet workflows. JSON is for programmatic post-processing (e.g., M28 corpus normalization), archival, and reproducibility.
+The CSV export is unchanged and remains the default for spreadsheet workflows. JSON is for programmatic post-processing, archival, and reproducibility.
 
 ---
 
@@ -43,6 +43,7 @@ The two formats coexist; the user picks per export.
   "schema_version": 1,
   "exported_at": "2026-05-03T21:42:11.000Z",
   "app_version": "2.1.0",
+  "git_sha": "fa9e45dc8a3b1e2f0c4d5a7b9e6f8a2c4b1d3e5f",
 
   "data_source": {
     "type": "trivy",
@@ -85,6 +86,31 @@ The two formats coexist; the user picks per export.
 ```
 
 When future metric work lands (per the sister plans), new keys appear under `metrics`. Schema version bumps only on **breaking** changes (renamed/removed keys), not additions.
+
+### Reproducibility — `git_sha` instead of `metric_version`
+
+Earlier drafts proposed a hand-maintained `metric_version` field that we'd bump whenever any metric algorithm changed. Replaced with `git_sha`: a build-time-injected commit hash of the code that produced the export. Two reasons:
+
+1. **Automatic.** No human has to remember to bump a number after fixing a bug.
+2. **Precise.** A `metric_version` of `"3"` doesn't tell you *which* commit of v3 you ran; the SHA does, and that commit is browsable on GitHub.
+
+**Injection mechanism**: a `vite.config.ts` snippet that runs `git rev-parse HEAD` at build time and exposes the result as `import.meta.env.VITE_GIT_SHA`. The frontend reads it once on app load and includes it in every JSON export.
+
+```typescript
+// vite.config.ts (sketch)
+import { execSync } from 'node:child_process';
+
+const gitSha = execSync('git rev-parse HEAD').toString().trim();
+
+export default defineConfig({
+  define: {
+    'import.meta.env.VITE_GIT_SHA': JSON.stringify(gitSha),
+  },
+  // ...
+});
+```
+
+Dev-mode caveat: in dev, the SHA is of the working tree's `HEAD`, even if uncommitted changes exist. We **do not** detect dirty state in this iteration; document it as a known limitation. Anyone publishing a paper figure should run on a clean tree.
 
 ---
 
@@ -250,19 +276,19 @@ If both metric plans land before this one, this plan's `metrics` field grows aut
 
 If this plan lands first, future metric additions just add new keys under `metrics`; the JSON schema remains v1.
 
-Effort: ~6 hours total — small enough to slot between phases of either sister plan, or to ship first as a foundation.
+Small enough to slot between phases of either sister plan, or to ship first as a foundation.
 
 ---
 
 ## Phasing
 
-Single phase, ~6 hours:
+Single phase, executed in this order:
 
-1. `settingsSnapshot.ts` + tests (~1.5 h)
-2. `metricsToJSON` + `downloadMetricsJSON` (~1.5 h)
-3. UI button + wiring (~1 h)
-4. Docs update + StatisticsModal.md schema reference (~1 h)
-5. Buffer / polish (~1 h)
+1. `vite.config.ts` SHA injection + a small helper exposing it in app code
+2. `settingsSnapshot.ts` + tests
+3. `metricsToJSON` + `downloadMetricsJSON`
+4. UI button + wiring
+5. Docs update + `StatisticsModal.md` schema reference
 
 End state: every Statistics-modal session can produce a self-describing JSON snapshot.
 
@@ -271,13 +297,14 @@ End state: every Statistics-modal session can produce a self-describing JSON sna
 ## Files Affected
 
 **New**:
-- `frontend/js/features/settingsSnapshot.ts` (~80 LOC)
-- `frontend/js/features/settingsSnapshot.test.ts` (~80 LOC)
+- `frontend/js/features/settingsSnapshot.ts`
+- `frontend/js/features/settingsSnapshot.test.ts`
 
 **Modified**:
-- `frontend/js/features/metrics.ts` (+~80 LOC: JSON serializer + types)
-- `frontend/js/features/metrics.test.ts` (+~50 LOC)
-- `frontend/js/ui/statistics.ts` (+~20 LOC: second button, click handler)
+- `frontend/vite.config.ts` (git SHA injection)
+- `frontend/js/features/metrics.ts` (JSON serializer + types)
+- `frontend/js/features/metrics.test.ts`
+- `frontend/js/ui/statistics.ts` (second export button, click handler)
 - `frontend/index.html` (+1 button)
 - `frontend/css/styles.css` (no change if reusing the CSV button styling)
-- `Docs/_domains/StatisticsModal.md` (+~40 LOC: JSON schema doc)
+- `Docs/_domains/StatisticsModal.md` (JSON schema doc)

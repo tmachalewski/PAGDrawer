@@ -9,9 +9,9 @@
 
 This roadmap sequences three daughter plans living in `Docs/Plans/`:
 
-1. **`JSON_Export_With_Settings.md`** — orthogonal export-format work. Adds 📄 Export JSON alongside the existing CSV, with a settings snapshot. ~6 h, single phase. No metric dependencies.
-2. **`Debug_Overlay_Visualizations.md`** — 10 visualization-friendly metrics (M2, M3, M5, M8, M9, M19, M20, M21, M24, M25). ~22 h, 5 internal phases.
-3. **`Paper_Evaluation_Metrics.md`** — 12 paper-priority metrics from `metric_proposals.md`'s "How I would prioritise" section (M1, M2, M11, M12, M14, M19, M20, M22, M24, M25, M26, M28). ~27 h, 4 internal phases.
+1. **`JSON_Export_With_Settings.md`** — orthogonal export-format work. Adds 📄 Export JSON alongside the existing CSV, with a settings snapshot and a build-time-injected `git_sha`. Single phase. No metric dependencies.
+2. **`Debug_Overlay_Visualizations.md`** — 10 visualization-friendly metrics (M2, M3, M5, M8, M9, M19, M20, M21, M24, M25). 5 internal phases.
+3. **`Paper_Evaluation_Metrics.md`** — 10 paper-priority metrics from `metric_proposals.md`'s "How I would prioritise" section, **minus M14 and M28 (deferred)**: M1, M2, M11, M12, M19, M20, M22, M24, M25, M26. 3 internal phases.
 
 The two metric plans **overlap on five metrics** (M2, M19, M20, M24, M25). Doing those once satisfies both. The roadmap below sequences phases so each metric is implemented exactly once.
 
@@ -24,9 +24,9 @@ A fourth document, **`metric_proposals.md`**, is the source-of-truth catalogue f
 | File in `Docs/Plans/` | Role |
 |-----------------------|------|
 | `metric_proposals.md` | Catalogue of 30 candidate metrics with formulas, complexity, sources, debug-overlay viability ratings, and paper-importance prioritisation |
-| `JSON_Export_With_Settings.md` | Format work — JSON exporter + settings snapshot |
-| `Debug_Overlay_Visualizations.md` | Implementation plan for 10 visualisable metrics + the new Debug Overlay modal |
-| `Paper_Evaluation_Metrics.md` | Implementation plan for 12 paper-priority metrics; CSV-only where overlay isn't viable |
+| `JSON_Export_With_Settings.md` | Format work — JSON exporter + settings snapshot + git SHA |
+| `Debug_Overlay_Visualizations.md` | Implementation plan for 10 visualisable metrics + the new Debug Overlay modal (with presets) |
+| `Paper_Evaluation_Metrics.md` | Implementation plan for 10 paper-priority metrics; CSV-only where overlay isn't viable |
 | `Master_Implementation_Roadmap.md` | **This file.** Single-pass ordered execution plan. |
 
 ---
@@ -45,50 +45,51 @@ Rows = metric. Columns = which daughter plan covers it.
 | M9  Aspect ratio | ✅ | — | Visual-only |
 | M11 NP_k | — | ✅ | Paper-only; CSV-only |
 | M12 Trustworthiness | — | ✅ | Paper-only; CSV-only |
-| M14 Reachability preservation | — | ✅ | Paper-only; CSV-only; needs backend `/api/graph/full` |
 | M19 Bridge contraction depth | ✅ | ✅ | Shared work; needs backend `chain_length` |
 | M20 ECR | ✅ | ✅ | Shared work |
 | M21 Group cardinality (generalised) | ✅ | — | Visual-only |
-| M22 Attribute compression ratio | — | ✅ | Paper-only; CSV-only |
+| M22 Attribute compression ratio | — | ✅ | Paper-only; CSV-only; needs `mergeKeys.ts` extraction |
 | M24 Column purity | ✅ | ✅ | Shared work |
 | M25 Type-pair crossings | ✅ | ✅ | Shared work |
-| M26 Edge-type distribution | — | ✅ | Paper-only; CSV-only |
-| M28 Visual clutter | — | ✅ | Paper-only; CSV-only; needs corpus-level post-processing |
+| M26 Edge-type distribution | — | ✅ | Paper-only; CSV-only; quoted JSON in cell |
 
-17 unique metrics in total; 5 shared between plans.
+15 unique metrics; 5 shared between plans. (M14 and M28 are deferred per the Paper plan; they appear on neither side.)
 
 ---
 
 ## Default sequencing — paper-essential first
 
-Optimised for: getting the paper-essential metrics into the CSV as fast as possible, while minimising rework. JSON export comes first because it's small and makes everything downstream cleaner.
+Optimised for: getting the paper-essential metrics into the CSV as fast as possible, while minimising rework. JSON export comes first because it makes downstream exports cleaner (and gives every metric the settings-snapshot capture for free).
 
-### Stage 0 — Foundation (~6 h)
+### Stage 0 — Foundation
 
 **Daughter plan:** `JSON_Export_With_Settings.md` (single phase)
 
-- Add `📄 Export JSON` button next to existing CSV button
+- Vite-injected `git_sha` build constant
 - New `gatherCurrentSettings()` helper
 - New `metricsToJSON` / `downloadMetricsJSON` in `metrics.ts`
+- Add 📄 Export JSON button next to existing CSV button
 - Tests + docs
 
 End state: every export is reproducible. Future metric additions land in both CSV and JSON automatically.
 
 ---
 
-### Stage 1 — Quick wins + modal scaffold (~3 h)
+### Stage 1 — Foundation: extraction + quick wins
 
 **Daughter plan:** `Debug_Overlay_Visualizations.md` Phase 1
 
+- **Extract** the existing 4 overlays from `statistics.ts` into a new `debugOverlay.ts` module (see "Existing-Overlay Extraction" in the Visualization plan)
+- New Debug Overlay Settings modal scaffold + preset row + per-overlay checkbox grid
+- Per-overlay state machine + localStorage persistence (`debugOverlayState_v1`)
 - M9 (aspect ratio label on bbox)
 - M21 (group cardinality badges, generalised across compound types)
-- New Debug Overlay Settings modal (per-overlay checkboxes for the existing 4 + future toggles)
 
-End state: the modal exists; existing 4 overlays are individually toggleable; M9 and M21 are in CSV + visible.
+End state: the modal exists; existing 4 overlays are individually toggleable; presets work; M9 and M21 are in CSV + visible.
 
 ---
 
-### Stage 2 — Crossings refinement (~4 h, shared between plans)
+### Stage 2 — Crossings refinement (shared between plans)
 
 **Daughter plans:** `Debug_Overlay_Visualizations.md` Phase 2 + `Paper_Evaluation_Metrics.md` Phase 1 partial
 
@@ -100,20 +101,17 @@ End state: both M2 and M25 are in CSV (paper benefit) and visualised (overlay be
 
 ---
 
-### Stage 3 — Paper-essential exclusives (~8 h)
+### Stage 3 — Stress (paper-essential exclusive)
 
-**Daughter plan:** `Paper_Evaluation_Metrics.md` Phase 1 (remaining)
+**Daughter plan:** `Paper_Evaluation_Metrics.md` Phase 1 partial
 
-- M1 Stress (~5 h, incl. APSP helper that M11 / M12 will reuse later)
-- M14 Reachability preservation (~3 h, incl. backend `/api/graph/full` endpoint)
+- M1 Stress, including an APSP helper that M11 / M12 will reuse later
 
-End state: the most-cited GD metric (M1) and the proof-validation metric (M14) are in CSV. **Body-of-paper evaluation table is now complete (M1, M2, M14, M20, M25).**
-
-> Wait — M20 hasn't shipped yet at this stage. Re-ordering: bump M20 ahead. See revised order in Stage 4.
+End state: M1 in the CSV. Body-of-paper set is now M1 + M2 + M25 in CSV; M20 ships next.
 
 ---
 
-### Stage 4 — Bridges and merges (~6 h, shared between plans)
+### Stage 4 — Bridges and merges (shared between plans)
 
 **Daughter plans:** `Debug_Overlay_Visualizations.md` Phase 3 + `Paper_Evaluation_Metrics.md` Phase 1 final + Phase 2 partial
 
@@ -121,61 +119,49 @@ End state: the most-cited GD metric (M1) and the proof-validation metric (M14) a
 - M19 (bridge contraction depth labels + scalars)
 - M20 (ECR computation + label addition)
 
-End state: both reduction mechanisms are visually quantified. **Body-of-paper set is now genuinely complete: M1, M2, M14, M20, M25 all in CSV.** M19, M22, M24 from the appendix set are next.
+End state: both reduction mechanisms are visually quantified. **Body-of-paper set is now complete in CSV: M1, M2, M20, M25.** M19 from the appendix set is also done as a side effect.
 
 ---
 
-### Stage 5 — Paper appendix essentials (~3.5 h)
+### Stage 5 — Paper appendix essentials (CSV-only)
 
 **Daughter plan:** `Paper_Evaluation_Metrics.md` Phase 2 (remaining after M19)
 
-- M22 Attribute compression ratio (CSV-only, ~1.5 h)
-- M26 Edge-type distribution (CSV-only, wide-string format, ~1 h)
-- M24 Column purity — already from Stage 6 below; pulled forward if it makes sense
+- M22 Attribute compression ratio (CSV-only) — includes extracting `mergeKeys.ts` from `cveMerge.ts` so M22 can use the merge key functions
+- M26 Edge-type distribution (CSV-only, **quoted JSON in cell**)
 
-End state: 3 of the 4 Paper Phase 2 metrics done.
+End state: 2 of the 3 remaining Paper Phase 2 metrics done. M24 is in Stage 6 (shared with overlay plan).
 
 ---
 
-### Stage 6 — Layout diagnostics (~5.5 h, shared between plans for M24)
+### Stage 6 — Layout diagnostics (M24 shared with paper plan)
 
 **Daughter plans:** `Debug_Overlay_Visualizations.md` Phase 4 + `Paper_Evaluation_Metrics.md` Phase 2 final
 
-- M3 Angular resolution arcs (~4 h, visual-only)
-- M24 Column purity (~1.5 h, shared — halo overlay + CSV)
+- M3 Angular resolution arcs (visual-only)
+- M24 Column purity (shared — halo overlay + CSV)
 
 End state: layout problems pop visually; M24 closes out Paper Phase 2.
 
 ---
 
-### Stage 7 — Topology preservation (~5 h, paper-only)
+### Stage 7 — Topology preservation (paper-only)
 
 **Daughter plan:** `Paper_Evaluation_Metrics.md` Phase 3
 
-- M11 NP_k (~3.5 h, reuses APSP from M1)
-- M12 Trustworthiness (~1.5 h, reuses APSP and ranks)
+- M11 NP_k (reuses APSP from M1)
+- M12 Trustworthiness (reuses APSP and ranks from M11)
 
-End state: dimension-reduction-style story is complete in CSV.
-
----
-
-### Stage 8 — Composite scalar (~2 h + post-processing)
-
-**Daughter plan:** `Paper_Evaluation_Metrics.md` Phase 4
-
-- M28 Visual clutter (~2 h frontend; computes raw components per snapshot)
-- New `scripts/compute_clutter_score.py` (~50 LOC) that reads exported JSONs from a corpus and adds the corpus-normalised `clutter_score` field
-
-End state: every paper-priority metric is in CSV + JSON. **Paper plan complete.**
+End state: dimension-reduction-style story is complete in CSV. **Paper plan complete.**
 
 ---
 
-### Stage 9 — Surface treatments (~4 h, visual-only)
+### Stage 8 — Surface treatments (visual-only)
 
 **Daughter plan:** `Debug_Overlay_Visualizations.md` Phase 5
 
-- M5 Edge length deviation tint (~2 h; defer if hard)
-- M8 Bbox compactness shading (~2 h)
+- M5 Edge length deviation tint (defer if hard)
+- M8 Bbox compactness shading
 
 End state: every visualisation-friendly metric is implemented. **Visualisation plan complete.**
 
@@ -183,26 +169,21 @@ End state: every visualisation-friendly metric is implemented. **Visualisation p
 
 ## Stage table
 
-| Stage | What | Daughter plans | Hours | Cumulative |
-|-------|------|----------------|------:|-----------:|
-| 0 | JSON export + settings snapshot | JSON_Export_With_Settings | 6 | 6 |
-| 1 | Modal scaffold + M9 + M21 | Debug_Overlay (P1) | 3 | 9 |
-| 2 | M2 + M25 (crossings refinement) | Debug_Overlay (P2) + Paper (P1) | 4 | 13 |
-| 3 | M1 + M14 (paper-essential exclusives) | Paper (P1) | 8 | 21 |
-| 4 | M19 + M20 (bridges + merges, with backend) | Debug_Overlay (P3) + Paper (P1/P2) | 6 | 27 |
-| 5 | M22 + M26 (CSV-only paper appendix) | Paper (P2) | 3.5 | 30.5 |
-| 6 | M3 + M24 (layout diagnostics) | Debug_Overlay (P4) + Paper (P2) | 5.5 | 36 |
-| 7 | M11 + M12 (topology preservation) | Paper (P3) | 5 | 41 |
-| 8 | M28 (composite + post-processing) | Paper (P4) | 2 | 43 |
-| 9 | M5 + M8 (surface treatments) | Debug_Overlay (P5) | 4 | 47 |
+| Stage | What | Daughter plans |
+|-------|------|----------------|
+| 0 | JSON export + settings snapshot + git SHA | JSON_Export_With_Settings |
+| 1 | Existing-overlay extraction + modal scaffold + presets + M9 + M21 | Debug_Overlay (P1) |
+| 2 | M2 + M25 (crossings refinement) | Debug_Overlay (P2) + Paper (P1) |
+| 3 | M1 (stress, with APSP helper) | Paper (P1) |
+| 4 | M19 + M20 (bridges + merges, with backend) | Debug_Overlay (P3) + Paper (P1/P2) |
+| 5 | M22 + M26 (CSV-only paper appendix; includes `mergeKeys.ts` extraction) | Paper (P2) |
+| 6 | M3 + M24 (layout diagnostics) | Debug_Overlay (P4) + Paper (P2) |
+| 7 | M11 + M12 (topology preservation) | Paper (P3) |
+| 8 | M5 + M8 (surface treatments) | Debug_Overlay (P5) |
 
-**Total: ~47 h.** Sum of daughter plans without overlap dedup would be 6 + 22 + 27 = 55 h; the roadmap saves ~8 h by sharing the 5 overlapping metrics.
-
-Body-of-paper set (M1, M2, M14, M20, M25) is complete after **Stage 4 (~27 h)**.
-
-Paper plan complete after **Stage 8 (~43 h)**.
-
-Visualisation plan complete after **Stage 9 (~47 h)**.
+**Body-of-paper set complete after Stage 4** (M1, M2, M20, M25 in CSV).
+**Paper plan complete after Stage 7.**
+**Visualization plan complete after Stage 8.**
 
 ---
 
@@ -214,21 +195,19 @@ The default above optimises for "paper-essential CSV columns first." If you want
 
 Run all of `Debug_Overlay_Visualizations.md` before any paper-only metrics. Stage order:
 
-0 → Visualisation Phases 1–5 (~22 h) → Paper-only metrics (M1, M11, M12, M14, M22, M26, M28; ~17.5 h)
+0 → Visualisation Phases 1–5 → Paper-only metrics (M1, M11, M12, M22, M26)
 
-Result: visualisation plan done at ~28 h; paper plan done at ~47 h.
+Result: visualisation plan done before paper plan starts.
 
 ### "Cheapest first (build momentum)"
 
-Sort all stages by individual hour cost ascending:
-
-JSON (6) → M21 (1) → M22 (1.5) → M24 (1.5) → M9 (≈ free, in M9-M21 stage) → M26 (1) → M2+M25 (4) → M28 (2) → M5 (2) → M8 (2) → M3 (4) → M11 (3.5) → M12 (1.5) → M19 (3) → M20 (3) → M14 (3) → M1 (5)
+Sort by individual metric size, smallest first: JSON → M21 → M22 → M24 → M9 → M26 → M2+M25 → M5 → M8 → M3 → M11+M12 → M19+M20 → M1.
 
 Quickest visible progress; least suited to a paper deadline.
 
 ### "Backend-first"
 
-Bundle all backend work (M14 endpoint + M19 chain_length) into Stage 1, before any frontend metric work. Buys you a stable backend contract before iterating on the frontend.
+Bundle the only backend work (M19 chain_length) into Stage 1, before any frontend metric work. Buys you a stable backend contract before iterating on the frontend.
 
 ---
 
@@ -238,11 +217,14 @@ These apply across stages and should be handled consistently throughout:
 
 | Concern | How |
 |---------|-----|
-| **Test count growth** | Backend: 381 → ~395 (M14 endpoint, M19 chain_length). Frontend: 159 → ~210. Each stage adds ~5–15 tests. |
+| **Test count growth** | Backend grows by a few tests (M19 chain_length). Frontend grows substantially with each stage. Each stage adds tests for its metrics. |
 | **CSV column ordering** | Append new columns at the end of the existing header. Document the order in `Docs/_domains/StatisticsModal.md` and `Docs/_domains/DrawingQualityMetrics.md`. |
 | **JSON schema versioning** | Stay at v1 throughout — additions are non-breaking per the JSON plan. Bump to v2 only on rename/remove. |
+| **Reproducibility** | Every JSON export carries the `git_sha` of the code that produced it. No manual `metric_version` bumping required. |
+| **M26 CSV cell format** | Quoted JSON object, RFC 4180-compliant. Document the convention so users opening with Excel know what they're looking at. |
+| **Extraction prerequisite** | Stage 1 starts by moving the existing 4 overlays into the new `debugOverlay.ts` module before adding any new ones. Every subsequent stage's overlay work assumes the module exists. |
 | **Documentation** | After each stage, update `Docs/_domains/StatisticsModal.md` and `Docs/_domains/DrawingQualityMetrics.md`. Daily note per stage: `Docs/_dailyNotes/YYYY-MM-DD-HH-mm-Stage-N-...md`. |
-| **Branching** | One umbrella branch `feature/metrics-roadmap`; sub-branches per stage merging back into umbrella; umbrella merges to `main` after the paper plan completes (Stage 8) — visualisation-only Stage 9 can ship later. |
+| **Branching** | One umbrella branch `feature/metrics-roadmap`; sub-branches per stage merging back into umbrella. Umbrella merges to `main` after Stage 7 (Paper plan complete). Stage 8 ships separately on a follow-up branch `feature/visualization-surface` after the umbrella merge — so the visual-only surface treatments don't block the paper-essential merge. |
 | **Per-stage acceptance** | Each stage delivers a green test suite, an updated CSV column set, and an updated JSON schema. No half-shipped stages. |
 
 ---
@@ -252,7 +234,8 @@ These apply across stages and should be handled consistently throughout:
 - The daughter plans remain authoritative for per-metric implementation detail. This file only sequences them.
 - `metric_proposals.md` is unchanged; it stays the catalogue.
 - The 13 ❌ metrics from `metric_proposals.md` remain out of scope (per both metric plans' "Out of Scope" sections).
-- The 7 ⚠️ metrics that were dropped from both plans (M1 visual variant, M4, M7, M11/M12 interactive overlays, M13, M27) remain future work.
+- M14 (reachability preservation) and M28 (visual clutter) — both originally in the Paper plan — are deferred. The Paper plan's "Deferred for now" section explains why.
+- The 7 ⚠️ metrics that were dropped from the Visualization plan (M1 visual variant, M4, M7, M11/M12 interactive overlays, M13, M27) remain future work.
 
 ---
 
@@ -261,9 +244,10 @@ These apply across stages and should be handled consistently throughout:
 After each stage, the project should review:
 
 1. **Is the paper deadline still on track?** If not, drop later stages from scope; the body-of-paper set is complete after Stage 4.
-2. **Are visualisations adding the value we expected?** If overlays clutter rather than clarify, defer Stage 9.
+2. **Are visualisations adding the value we expected?** If overlays clutter rather than clarify, defer Stage 8.
 3. **Do new metrics correlate with each other?** If yes, the paper might collapse some columns; if no, they all stay.
-4. **Has the CSV become unwieldy?** Currently 10 columns; after full roadmap ≈ 25. If reviewers complain, a "summary CSV" with just the body-of-paper metrics could be a separate small plan.
+4. **Has the CSV become unwieldy?** Currently 10 columns; after full roadmap will have grown substantially. If reviewers complain, a "summary CSV" with just the body-of-paper metrics could be a separate small plan.
+5. **Should M14 / M28 be revived?** Deferred per the Paper plan. Reconsider when the paper draft is read by an outside reviewer who flags the gap.
 
 ---
 
@@ -272,25 +256,23 @@ After each stage, the project should review:
 Aggregated from the three daughter plans:
 
 **Frontend modified throughout**:
-- `frontend/js/features/metrics.ts` (computation + types for 17 metrics)
+- `frontend/js/features/metrics.ts` (computation + types for 15 metrics)
 - `frontend/js/features/metrics.test.ts`
-- `frontend/js/ui/statistics.ts` (table rows + buttons)
-- `frontend/js/ui/debugOverlay.ts` (NEW — extracted overlay logic + new toggles)
+- `frontend/js/ui/statistics.ts` (table rows + JSON button)
+- `frontend/js/ui/debugOverlay.ts` (NEW — extracted overlay logic + new toggles + presets)
 - `frontend/js/features/settingsSnapshot.ts` (NEW — Stage 0)
+- `frontend/js/features/mergeKeys.ts` (NEW — Stage 5; extracted from `cveMerge.ts`)
 - `frontend/index.html`, `frontend/css/styles.css`
-- `frontend/js/services/api.ts` (M14 full-graph endpoint)
+- `frontend/vite.config.ts` (Stage 0 — git SHA injection)
 - `frontend/js/config/constants.ts` (new pseudo-element styles for M3, M24, etc.)
 
-**Backend modified at Stages 3–4**:
+**Backend modified at Stage 4**:
 - `src/graph/builder.py` (M19 chain_length recording)
-- `src/viz/app.py` (M14 `/api/graph/full` endpoint, M19 chain_length pass-through)
-- `tests/test_builder.py`, `tests/test_api_endpoints.py`
-
-**New utility script (Stage 8)**:
-- `scripts/compute_clutter_score.py`
+- `src/viz/app.py` (M19 chain_length pass-through)
+- `tests/test_builder.py` (M19 unit test)
 
 **Documentation (continuously)**:
 - `Docs/_domains/StatisticsModal.md`
 - `Docs/_domains/DrawingQualityMetrics.md`
 - `Docs/_dailyNotes/...` (per stage)
-- `Docs/_projectStatus/...` (after Stage 4 and Stage 8 — version bump opportunities)
+- `Docs/_projectStatus/...` (after Stage 4 and Stage 7 — version bump opportunities)
