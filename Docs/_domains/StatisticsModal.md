@@ -149,6 +149,14 @@ All four are added as Cytoscape pseudo-nodes/edges with custom `type` values (`C
 
 The button toggles between `🔍 Show debug overlay` and `❌ Hide debug overlay` based on whether any debug elements currently exist. State is kept in `debugElementIds[]` in `statistics.ts`.
 
+Dark-theme debug overlay on a real Node.js Alpine scan:
+
+![Debug overlay (dark theme)](../../examples/_UI/UI-Debug%20Screenshot%202026-04-21%20185015.jpg)
+
+Same overlay in the light theme:
+
+![Debug overlay (light theme)](../../examples/_UI/UI-Debug-Light%20Screenshot%202026-04-21%20185347.jpg)
+
 ---
 
 ## Why a separate modal?
