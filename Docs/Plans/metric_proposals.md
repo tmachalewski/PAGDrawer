@@ -1,6 +1,6 @@
 # Metric Proposals for the GD 2026 Submission
 
-This document collects candidate metrics you could compute alongside the five you already report ($N$, $E$, $C/E$, $A/N$, $\mathrm{CV}_\ell$). Each entry gives the formal definition, a computation algorithm, asymptotic complexity, the original source, and a note on which of your three mechanisms it most directly speaks to. Pick the ones that strengthen your story; keep the rest in an appendix as a richer characterisation of the layouts.
+This document collects candidate metrics you could compute alongside the ten the Statistics modal already exports per snapshot: `nodes`, `edges`, `unique_cves`, `trivy_vuln_count`, `crossings_raw`, `crossings_normalized` (Purchase 2002), `crossings_per_edge` ($C/E$), `drawing_area`, `area_per_node` ($A/N$), and `edge_length_cv` ($\mathrm{CV}_\ell$). Each entry gives the formal definition, a computation algorithm, asymptotic complexity, the original source, and a note on which of your three mechanisms it most directly speaks to. Pick the ones that strengthen your story; keep the rest in an appendix as a richer characterisation of the layouts.
 
 I have organised the metrics into six families: layout-aesthetic metrics that the graph-drawing community has used for decades, distance-and-topology preservation metrics from the MDS / dimension-reduction tradition, information-preservation metrics that match the soundness invariants in your propositions, mechanism-specific metrics you would essentially own, type-aware metrics that exploit your heterogeneous-DAG abstraction, and visual-density/clutter metrics that bridge the objective and the perceptual.
 
@@ -21,6 +21,18 @@ Before computing any metric, prepare these once per layout snapshot:
 **On segment intersection.** For your graph sizes (under ~6{,}000 edges) brute-force pairwise segment intersection in $O(|E|^2)$ is fast enough and simpler to implement than Bentley-Ottmann. In Python, `shapely.geometry.LineString` plus `shapely.STRtree` for spatial pruning gets you to roughly $O(|E| \cdot \log |E|)$ in practice with a few lines of code. Reserve a true sweep-line implementation for graphs above $\sim 100{,}000$ edges. The output should be a list of triples `(e1, e2, point)` and you should preserve the edge-type pair `(\tau_E(e_1), \tau_E(e_2))` alongside it for M25.
 
 For polyline-rendered edges (Cytoscape.js with bend points), treat each polyline as a sequence of straight segments and compute crossings between segments rather than between endpoint-to-endpoint chords. The dagre default in your prototype uses straight-line edges, so endpoint-to-endpoint is correct as long as you do not switch renderers.
+
+---
+
+## Statistical Reporting Convention
+
+The evaluation runs across $\sim 7$ Docker images $\times$ $6$ reduction steps = $42$ (graph, step) cells per metric. Some metrics will be noisy across images (their value depends as much on the underlying graph as on the reduction). Decide a convention up front and apply it uniformly:
+
+- **Per-step aggregation across images**: report **mean ± std** across the image corpus per (step, metric) cell. Be aware that scans range from $\sim 60$ to $\sim 830$ nodes, so a single outlier image can pull the mean noticeably; flag any cell where one image is more than $2\sigma$ from the mean and discuss it in prose.
+- **Per-image trajectories**: when reporting a single image's progression across steps, plot the raw values; they are not statistical samples and don't need error bars.
+- **For metrics expected to be $\sim$constant across reduction steps** (the empirical-validation metrics M14, M15, M16): report whether the value is exactly $1$ for every cell. If not, table the deviations explicitly.
+
+Each metric definition below ends with a "Reporting" line indicating whether per-image-spread reporting matters; absence of that line means the metric varies enough between images that mean ± std is the default. Mechanism-specific metrics (M19–M23) are particularly noisy across images because they depend on the input scan's structure (attribute homogeneity, chain depth, type distribution) — call those out explicitly.
 
 ---
 
@@ -51,6 +63,8 @@ $$\mathrm{stress}(P) = \sum_{i < j} w_{ij} \, (\|p_i - p_j\| - d_{ij})^2$$
 
 **What "good" looks like.** Lower is better. Stress per *summed* pair (i.e., divided by the number of pairs actually included in the sum, not $\binom{|V|}{2}$) is the size-normalised variant; report this for cross-graph comparison along with the count of excluded unreachable pairs. Using $\binom{|V|}{2}$ as the denominator would deflate the score on disconnected graphs.
 
+**Reporting.** Mean ± std across images per step. The size-normalised per-pair variant is mandatory for cross-image aggregation; raw stress is dominated by graph size and not comparable.
+
 ---
 
 ### M2. Crossing-Angle Metrics
@@ -79,6 +93,8 @@ The absolute value on both arguments folds the result into $[0, \pi/2]$ regardle
 
 **What "good" looks like.** Higher mean is better; closer to $\pi/2$ is the ideal. Right-angle ratio above ~70% is considered good.
 
+**Reporting.** Mean ± std across images per step for the mean angle; report the *minimum* angle (across the corpus) separately rather than aggregating it — a single very-acute crossing matters more than the average.
+
 ---
 
 ### M3. Angular Resolution at Nodes
@@ -105,7 +121,7 @@ A normalised variant divides each $\alpha_i$ by the optimal $2\pi/k$ before taki
 
 Measures alignment of edges with the canonical horizontal and vertical axes. Especially relevant for layered layouts where you want edges to flow cleanly between layers.
 
-**Formula.** Compute each edge's geometric angle $\phi_e \in [0, 2\pi)$ via $\arctan_2$, then fold into $[0, \pi/2)$ by $\theta_e = \phi_e \bmod (\pi/2)$. The folded angle measures how far the edge is from the nearest axis (horizontal or vertical). Define:
+**Formula.** Compute each edge's geometric angle $\phi_e \in [0, 2\pi)$ via $\arctan_2$, then fold into $[0, \pi/2)$ by $\theta_e = \phi_e \bmod (\pi/2)$. The folded angle $\theta_e$ is the edge's angle from the horizontal axis modulo a quarter turn; the *distance to the nearest axis* (horizontal or vertical) is $\min(\theta_e, \pi/2 - \theta_e) \in [0, \pi/4]$, with $0$ meaning axis-aligned and $\pi/4$ meaning diagonal. Define:
 
 $$\mathrm{orth}(e) = 1 - \frac{\min(\theta_e, \pi/2 - \theta_e)}{\pi/4}$$
 
@@ -316,6 +332,8 @@ $$\mathrm{RP}(G, G') = \frac{|\{(u,v) : (u \rightsquigarrow_G v) \Leftrightarrow
 
 **Why relevant.** A 100% rate (which your proof predicts) is a one-table addition that closes the gap between proof and implementation. Reviewers love empirically-validated theory. If you find rate < 100%, it's a bug in the implementation.
 
+**Reporting.** Expected to be exactly $1.0$ on every (image, step) cell. State this explicitly and table any deviations rather than aggregating with mean ± std.
+
 ---
 
 ### M15. Path-Length Preservation
@@ -336,6 +354,8 @@ $$\mathrm{PLP}(G, G') = \frac{1}{K}\sum_{i=1}^{K} \mathbb{1}\!\left[d^G_{u_i,v_i
 
 **Choice of $K$.** Use $K = \min(1000, |V'|^2)$ for typical reporting. For graphs where $|V'| < 32$ (so $|V'|^2 < 1000$), exhaustive enumeration is cheaper than sampling.
 
+**Reporting.** Same convention as M14: expected to be exactly $1.0$ on every cell. Table deviations rather than aggregating.
+
 ---
 
 ### M16. Typed Out-Signature Preservation Rate
@@ -351,6 +371,8 @@ $$\mathrm{TOSP}(G, G') = \frac{|\{(p_j, v) : v \in G_j, \mathrm{outsig}_{G'}(p_j
 **Complexity.** $O(|V_i| \cdot \Delta)$ where $\Delta$ is the maximum out-degree.
 
 **Why relevant.** Same value as M14: validates the proof empirically. 100% expected.
+
+**Reporting.** Same as M14 / M15: expected to be exactly $1.0$ on every cell. Table deviations.
 
 ---
 
@@ -402,6 +424,8 @@ Characterises how much of the visible graph is synthetic versus retained.
 
 **Why relevant.** A reader needs to know whether a typical bridge represents one collapsed node or a chain of five. High MCD with high BEP means the visible graph is heavily synthetic and the bridge-edge colour cue is doing serious work.
 
+**Reporting.** Highly noisy across images — depends on the input scan's chain depth and the user's hide selection. Report mean ± std for both BEP and MCD per step; consider also reporting min and max as the spread is wide.
+
 ---
 
 ### M20. Edge Consolidation Ratio (Per Compound Parent)
@@ -425,15 +449,19 @@ ECR $\ge 1$ always; ECR $= 1$ means no consolidation (each member contributed a 
 
 **Why relevant.** Reports a per-group compression factor. Histogram of ECR values across compound parents in a single image reveals whether the gain is concentrated in a few large groups or distributed.
 
+**Reporting.** ECR is a per-parent value, so for each (image, step) cell you get a *distribution*, not a scalar. Recommendation: per cell, report the **mean ECR weighted by group size** (so a 50-member group with ECR = 30 dominates a 2-member group with ECR = 2). Then aggregate that weighted mean across images per step using ordinary mean ± std. Skipping the size-weighting hides where the consolidation actually pays off.
+
 ---
 
 ### M21. Group Cardinality Distribution
 
 Companion to ECR. Reports the size of compound parents.
 
-**Formula.** Histogram of $\{|G_j| : j = 1, \dots, m\}$. Summary statistics to report: count of singletons ($|G_j| = 1$), mean group size, median, max, and (when comparing across images) Gini coefficient of the size distribution.
+**Formula.** Histogram of $\{|G_j| : j = 1, \dots, m\}$. Summary statistics to report: count of singletons ($|G_j| = 1$), mean group size, std, max, and (when comparing across images) Gini coefficient of the size distribution.
 
 **Why relevant.** A single histogram per image reveals whether your merge produces many small groups (low cohesion) or few large groups (high cohesion). Combined with ECR, this characterises the merge mode.
+
+**Reporting.** A distribution per cell. Aggregate by reporting the **largest group size** and the **fraction of singletons** as scalar summaries — these are the two numbers an analyst actually wants. Mean ± std across images per step for each.
 
 ---
 
@@ -453,6 +481,8 @@ ACR ranges over $[1/|V_i|, 1]$. ACR $= 1$ means every node has a unique attribut
 
 **Why relevant.** Reports the structural compressibility of the input. Across your seven Docker images, this should correlate with how much the merge step contributes to total reduction.
 
+**Reporting.** Per-image scalar (one ACR per type per image). Don't aggregate across images — instead present as a small table (image × type) and visually correlate with achieved reduction. The point of this metric is the cross-image *spread*, not its central tendency.
+
 ---
 
 ### M23. Slider-Position-vs-Reduction Curve (Type-Zoom Efficiency)
@@ -464,6 +494,8 @@ Each per-type slider's effect, plotted as a curve.
 **Algorithm.** Run the slider mechanism at each pivot position; record metrics.
 
 **Why relevant.** Tells the analyst (and reviewer) which slider gives the most readability improvement per granularity step. This is a unique-to-your-paper analysis since nobody else has per-type sliders.
+
+**Reporting.** This is a *curve* per (image, type) — per-image spread is the whole point. Plot all images as faint lines with a bold mean line per type per pivot position (and ± std as a shaded band); do not collapse to a single number per cell.
 
 ---
 
@@ -525,7 +557,7 @@ ETD reports the share of each type by count; ETL by total ink (length).
 
 Coefficient of variation of node counts across the layout's layers. In your schema each type maps to one layer ($\lambda(T_i)$ is bijective up to back-edges), so layers and types coincide and this metric is equivalent to "type-population balance."
 
-**Formula.** Let $n_\ell$ be the number of nodes in layer $\ell$, where $\ell$ ranges over the $L$ layers in the layout (in your case $L = 6$: attacker, host, software, vulnerability, weakness, impact, state, plus the bridge node level if present). Then:
+**Formula.** Let $n_\ell$ be the number of nodes in layer $\ell$, where $\ell$ ranges over the $L$ layers in the layout. In PAGDrawer's schema $L = 7$ (ATTACKER, HOST, CPE, CVE, CWE, TI, VC), or $L = 8$ if the BRIDGE pseudo-layer is included (`getColumnPositions()` assigns it rank 7). Pick one convention and apply it across all reported numbers; the recommendation is $L = 7$ — exclude the bridge from balance because there is at most one BRIDGE node and including it skews $\sigma$ downwards. Then:
 
 $$\mathrm{LB}(G) = \frac{\sigma(n_1, \dots, n_L)}{\mu(n_1, \dots, n_L)}$$
 
@@ -547,11 +579,15 @@ Bridge between objective measurements and perceived complexity. Useful for setti
 
 Quantifies "how busy" the drawing looks.
 
-**Formula sketch.** Bertini and Santucci 2004 define clutter as the inverse of the perceptible-pattern density. A simple proxy for graphs: clutter increases with $|E|$, with edge crossings, with edge length variance, and with node overlap; it decreases with bounding-box area. Several composite formulas exist; the simplest:
+**Formula sketch.** Bertini and Santucci 2004 define clutter as the inverse of the perceptible-pattern density. A simple proxy for graphs: clutter increases with $|E|$, with edge crossings, with edge length variance, and with node overlap; it decreases with bounding-box area.
 
-$$\mathrm{CLUT}(G) = \alpha \cdot \frac{|E|}{A_{\mathrm{bbox}}} + \beta \cdot \frac{|X|}{|E|} + \gamma \cdot \frac{\sigma_\ell}{\mu_\ell}$$
+The reportable formula uses each component normalised to $[0, 1]$ across the image corpus, then averaged with equal weights:
 
-with weights $\alpha, \beta, \gamma$ to be calibrated. Note the units: the first term has units of inverse area, the second and third are dimensionless. The weights must absorb this difference (e.g., $\alpha$ has units of area). A practical convention: normalise each component to $[0, 1]$ across your image corpus before weighting, then use $\alpha = \beta = \gamma = 1/3$ for an unweighted average.
+$$\mathrm{CLUT}(G) = \frac{1}{3}\Big[\, \widetilde{ED}(G) + \widetilde{C/E}(G) + \widetilde{\mathrm{CV}_\ell}(G) \,\Big]$$
+
+where $\widetilde{X}(G) = (X(G) - \min_{G' \in \mathcal{C}} X(G')) / (\max_{G' \in \mathcal{C}} X(G') - \min_{G' \in \mathcal{C}} X(G'))$ is the min-max normalisation across the image corpus $\mathcal{C}$, and the three components are edge density $|E|/A_{\mathrm{bbox}}$, crossings-per-edge $|X|/|E|$, and edge-length CV $\sigma_\ell/\mu_\ell$.
+
+[^clut-raw]: The unnormalised composite $\alpha \cdot |E|/A_{\mathrm{bbox}} + \beta \cdot |X|/|E| + \gamma \cdot \sigma_\ell/\mu_\ell$ with arbitrary weights is dimensionally inconsistent (the first term has units of inverse area, the others are dimensionless). The weights would have to absorb this difference. The min-max normalisation makes all three terms dimensionless before weighting and removes the calibration burden.
 
 **Source.** Bertini and Santucci 2004 "Quality metrics for 2D scatterplot graphics: Automatically reducing visual clutter" (general visualisation) and Rosenholtz et al. 2007 "Measuring visual clutter" (vision science). Adapted for graphs in various GD papers.
 
