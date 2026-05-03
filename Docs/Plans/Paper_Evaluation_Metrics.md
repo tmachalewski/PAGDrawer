@@ -18,7 +18,7 @@ Implement **10 metrics** from the recommendation set in `metric_proposals.md` §
 - **Body-of-paper** (the "if you can implement five" tier, **minus M14 deferred**): M1, M2, M20, M25
 - **Appendix-only**: M11, M12, M19, M22, M24, M26
 
-Every metric ends up as a CSV column. Visualizations are added only where they overlap with the sister plan; otherwise the metric is **CSV-only** and inspected as a number in the Statistics modal.
+Every metric ends up as a CSV column. Visualizations are added only where they overlap with the sister plan; otherwise the metric is **export-only** and inspected as a number in the Statistics modal.
 
 ---
 
@@ -42,7 +42,7 @@ These should be revisited after Phase 3 lands. Excluded from the start per `metr
 | 1 | Scope: 10 metrics — M1, M2, M11, M12, M19, M20, M22, M24, M25, M26. | Mirrors the paper-importance prioritization in `metric_proposals.md`, minus M14 and M28 (deferred). |
 | 2 | All computation in the browser (`frontend/js/features/metrics.ts`). | Same rationale as the sister plan; metrics modal already runs in the browser. |
 | 3 | Every metric appears in the CSV. Visualizations only where the sister plan covers them. | The paper consumes CSV; overlays are bonus, not a requirement. |
-| 4 | M11 and M12 (k-NN preservation, trustworthiness) are CSV-only — no per-node interactive overlay in this plan. | Per-node overlays require interaction work that's deferred to a future plan. |
+| 4 | M11 and M12 (k-NN preservation, trustworthiness) are export-only — no per-node interactive overlay in this plan. | Per-node overlays require interaction work that's deferred to a future plan. |
 | 5 | Implementation order: body metrics first (M1 → M2 → M20 → M25), then appendix metrics (M19 → M24 → M26 → M22 → M11 → M12). | Body metrics unblock the paper; appendix metrics polish it. |
 | 6 | Backend changes only for M19 (chain_length). | Minimize backend churn. |
 | 7 | M1 Stress uses BFS-based APSP for unweighted graphs (matches PAGDrawer's edge model). | Dijkstra unnecessary; BFS is simpler and faster. |
@@ -62,9 +62,9 @@ Metrics that appear in **both** plans — work done in either plan satisfies bot
 | M24 Column purity | Phase 4 | Same |
 | M25 Type-pair crossings | Phase 2 | Same |
 
-If both plans run, these five are implemented once. If only this plan runs, the sister-plan visualization for these five is dropped (CSV-only here).
+If both plans run, these five are implemented once. If only this plan runs, the sister-plan visualization for these five is dropped (export-only here).
 
-Metrics **unique to this plan** (no overlay needed; CSV-only):
+Metrics **unique to this plan** (no overlay needed; export-only):
 
 - M1 Stress
 - M11 Neighborhood preservation (k-NN overlap)

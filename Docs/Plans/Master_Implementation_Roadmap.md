@@ -26,7 +26,7 @@ A fourth document, **`metric_proposals.md`**, is the source-of-truth catalogue f
 | `metric_proposals.md` | Catalogue of 30 candidate metrics with formulas, complexity, sources, debug-overlay viability ratings, and paper-importance prioritisation |
 | `JSON_Export_With_Settings.md` | Format work — JSON exporter + settings snapshot + git SHA |
 | `Debug_Overlay_Visualizations.md` | Implementation plan for 10 visualisable metrics + the new Debug Overlay modal (with presets) |
-| `Paper_Evaluation_Metrics.md` | Implementation plan for 10 paper-priority metrics; CSV-only where overlay isn't viable |
+| `Paper_Evaluation_Metrics.md` | Implementation plan for 10 paper-priority metrics; export-only where overlay isn't viable |
 | `Master_Implementation_Roadmap.md` | **This file.** Single-pass ordered execution plan. |
 
 ---
@@ -37,21 +37,21 @@ Rows = metric. Columns = which daughter plan covers it.
 
 | Metric | Visualization plan | Paper plan | Notes |
 |--------|:------------------:|:----------:|-------|
-| M1  Stress | — | ✅ | Paper-only; CSV-only |
+| M1  Stress | — | ✅ | Paper-only; export-only |
 | M2  Crossing angle | ✅ | ✅ | Shared work |
 | M3  Angular resolution | ✅ | — | Visual-only |
 | M5  Edge length tinting | ✅ | — | Visual-only |
 | M8  Bbox compactness | ✅ | — | Visual-only |
 | M9  Aspect ratio | ✅ | — | Visual-only |
-| M11 NP_k | — | ✅ | Paper-only; CSV-only |
-| M12 Trustworthiness | — | ✅ | Paper-only; CSV-only |
+| M11 NP_k | — | ✅ | Paper-only; export-only |
+| M12 Trustworthiness | — | ✅ | Paper-only; export-only |
 | M19 Bridge contraction depth | ✅ | ✅ | Shared work; needs backend `chain_length` |
 | M20 ECR | ✅ | ✅ | Shared work |
 | M21 Group cardinality (generalised) | ✅ | — | Visual-only |
-| M22 Attribute compression ratio | — | ✅ | Paper-only; CSV-only; needs `mergeKeys.ts` extraction |
+| M22 Attribute compression ratio | — | ✅ | Paper-only; export-only; needs `mergeKeys.ts` extraction |
 | M24 Column purity | ✅ | ✅ | Shared work |
 | M25 Type-pair crossings | ✅ | ✅ | Shared work |
-| M26 Edge-type distribution | — | ✅ | Paper-only; CSV-only; quoted JSON in cell |
+| M26 Edge-type distribution | — | ✅ | Paper-only; export-only; quoted JSON in cell |
 
 15 unique metrics; 5 shared between plans. (M14 and M28 are deferred per the Paper plan; they appear on neither side.)
 
@@ -123,12 +123,12 @@ End state: both reduction mechanisms are visually quantified. **Body-of-paper se
 
 ---
 
-### Stage 5 — Paper appendix essentials (CSV-only)
+### Stage 5 — Paper appendix essentials (export-only)
 
 **Daughter plan:** `Paper_Evaluation_Metrics.md` Phase 2 (remaining after M19)
 
-- M22 Attribute compression ratio (CSV-only) — includes extracting `mergeKeys.ts` from `cveMerge.ts` so M22 can use the merge key functions
-- M26 Edge-type distribution (CSV-only, **quoted JSON in cell**)
+- M22 Attribute compression ratio (export-only) — includes extracting `mergeKeys.ts` from `cveMerge.ts` so M22 can use the merge key functions
+- M26 Edge-type distribution (export-only, **quoted JSON in cell**)
 
 End state: 2 of the 3 remaining Paper Phase 2 metrics done. M24 is in Stage 6 (shared with overlay plan).
 
@@ -176,7 +176,7 @@ End state: every visualisation-friendly metric is implemented. **Visualisation p
 | 2 | M2 + M25 (crossings refinement) | Debug_Overlay (P2) + Paper (P1) |
 | 3 | M1 (stress, with APSP helper) | Paper (P1) |
 | 4 | M19 + M20 (bridges + merges, with backend) | Debug_Overlay (P3) + Paper (P1/P2) |
-| 5 | M22 + M26 (CSV-only paper appendix; includes `mergeKeys.ts` extraction) | Paper (P2) |
+| 5 | M22 + M26 (export-only paper appendix; includes `mergeKeys.ts` extraction) | Paper (P2) |
 | 6 | M3 + M24 (layout diagnostics) | Debug_Overlay (P4) + Paper (P2) |
 | 7 | M11 + M12 (topology preservation) | Paper (P3) |
 | 8 | M5 + M8 (surface treatments) | Debug_Overlay (P5) |
