@@ -3,7 +3,9 @@
 **Created:** 2026-05-03-19-42
 **Branch (proposed):** `feature/debug-overlays`
 **Source plan:** `Docs/Plans/metric_proposals.md` (ratings ✅/⚠️/❌ per metric)
-**Sister plan:** `Docs/Plans/Paper_Evaluation_Metrics.md` — paper-importance ordering (the "what reviewers want to see" set)
+**Sister plans:**
+- `Docs/Plans/Paper_Evaluation_Metrics.md` — paper-importance ordering (the "what reviewers want to see" set)
+- `Docs/Plans/JSON_Export_With_Settings.md` — orthogonal export-format work (CSV stays; JSON adds a settings-snapshot variant)
 
 > ⚠️ **Scope axis: visualization, not paper importance.** This plan picks metrics that can be **drawn naturally on the graph**. It is not the right plan for "what should appear in the paper's evaluation table" — that's `Paper_Evaluation_Metrics.md`. The two plans overlap on M2, M19, M20, M24, M25 (work done either place satisfies both); they differ on the rest.
 

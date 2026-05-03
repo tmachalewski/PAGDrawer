@@ -3,7 +3,9 @@
 **Created:** 2026-05-03-19-42
 **Branch (proposed):** `feature/paper-metrics`
 **Source plan:** `Docs/Plans/metric_proposals.md` § "How I would prioritise"
-**Sister plan:** `Docs/Plans/Debug_Overlay_Visualizations.md` — visualization-priority ordering (the "what looks good on the graph" set)
+**Sister plans:**
+- `Docs/Plans/Debug_Overlay_Visualizations.md` — visualization-priority ordering (the "what looks good on the graph" set)
+- `Docs/Plans/JSON_Export_With_Settings.md` — orthogonal export-format work; gives this plan's M28 (corpus-normalized clutter) a much cleaner post-processing input than the raw CSV
 
 > ⚠️ **Scope axis: paper importance, not visualization.** This plan picks the metrics the GD 2026 reviewers will look for in your evaluation table — regardless of whether they have a natural overlay. Metrics that visualize well but aren't in the recommended evaluation set live in the sister plan.
 
