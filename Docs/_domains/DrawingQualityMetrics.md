@@ -1,14 +1,16 @@
 # Drawing Quality Metrics
 
-This document describes the graph-drawing aesthetics metrics implemented in PAGDrawer, following **Purchase, H.C. (2002) — "Metrics for Graph Drawing Aesthetics"**, *Journal of Visual Languages and Computing, 13(5), 501–516*.
+This document describes the graph-drawing aesthetics metrics implemented in PAGDrawer.
+
+The edge-crossings metric follows **Purchase, H.C. (2002) — "Metrics for Graph Drawing Aesthetics"**, *Journal of Visual Languages and Computing, 13(5), 501–516*. The drawing-area, area-per-node, and edge-length-CV metrics are common graph-drawing aesthetics from the wider literature (force-directed layout / Bennett et al. 2007); they are not in Purchase 2002 specifically.
 
 These metrics are exposed via the **📊 Statistics modal** (toolbar button) and exported as CSV for paper-ready snapshots.
 
-For the *how we built it* history, see `Docs/_dailyNotes/2026-04-20-15-55-Graph_Quality_Metrics.md`. For the original paper-writing guide that preceded this implementation, see `Docs/initial_graph_metrics_guide.md`.
+For the *how we built it* history, see `Docs/_dailyNotes/2026-04-20-15-55-Graph_Quality_Metrics.md` and the bug-fix / metric-additions note `2026-05-03-18-57-Bug_Fixes_And_Metric_Additions.md`.
 
 ---
 
-## Three Metrics
+## Metrics
 
 ### 1. Edge Crossings
 
@@ -33,13 +35,42 @@ Why three? Each tells a slightly different story:
 
 `(max_x - min_x) × (max_y - min_y)` across the center-points of visible nodes. Units are **Cytoscape logical coordinates** — invariant under zoom and pan, so the number is stable no matter how the user has scrolled.
 
-Center-point method rather than padded bounding box, matching Purchase's formulation. Compound parent nodes are included but don't affect the bounding box (their centroid falls within the span of their children).
+Center-point method rather than padded bounding box. Compound parent nodes are included but don't affect the bounding box (their centroid falls within the span of their children).
 
-### 3. Edge Length Coefficient of Variation
+### 3. Area per Node
+
+`drawing_area / |V|`. Same logical units as drawing area; normalized for graph size.
+
+Easier to compare across reduction steps than raw area, because reduction usually changes both the area *and* the node count. Reads as "logical units² of canvas per node":
+
+- Lower → denser drawing
+- Higher → sparser, more whitespace per node
+
+### 4. Edge Length Coefficient of Variation
 
 `std(lengths) / mean(lengths)` where `lengths[i] = Euclidean distance from edge source to edge target`, both measured in logical coordinates.
 
-Population standard deviation (divide by N, not N−1). A value of 0 means all edges are the same length (uniform layout); higher values mean the drawing has both very short and very long edges, which Purchase correlates with reduced readability.
+Population standard deviation (divide by N, not N−1). A value of 0 means all edges are the same length (uniform layout); higher values mean the drawing has both very short and very long edges, which is generally correlated with reduced readability.
+
+---
+
+## Auxiliary counts (in CSV and Statistics modal)
+
+Two non-aesthetic counts are also exported alongside the drawing-quality metrics so paper readers can correlate graph shape with vulnerability volume:
+
+### Unique CVEs
+
+Distinct base CVE IDs in the live graph. Computed from CVE node IDs by stripping the `:dN` chain-depth suffix and the `@...` granularity context, then deduplicating.
+
+`unique_cves` differs from the visible CVE node count because:
+- Granularity sliders may produce one CVE node per host or per CPE; the same base CVE ID then maps to multiple nodes
+- Chain-depth-aware multi-stage attacks produce `:d0` and `:d1` variants of the same CVE ID
+
+### Trivy Vulnerability Total
+
+Sum of Trivy-reported per-package vulnerability entries across **all uploaded scans** (not just those in the current rebuild). Fetched from `/api/data/scans` when the Statistics modal opens.
+
+This differs from `unique_cves` because Trivy reports one entry per affected package — a single CVE that touches three packages contributes three vuln entries but one unique CVE ID. See the related discussion in the daily note for an example (189 vulns → 103 unique CVEs in the `nginx_stable-trixie-perl` scan).
 
 ---
 
@@ -114,9 +145,11 @@ For the ESORICS paper workflow: apply each reduction step manually, click **📥
 Format (header row + one data row):
 
 ```
-nodes,edges,crossings_raw,crossings_normalized,crossings_per_edge,drawing_area,edge_length_cv
-67,88,32,0.9909,0.3636,1523400.50,0.7748
+nodes,edges,unique_cves,trivy_vuln_count,crossings_raw,crossings_normalized,crossings_per_edge,drawing_area,area_per_node,edge_length_cv
+67,88,32,189,32,0.9909,0.3636,1523400.50,22737.32,0.7748
 ```
+
+`trivy_vuln_count` is left empty if the scan list cannot be fetched. All numeric columns are formatted with 4 decimals for [0,1] scores and 2 decimals for area/length values.
 
 Filename: `pagdrawer-metrics-YYYY-MM-DD-HH-mm.csv`.
 
@@ -146,7 +179,7 @@ The Statistics modal's collapsible "⚠️ Interpretation notes" section flags t
 Key public exports of `metrics.ts`:
 
 ```typescript
-computeMetrics() → DrawingMetrics | null
+computeMetrics() → DrawingMetrics | null   // includes uniqueCves
 countCrossings(edges) → number
 findCrossings(edges) → CrossingInfo[]
 normalizeCrossings(crossings, edges) → number
@@ -155,8 +188,8 @@ computeBoundingBox(points) → BBox | null
 computeMeanEdgeLength(edges) → number
 computeEdgeLengthStd(edges) → number
 computeEdgeLengthCV(edges) → number
-metricsToCSV(m) → string
-downloadMetricsCSV(m) → void
+metricsToCSV(m, context?: MetricsCsvContext) → string   // context.trivyVulnCount
+downloadMetricsCSV(m, context?: MetricsCsvContext) → void
 getVisibleNodePoints() → Point[]     // helper for overlay
 getVisibleEdgeEndpoints() → EdgeEndpoints[]   // helper for overlay
 ```
