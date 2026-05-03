@@ -65,6 +65,8 @@ $$\mathrm{stress}(P) = \sum_{i < j} w_{ij} \, (\|p_i - p_j\| - d_{ij})^2$$
 
 **Reporting.** Mean ± std across images per step. The size-normalised per-pair variant is mandatory for cross-image aggregation; raw stress is dominated by graph size and not comparable.
 
+**Debug overlay.** ⚠️ Possible — color each edge by its per-edge residual contribution to stress. Cluttered if applied alongside other overlays; would need its own toggle.
+
 ---
 
 ### M2. Crossing-Angle Metrics
@@ -95,6 +97,8 @@ The absolute value on both arguments folds the result into $[0, \pi/2]$ regardle
 
 **Reporting.** Mean ± std across images per step for the mean angle; report the *minimum* angle (across the corpus) separately rather than aggregating it — a single very-acute crossing matters more than the average.
 
+**Debug overlay.** ✅ Recommended — color the existing red crossing dots by angle (red = acute / bad, green ≈ 90° / good). One-line extension of the current overlay machinery.
+
 ---
 
 ### M3. Angular Resolution at Nodes
@@ -114,6 +118,8 @@ A normalised variant divides each $\alpha_i$ by the optimal $2\pi/k$ before taki
 **Source.** Standard graph-drawing aesthetic from the 1990s. Combined with crossing angle in [Argyriou et al. 2010 "Maximizing the Total Resolution of Graphs"](https://consensus.app/papers/details/71be2d8b6cff599cb8db32006d96ed30/?utm_source=claude_desktop). The "total resolution" is the minimum of angular resolution and crossing angle, a useful single number.
 
 **Why relevant.** Compound merging often reduces a node's in-degree and out-degree (because edges are consolidated), which should improve angular resolution at the surviving nodes. Worth verifying.
+
+**Debug overlay.** ✅ Recommended — draw a small arc inside the *narrowest* angular gap at each node (color-coded by goodness). Highlights the worst node first; great for spotting layout problems.
 
 ---
 
@@ -135,6 +141,8 @@ Aggregate: $\mathrm{ORTH}(G) = \frac{1}{|E|}\sum_e \mathrm{orth}(e)$, in $[0,1]$
 
 **Why relevant.** Bridge edges in your layer-hiding mechanism span longer geometric distances than the original edges they replace. Whether they remain orthogonal or become diagonal lines that cut across the layout is a real readability concern.
 
+**Debug overlay.** ⚠️ Possible — tint each edge by orientation. Conflicts visually with the existing edge-type colour palette; would need its own toggle that swaps colour schemes rather than overlaying.
+
 ---
 
 ### M5. Edge Length Uniformity (Coefficient of Variation)
@@ -146,6 +154,8 @@ You already report this as $\mathrm{CV}_\ell$. For completeness:
 **Source.** [Fruchterman and Reingold 1991 "Graph Drawing by Force-directed Placement"](https://en.wikipedia.org/wiki/Force-directed_graph_drawing) (cited in your bibliography as `fruchterman1991`) introduced uniform edge length as an aesthetic. [Di Battista et al. 1999 "Graph Drawing"](https://en.wikipedia.org/wiki/Graph_drawing) is the textbook reference.
 
 **Note.** This metric can mislead in your case: bridge edges contract several hops into one, so the resulting bridge edges are systematically *longer* than retained edges, which inflates $\mathrm{CV}_\ell$ even though the layout is still readable. Consider reporting **per-edge-type** edge length CV separately, so the bridge contribution is visible but doesn't pollute the global metric.
+
+**Debug overlay.** ✅ Recommended — already partly there (the green mean line + orange std line). Optional add-on: tint each edge by deviation from the mean (under-mean cool, over-mean warm). Defer until the basic overlay is in widespread use; the existing reference lines are usually enough.
 
 ---
 
@@ -164,6 +174,8 @@ Quantifies how much axial, rotational, or translational symmetry the drawing exh
 **Why relevant.** Compound merging tends to produce visually symmetric clusters when the underlying ordinal-attribute distribution is symmetric across hosts. Reporting symmetry would surface this.
 
 **Why you might skip.** Symmetry tends to be marginal for layered DAGs because the layer structure breaks most natural symmetries. If you've shown your layout doesn't optimise for it, this metric won't move much. Skip unless you find a concrete reason to discuss.
+
+**Debug overlay.** ❌ No — drawing many candidate axes is messy, and the metric is marginal for layered DAGs anyway.
 
 ---
 
@@ -185,6 +197,8 @@ $$\mathrm{CONT}(G) = 1 - \frac{1}{|2\text{-paths}|}\sum_{(u,v,w)} \frac{\delta(u
 
 **Why relevant.** Bridge edges that span several layers may zig-zag through node centres at the contracted endpoints, which reduces continuity even when crossings are absent. This is a precise way to measure "does the simplified graph still let me trace a path with my eye in one motion."
 
+**Debug overlay.** ⚠️ Possible — colour each path-internal node by total deviation across incident 2-paths. Useful for path-tracing diagnostics but visually busy; works best when limited to a hovered path rather than applied globally.
+
 ---
 
 ### M8. Bounding Box Compactness
@@ -205,6 +219,8 @@ A normalised variant uses the convex hull of node positions instead of the bound
 
 **Why relevant.** A more interpretable replacement for $A/N$ that doesn't go the "wrong way" when the dagre layout spaces fewer nodes apart (your current postgres/redis problem). I recommend swapping $A/N$ for compactness in v3 of the paper.
 
+**Debug overlay.** ✅ Recommended — fill the existing blue bbox with a shading proportional to ink/area, e.g. heatmap-style. Reuses the bbox element; minimal extra code.
+
 ---
 
 ### M9. Aspect Ratio
@@ -219,6 +235,8 @@ Quality is highest when the layout fits a screen-typical 4:3 or 16:9 ratio.
 
 **Why relevant.** Layered layouts often produce extremely wide-and-short or tall-and-narrow drawings. As your reductions remove nodes, the aspect ratio should improve. Report it.
 
+**Debug overlay.** ✅ Recommended (free) — extend the existing bbox label from `Drawing area W × H` to `Drawing area W × H (AR = 0.42)`. Single label change.
+
 ---
 
 ### M10. Total Edge Length
@@ -232,6 +250,8 @@ A simple aesthetic preferred by force-directed layouts. Reported as a sanity che
 **Complexity.** $O(|E|)$.
 
 **Why relevant.** As your reductions consolidate edges, total length should drop substantially. Worth reporting alongside $E$ to show the visual ink reduction directly.
+
+**Debug overlay.** ❌ No — a sum has no spatial component. The mean-edge-length reference line already conveys the per-edge intuition.
 
 ---
 
@@ -263,6 +283,8 @@ Note: this is k-NN overlap, not Jaccard similarity. Jaccard would divide by $|N_
 
 **Why relevant.** Your compound merging is a deliberate violation of neighborhood preservation in the underlying graph: it pulls equivalent vulnerabilities together visually even when their graph distance differs. Measuring NP$_k$ before and after merging tells the analyst exactly how much "spatial truth" they trade for compactness. This is a strong story.
 
+**Debug overlay.** ⚠️ Possible (interactive) — on hover/click of a node, draw circles around its top-$k$ graph neighbours and top-$k$ layout neighbours, with the intersection in a third colour. Per-node only; not a global overlay.
+
 ---
 
 ### M12. Trustworthiness and Continuity
@@ -282,6 +304,8 @@ $$\mathrm{Cont}_k = 1 - \frac{2}{|V|k(2|V|-3k-1)} \sum_{v} \sum_{u \in N_k^G(v) 
 **Source.** Venna and Kaski 2001, "Neighborhood preservation in nonlinear projection methods: An experimental study". Standard in the t-SNE / UMAP literature.
 
 **Why relevant.** Trustworthiness specifically diagnoses your compound merging: when you put two non-adjacent vulnerabilities into the same parent box, layout-distance becomes near-zero but graph-distance is non-zero, hurting trustworthiness. This is the precise quantification of "did I over-merge?"
+
+**Debug overlay.** ⚠️ Possible (interactive) — same per-node-on-click pattern as M11. Show "false friends" (close in layout, far in graph) as one arrow colour and "missing friends" (close in graph, far in layout) as another.
 
 ---
 
@@ -303,6 +327,8 @@ $$\mathrm{SHAPE}(D, G) = \frac{|E(S(D)) \cap E(G)|}{|E(S(D)) \cup E(G)|}$$
 **Source.** [Meidiana, Hong, Eades and Klein 2022 "Shape-Faithful Graph Drawings"](https://consensus.app/papers/details/85ee4b9e893d50658bab5703a8f330e2/?utm_source=claude_desktop). The dNNG variant in [Nguyen et al. 2017](https://consensus.app/papers/details/5824a845019455d8bd77119f87525f4d/?utm_source=claude_desktop) is more sensitive to subtle differences.
 
 **Why relevant.** Shape-based metrics are designed to work even with non-proximity-preserving drawings, which is exactly the case after your layer-hiding step. Whether your reductions leave a layout that "looks like" the graph in a shape-faithful sense is a defensible question.
+
+**Debug overlay.** ⚠️ Possible — overlay the Gabriel graph as a faint second edge layer; highlight edges in $S(D) \triangle G$ (proximity-only and graph-only). Striking but visually dense; works best on small examples.
 
 ---
 
@@ -334,6 +360,8 @@ $$\mathrm{RP}(G, G') = \frac{|\{(u,v) : (u \rightsquigarrow_G v) \Leftrightarrow
 
 **Reporting.** Expected to be exactly $1.0$ on every (image, step) cell. State this explicitly and table any deviations rather than aggregating with mean ± std.
 
+**Debug overlay.** ❌ No — soundness audit metric expected to be 1.0; nothing to draw.
+
 ---
 
 ### M15. Path-Length Preservation
@@ -356,6 +384,8 @@ $$\mathrm{PLP}(G, G') = \frac{1}{K}\sum_{i=1}^{K} \mathbb{1}\!\left[d^G_{u_i,v_i
 
 **Reporting.** Same convention as M14: expected to be exactly $1.0$ on every cell. Table deviations rather than aggregating.
 
+**Debug overlay.** ❌ No — same reason as M14.
+
 ---
 
 ### M16. Typed Out-Signature Preservation Rate
@@ -374,6 +404,8 @@ $$\mathrm{TOSP}(G, G') = \frac{|\{(p_j, v) : v \in G_j, \mathrm{outsig}_{G'}(p_j
 
 **Reporting.** Same as M14 / M15: expected to be exactly $1.0$ on every cell. Table deviations.
 
+**Debug overlay.** ❌ No — soundness audit metric.
+
 ---
 
 ### M17. Type Coverage
@@ -387,6 +419,8 @@ $$\mathrm{TC}(G') = \frac{|\{T \in \mathcal{T} : \exists v \in V', \tau(v) = T\}
 **Algorithm.** Trivial: for each $T \in \mathcal{T}$, scan $V'$ once.
 
 **Why relevant.** When the analyst hides a layer (e.g., "weakness"), TC drops below 1. Reporting TC at each step of the progression makes the abstraction trade-off explicit. Using the original $\mathcal{T}$ as denominator (rather than $\mathcal{T}'$, the types still present after reduction) is what makes this metric meaningful: otherwise hiding a type would trivially keep $\mathrm{TC}(G') = 1$.
+
+**Debug overlay.** ❌ No — a scalar fraction of types; no spatial component.
 
 ---
 
@@ -403,6 +437,8 @@ $$\mathrm{QER}(G, G', Q) = \frac{|\{q \in Q : q(G) = q(G') \text{ up to compound
 **Complexity.** Depends on query complexity; for reachability queries it is $O(|Q| \cdot (|V|+|E|))$.
 
 **Why relevant.** The most defensible empirical validation that the reductions preserve analyst-relevant information. A query corpus you define yourself becomes a contribution: future work in attack-graph readability has a benchmark.
+
+**Debug overlay.** ❌ No — aggregate over a query corpus; no per-query spatial expression.
 
 ---
 
@@ -425,6 +461,8 @@ Characterises how much of the visible graph is synthetic versus retained.
 **Why relevant.** A reader needs to know whether a typical bridge represents one collapsed node or a chain of five. High MCD with high BEP means the visible graph is heavily synthetic and the bridge-edge colour cue is doing serious work.
 
 **Reporting.** Highly noisy across images — depends on the input scan's chain depth and the user's hide selection. Report mean ± std for both BEP and MCD per step; consider also reporting min and max as the spread is wide.
+
+**Debug overlay.** ✅ Recommended — annotate each bridge edge with its contraction depth (e.g., a small `k=3` label at the edge midpoint). Bridge edges already have a distinct colour, so the label is the only addition.
 
 ---
 
@@ -451,6 +489,8 @@ ECR $\ge 1$ always; ECR $= 1$ means no consolidation (each member contributed a 
 
 **Reporting.** ECR is a per-parent value, so for each (image, step) cell you get a *distribution*, not a scalar. Recommendation: per cell, report the **mean ECR weighted by group size** (so a 50-member group with ECR = 30 dominates a 2-member group with ECR = 2). Then aggregate that weighted mean across images per step using ordinary mean ± std. Skipping the size-weighting hides where the consolidation actually pays off.
 
+**Debug overlay.** ✅ Recommended — append `ECR×N.M` to each compound parent's existing label (e.g. `AV:N / AC:L / PR:N / UI:N (×5)  ECR×3.4`). One-line extension of the merge module.
+
 ---
 
 ### M21. Group Cardinality Distribution
@@ -462,6 +502,8 @@ Companion to ECR. Reports the size of compound parents.
 **Why relevant.** A single histogram per image reveals whether your merge produces many small groups (low cohesion) or few large groups (high cohesion). Combined with ECR, this characterises the merge mode.
 
 **Reporting.** A distribution per cell. Aggregate by reporting the **largest group size** and the **fraction of singletons** as scalar summaries — these are the two numbers an analyst actually wants. Mean ± std across images per step for each.
+
+**Debug overlay.** ✅ Already in place — the `(×N)` suffix in the existing CVE-merge labels is exactly this. Worth generalising to all compound parent types so the badge appears consistently regardless of which mechanism produced the parent.
 
 ---
 
@@ -483,6 +525,8 @@ ACR ranges over $[1/|V_i|, 1]$. ACR $= 1$ means every node has a unique attribut
 
 **Reporting.** Per-image scalar (one ACR per type per image). Don't aggregate across images — instead present as a small table (image × type) and visually correlate with achieved reduction. The point of this metric is the cross-image *spread*, not its central tendency.
 
+**Debug overlay.** ❌ No — a per-type structural property of the input. No spatial location.
+
 ---
 
 ### M23. Slider-Position-vs-Reduction Curve (Type-Zoom Efficiency)
@@ -496,6 +540,8 @@ Each per-type slider's effect, plotted as a curve.
 **Why relevant.** Tells the analyst (and reviewer) which slider gives the most readability improvement per granularity step. This is a unique-to-your-paper analysis since nobody else has per-type sliders.
 
 **Reporting.** This is a *curve* per (image, type) — per-image spread is the whole point. Plot all images as faint lines with a bold mean line per type per pivot position (and ± std as a shaded band); do not collapse to a single number per cell.
+
+**Debug overlay.** ❌ No — a curve plot, belongs in the Statistics modal as a chart, not on the graph canvas.
 
 ---
 
@@ -515,6 +561,8 @@ $$\mathrm{CP}(G) = \frac{|\{v \in V : c(v) = c^*(\tau(v))\}|}{|V|}$$
 
 **Why relevant.** Confirms your typed schema renders faithfully. The interesting question: does any reduction step degrade column purity (e.g., compound parents that contain different types)?
 
+**Debug overlay.** ✅ Recommended — draw a halo around any node whose layout column doesn't match its type's expected column. Should usually be empty (good); when present, it points the eye straight at the layout problem.
+
 ---
 
 ### M25. Type-Pair Crossing Decomposition
@@ -532,6 +580,8 @@ Report the matrix or top-$k$ contributing pairs.
 **Complexity.** $O((|E|+|X|)\log |E|)$ same as basic crossing detection.
 
 **Why relevant.** Pure-novelty metric exploiting your typed schema. In your nginx graph at Step 1 with $C/E = 925$, identifying that, say, 90% of crossings come from `weakness→impact` × `impact→state` would tell you exactly which layers to hide first. You could even auto-recommend the next reduction step based on this.
+
+**Debug overlay.** ✅ Recommended — colour the existing red crossing dots by the type-pair causing them. Combine with M2 by encoding angle as size and type-pair as colour — both signals on the same dot.
 
 ---
 
@@ -551,6 +601,8 @@ ETD reports the share of each type by count; ETL by total ink (length).
 
 **Why relevant.** Your `ENABLES` back-edges span across the layered direction and contribute disproportionately to crossings and total ink. Reporting ETD and ETL isolates their visual cost. Note that in a strictly layered DAG with one type per layer, intra-type edges (between two nodes of the same type) cannot exist by definition; in your schema only `ENABLES` violates strict layering, and only between state and vulnerability nodes (different types). So strictly speaking we report a per-type-pair distribution, not "inter vs intra." The original section title was misleading; the metric is just the edge-type mix.
 
+**Debug overlay.** ❌ No — already conveyed by the existing edge-colour scheme; another overlay would duplicate that information.
+
 ---
 
 ### M27. Layer Balance
@@ -568,6 +620,8 @@ Lower is better-balanced; 0 means all layers have the same count.
 **Complexity.** $O(|V|)$.
 
 **Why relevant.** A heavily-imbalanced layered drawing has wasted vertical space (some layers crowded, others sparse). After your reductions, balance should improve as the dominant layers (typically vulnerability, weakness, impact in attack graphs) shrink toward the smaller layers (host, attacker).
+
+**Debug overlay.** ⚠️ Possible — small vertical histogram beside (not on) the graph showing per-column node counts. Belongs more naturally in the Statistics modal as a chart than on the graph canvas.
 
 ---
 
@@ -593,6 +647,8 @@ where $\widetilde{X}(G) = (X(G) - \min_{G' \in \mathcal{C}} X(G')) / (\max_{G' \
 
 **Why relevant.** A single-number summary that aggregates several of the above. Useful for executive-summary tables. Be honest about the calibration: report the components separately too.
 
+**Debug overlay.** ❌ No — composite scalar; the components (M2, M5, M8) are already individually overlay-able if needed.
+
 ---
 
 ### M29. Information Density
@@ -602,6 +658,8 @@ Bits of distinguishable information per unit area. Relevant for "fits on a scree
 **Formula sketch.** Approximate as $\log_2(N \cdot E) / A_{\mathrm{bbox}}$, where the numerator estimates the information content and the denominator is the area.
 
 **Why relevant.** The end-state of your reductions should have higher information density per unit area: each visible element conveys more meaning. Worth quantifying.
+
+**Debug overlay.** ❌ No — scalar derived from totals.
 
 ---
 
@@ -616,6 +674,8 @@ Tufte-inspired. Reports how much rendered "ink" (edges plus node markings) the r
 Use whichever matches your renderer. Reduction ratio: $\mathrm{INK}(G_1) / \mathrm{INK}(G_{5.2}) \ge 1$, indicating "ink removed factor."
 
 **Why relevant.** Direct visual quantification of how much "marking" you removed. Easy to compute, easy to explain to non-graph-drawing audiences.
+
+**Debug overlay.** ❌ No — comparative ratio between two graph snapshots, not a property of a single layout.
 
 ---
 
