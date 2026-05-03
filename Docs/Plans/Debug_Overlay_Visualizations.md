@@ -1,20 +1,27 @@
-# Metric Visualizations and CSV Extension — Implementation Plan
+# Debug Overlay Visualizations — Implementation Plan
 
 **Created:** 2026-05-03-19-42
-**Branch (proposed):** `feature/extended-metrics`
+**Branch (proposed):** `feature/debug-overlays`
 **Source plan:** `Docs/Plans/metric_proposals.md` (ratings ✅/⚠️/❌ per metric)
+**Sister plan:** `Docs/Plans/Paper_Evaluation_Metrics.md` — paper-importance ordering (the "what reviewers want to see" set)
+
+> ⚠️ **Scope axis: visualization, not paper importance.** This plan picks metrics that can be **drawn naturally on the graph**. It is not the right plan for "what should appear in the paper's evaluation table" — that's `Paper_Evaluation_Metrics.md`. The two plans overlap on M2, M19, M20, M24, M25 (work done either place satisfies both); they differ on the rest.
 
 ---
 
 ## Goal
 
-Implement **all 10 ✅ Recommended metrics** from `metric_proposals.md` end-to-end:
+Implement **all 10 metrics rated ✅ for debug-overlay viability** in `metric_proposals.md` end-to-end:
 
 1. Compute each metric in the browser (extending `frontend/js/features/metrics.ts`)
 2. Add each as a column to the existing CSV export
 3. Add each as a toggleable visual overlay on the graph
 
-The 7 ⚠️ Possible metrics are **out of scope** for this plan; mention as future work.
+The 10 metrics: **M2, M3, M5, M8, M9, M19, M20, M21, M24, M25**.
+
+The 7 ⚠️ Possible-overlay metrics are out of scope for this plan; mention as future work.
+
+> Several visualization-friendly metrics in this plan (M3, M5, M8, M9, M21) are **not** part of the paper's recommended evaluation set. They are included here because they're cheap and add value to the live debug experience, not because the paper needs them. If you only have time for one plan, do the sister plan instead — it covers the paper-essential metrics.
 
 ---
 
@@ -22,9 +29,9 @@ The 7 ⚠️ Possible metrics are **out of scope** for this plan; mention as fut
 
 | # | Choice | Why |
 |---|--------|-----|
-| 1 | Scope: 10 ✅ only (M2, M3, M5, M8, M9, M19, M20, M21, M24, M25). | Sticking to high-value, naturally-visualizable metrics. |
+| 1 | Scope: 10 ✅-overlay-viable (M2, M3, M5, M8, M9, M19, M20, M21, M24, M25). | These are the metrics that *visualize naturally*. Paper-essential metrics that don't visualize naturally (M1 Stress, M14 Reachability, etc.) belong to the sister plan. |
 | 2 | All computation in the browser (`frontend/js/features/metrics.ts`); no Python batch script. | The Statistics modal already runs all reduction permutations through the browser; duplicating in Python is unnecessary work. |
-| 3 | Each metric appears in **both** the CSV and the visual overlay. | Numbers for the paper, visuals for understanding. |
+| 3 | Each metric appears in **both** the CSV and the visual overlay. | Numbers for inspection, visuals for understanding. |
 | 4 | Per-overlay checkboxes, moved to a **new "Debug Overlay" modal** reachable from the Statistics modal. | Keeps the Statistics modal clean (it's already wide); composable selection without conflicts. |
 | 5 | Implementation order: M9 → M2 → M21 → M19 → M25 → M20 → M3 → M24 → M5 → M8. | Cheapest-first, biggest readability win first. |
 | 6 | Backend changes only for M19 — expose bridge `chain_length` in `/api/graph` response. | Frontend reconstruction would be fragile. |
