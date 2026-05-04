@@ -122,7 +122,7 @@ Single click → single-row CSV downloads as `pagdrawer-metrics-YYYY-MM-DD-HH-mm
 Columns:
 
 ```
-nodes,edges,unique_cves,trivy_vuln_count,crossings_raw,crossings_normalized,crossings_per_edge,drawing_area,area_per_node,edge_length_cv,aspect_ratio,compound_groups_count,compound_largest_group_size,compound_singleton_fraction,crossings_mean_angle_deg,crossings_min_angle_deg,crossings_right_angle_ratio,crossings_top_pair_share,crossings_top_pair_label,stress_per_pair,stress_unreachable_pairs,stress_reachable_pairs
+nodes,edges,unique_cves,trivy_vuln_count,crossings_raw,crossings_normalized,crossings_per_edge,drawing_area,area_per_node,edge_length_cv,aspect_ratio,compound_groups_count,compound_largest_group_size,compound_singleton_fraction,crossings_mean_angle_deg,crossings_min_angle_deg,crossings_right_angle_ratio,crossings_top_pair_share,crossings_top_pair_label,stress_per_pair,stress_per_pair_normalized_edge,stress_per_pair_normalized_diagonal,stress_per_pair_normalized_area,stress_unreachable_pairs,stress_reachable_pairs
 ```
 
 Two variable-cardinality dictionaries are intentionally **not** flattened into CSV because they would produce non-stable headers across runs:
@@ -211,6 +211,9 @@ Click 📄 **Export JSON** and a `pagdrawer-metrics-YYYY-MM-DD-HH-mm.json` file 
       "IS_INSTANCE_OF×LEADS_TO": 5
     },
     "stress_per_pair": 84.21,
+    "stress_per_pair_normalized_edge": 0.0421,           // ÷ mean_edge_length (KK convention)
+    "stress_per_pair_normalized_diagonal": 0.00012,      // ÷ sqrt(w² + h²)
+    "stress_per_pair_normalized_area": 0.00018,          // ÷ sqrt(drawing_area)
     "stress_unreachable_pairs": 12,
     "stress_reachable_pairs": 2168
   }

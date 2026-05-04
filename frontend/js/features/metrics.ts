@@ -57,6 +57,23 @@ export interface DrawingMetrics {
     stressPerPair: number;             // mean (‖p_i − p_j‖_layout − d_ij)² over reachable pairs
     stressUnreachablePairs: number;    // unordered i<j pair count where d_ij is undefined
     stressReachablePairs: number;      // denominator for stressPerPair (useful for weighting)
+    /**
+     * Stress with layout distance scaled by the mean edge length
+     * (Kamada-Kawai convention). Dimensionless; comparable across graphs.
+     */
+    stressPerPairNormalizedEdge: number;
+    /**
+     * Stress with layout distance scaled by the bbox diagonal
+     * (sqrt(w² + h²)). Dimensionless; comparable across drawings of
+     * different sizes.
+     */
+    stressPerPairNormalizedDiagonal: number;
+    /**
+     * Stress with layout distance scaled by the square root of the
+     * drawing area (sqrt(w · h) — geometric mean of bbox dimensions).
+     * Dimensionless.
+     */
+    stressPerPairNormalizedArea: number;
 }
 
 export interface CompoundCardinality {
@@ -269,9 +286,12 @@ export function computeMetrics(): DrawingMetrics | null {
         crossingsTopPairShare: typePairStats.topPairShare,
         crossingsTopPairLabel: typePairStats.topPairLabel,
         crossingsTypePairDistribution: typePairStats.distribution,
-        stressPerPair: stress.stressPerPair,
-        stressUnreachablePairs: stress.stressUnreachablePairs,
-        stressReachablePairs: stress.reachablePairCount,
+        stressPerPair: stress.raw,
+        stressUnreachablePairs: stress.unreachablePairs,
+        stressReachablePairs: stress.reachablePairs,
+        stressPerPairNormalizedEdge: stress.normalizedEdge,
+        stressPerPairNormalizedDiagonal: stress.normalizedDiagonal,
+        stressPerPairNormalizedArea: stress.normalizedArea,
     };
 }
 
@@ -707,6 +727,9 @@ export function metricsToCSV(m: DrawingMetrics, context: MetricsCsvContext = {})
         'crossings_top_pair_share',
         'crossings_top_pair_label',
         'stress_per_pair',
+        'stress_per_pair_normalized_edge',
+        'stress_per_pair_normalized_diagonal',
+        'stress_per_pair_normalized_area',
         'stress_unreachable_pairs',
         'stress_reachable_pairs',
     ].join(',');
@@ -731,6 +754,9 @@ export function metricsToCSV(m: DrawingMetrics, context: MetricsCsvContext = {})
         m.crossingsTopPairShare.toFixed(4),
         csvEscape(m.crossingsTopPairLabel),
         m.stressPerPair.toFixed(2),
+        m.stressPerPairNormalizedEdge.toFixed(4),
+        m.stressPerPairNormalizedDiagonal.toFixed(4),
+        m.stressPerPairNormalizedArea.toFixed(4),
         m.stressUnreachablePairs,
         m.stressReachablePairs,
     ].join(',');
@@ -900,10 +926,19 @@ export function symmetrizedDistance(
  * produces the stress scalars. Tests pass synthetic inputs without
  * needing a Cytoscape graph.
  *
+ * @param layoutScale Divisor applied to the Euclidean layout distance
+ *                    before the squared-difference is taken. Default 1
+ *                    is the raw stress; pass `mean_edge_length` (KK
+ *                    convention) or `sqrt(w²+h²)` (bbox diagonal) or
+ *                    `sqrt(drawing_area)` for normalised variants. A
+ *                    `layoutScale ≤ 0` short-circuits to all-zero
+ *                    return so we never divide by zero on degenerate
+ *                    layouts (single node, all coincident, etc.).
+ *
  * Returns:
- *   - stressPerPair: mean of `(‖p_i − p_j‖_layout − d_ij)²` over
- *                    reachable unordered pairs. 0 when fewer than one
- *                    reachable pair exists.
+ *   - stressPerPair: mean of `((‖p_i − p_j‖_layout / layoutScale) − d_ij)²`
+ *                    over reachable unordered pairs. 0 when fewer than
+ *                    one reachable pair exists or layoutScale is invalid.
  *   - stressUnreachablePairs: count of unordered pairs where neither
  *                             direction has a path.
  *   - reachablePairCount: denominator used for the mean.
@@ -914,10 +949,23 @@ export function symmetrizedDistance(
 export function computeStressFromAPSP(
     nodes: NodeWithPosition[],
     apsp: Map<string, Map<string, number>>,
+    layoutScale: number = 1,
 ): { stressPerPair: number; stressUnreachablePairs: number; reachablePairCount: number } {
     const n = nodes.length;
-    if (n < 2) {
-        return { stressPerPair: 0, stressUnreachablePairs: 0, reachablePairCount: 0 };
+    if (n < 2 || !(layoutScale > 0)) {
+        // Note: also handle NaN / Infinity defensively via `!(scale > 0)`.
+        // We still need to count unreachable pairs even for the degenerate
+        // scale case, so a separate path computes them without summing.
+        if (n < 2) return { stressPerPair: 0, stressUnreachablePairs: 0, reachablePairCount: 0 };
+        let unreachable = 0;
+        let reachable = 0;
+        for (let i = 0; i < n; i++) {
+            for (let j = i + 1; j < n; j++) {
+                if (symmetrizedDistance(apsp, nodes[i].id, nodes[j].id) === undefined) unreachable++;
+                else reachable++;
+            }
+        }
+        return { stressPerPair: 0, stressUnreachablePairs: unreachable, reachablePairCount: reachable };
     }
     let sumSq = 0;
     let reachable = 0;
@@ -933,7 +981,7 @@ export function computeStressFromAPSP(
             }
             const dx = a.x - b.x;
             const dy = a.y - b.y;
-            const layoutDist = Math.sqrt(dx * dx + dy * dy);
+            const layoutDist = Math.sqrt(dx * dx + dy * dy) / layoutScale;
             const diff = layoutDist - dij;
             sumSq += diff * diff;
             reachable++;
@@ -946,24 +994,87 @@ export function computeStressFromAPSP(
     };
 }
 
+export interface StressBundle {
+    /** Raw stress per pair — unnormalised. Layout dist is in logical units. */
+    raw: number;
+    /**
+     * Stress per pair after dividing layout distance by mean edge length
+     * (Kamada-Kawai convention). Most cited in modern stress-majorization
+     * literature; comparable across graphs with similar edge spacing.
+     */
+    normalizedEdge: number;
+    /**
+     * Stress per pair after dividing layout distance by the bbox diagonal
+     * (`sqrt(w² + h²)`). Comparable across graphs of different drawing
+     * sizes; rewards graphs whose pairs sit close-to-correctly within the
+     * actual visible extent.
+     */
+    normalizedDiagonal: number;
+    /**
+     * Stress per pair after dividing layout distance by the square root
+     * of the drawing area (`sqrt(w · h)` — geometric mean of the bbox
+     * dimensions). Like the diagonal variant but biased toward "average
+     * side length" rather than the corner-to-corner distance.
+     */
+    normalizedArea: number;
+    /** Counts identical across all four — pair structure doesn't change. */
+    unreachablePairs: number;
+    reachablePairs: number;
+}
+
 /**
- * M1 — Stress computed from the live Cytoscape graph. Wraps
- * `computeAPSP` + `computeStressFromAPSP`. The APSP matrix is computed
- * fresh on each call; future plans (M11/M12) may share a cached APSP
- * across metrics within a single Statistics-modal lifecycle.
+ * M1 — Stress computed from the live Cytoscape graph. Wraps `computeAPSP`
+ * and `computeStressFromAPSP`, then runs the same APSP through three
+ * normalisation scales (edge / bbox-diagonal / sqrt-area) so the JSON
+ * export carries cross-graph-comparable stress values regardless of
+ * which scaling convention the consuming paper / reader prefers.
+ *
+ * APSP is computed once and shared across all four stress evaluations.
+ * Pair iteration is O(|V|²) per evaluation but the per-pair work is
+ * trivial; even at |V|=1000 it's milliseconds.
+ *
+ * Future plans (M11/M12) may share the same APSP matrix via a within-
+ * modal cache; for now it is recomputed on each `computeMetrics()` call.
  */
-export function computeStress(): {
-    stressPerPair: number;
-    stressUnreachablePairs: number;
-    reachablePairCount: number;
-} {
+export function computeStress(): StressBundle {
+    const empty: StressBundle = {
+        raw: 0,
+        normalizedEdge: 0,
+        normalizedDiagonal: 0,
+        normalizedArea: 0,
+        unreachablePairs: 0,
+        reachablePairs: 0,
+    };
     const nodes = getVisibleNodesWithIds();
-    if (nodes.length < 2) {
-        return { stressPerPair: 0, stressUnreachablePairs: 0, reachablePairCount: 0 };
-    }
+    if (nodes.length < 2) return empty;
+
     const edges = getVisibleEdgeEndpoints();
     const apsp = computeAPSP(nodes.map(n => n.id), edges);
-    return computeStressFromAPSP(nodes, apsp);
+
+    // Scale factors. mean_edge_length is computed on visible edges; bbox
+    // dimensions on visible non-debug nodes. All three may be zero on
+    // degenerate inputs (no edges → mean_edge_length=0; coincident nodes
+    // → bbox 0×0). computeStressFromAPSP handles `≤ 0` defensively.
+    const meanEdge = computeMeanEdgeLength(edges);
+    const bbox = computeBoundingBox(nodes.map(n => ({ x: n.x, y: n.y })));
+    const w = bbox ? bbox.maxX - bbox.minX : 0;
+    const h = bbox ? bbox.maxY - bbox.minY : 0;
+    const diagonal = Math.sqrt(w * w + h * h);
+    const sqrtArea = Math.sqrt(w * h); // == sqrt(drawing_area)
+
+    const raw = computeStressFromAPSP(nodes, apsp, 1);
+    const edge = computeStressFromAPSP(nodes, apsp, meanEdge);
+    const diag = computeStressFromAPSP(nodes, apsp, diagonal);
+    const area = computeStressFromAPSP(nodes, apsp, sqrtArea);
+
+    return {
+        raw: raw.stressPerPair,
+        normalizedEdge: edge.stressPerPair,
+        normalizedDiagonal: diag.stressPerPair,
+        normalizedArea: area.stressPerPair,
+        unreachablePairs: raw.stressUnreachablePairs,
+        reachablePairs: raw.reachablePairCount,
+    };
 }
 
 // =============================================================================
@@ -1083,6 +1194,9 @@ export function metricsToJsonObject(
         crossings_top_pair_label: m.crossingsTopPairLabel,
         crossings_type_pair_distribution: m.crossingsTypePairDistribution,
         stress_per_pair: m.stressPerPair,
+        stress_per_pair_normalized_edge: m.stressPerPairNormalizedEdge,
+        stress_per_pair_normalized_diagonal: m.stressPerPairNormalizedDiagonal,
+        stress_per_pair_normalized_area: m.stressPerPairNormalizedArea,
         stress_unreachable_pairs: m.stressUnreachablePairs,
         stress_reachable_pairs: m.stressReachablePairs,
     };

@@ -77,11 +77,30 @@ The exposed `directed` option on `computeAPSP` is `true` by default; passing `{ 
 
 | Field | Meaning |
 |-------|---------|
-| `stress_per_pair` | Mean of `(‖p_i − p_j‖_2 − d_ij)²` over reachable unordered pairs |
+| `stress_per_pair` | Mean of `(‖p_i − p_j‖_2 − d_ij)²` over reachable unordered pairs. **Raw** — has units of length² mixed with hop counts; not directly comparable across graphs of different sizes. |
+| `stress_per_pair_normalized_edge` | Mean of `((‖p_i − p_j‖_2 / mean_edge_length) − d_ij)²`. Kamada-Kawai-style, dimensionless. The normalisation most cited in modern stress-majorization literature. |
+| `stress_per_pair_normalized_diagonal` | Mean of `((‖p_i − p_j‖_2 / √(w² + h²)) − d_ij)²`. Layout distance scaled by the bounding-box diagonal — dimensionless, comparable across graphs of different drawing extents. |
+| `stress_per_pair_normalized_area` | Mean of `((‖p_i − p_j‖_2 / √(w · h)) − d_ij)²`. Layout distance scaled by the geometric mean of the bbox sides (= `√drawing_area`). Dimensionless. |
 | `stress_unreachable_pairs` | Count of unordered pairs where `symmetrizedDistance` returned `undefined` |
 | `stress_reachable_pairs` | Denominator of the mean — the number of pairs contributing to the sum |
 
-The two pair counts together equal `C(|V|, 2)`, so a reader can recover the total pair count from either.
+The two pair counts together equal `C(|V|, 2)`. The four stress values share the same APSP and pair structure — only the layout-distance scale factor differs.
+
+### Why three normalisations
+
+The raw `stress_per_pair` mixes Euclidean distance (in logical units, dependent on dagre's chosen scale) with graph distance (a dimensionless integer). Two graphs with identical structural quality but different bbox sizes produce wildly different raw stress values, making cross-graph comparison impossible.
+
+Each normalised variant divides the layout distance by a length scale before the squared difference is taken, so both terms in `(layout_dist/scale − d_ij)` are dimensionless and the result is comparable across graphs.
+
+| Normalisation | Scale | Story it tells |
+|---------------|-------|----------------|
+| `_normalized_edge` | `mean_edge_length` (intrinsic to the graph) | "If every edge were unit-length, how off would each pair be?" Robust to bbox-size noise. Standard KK convention. |
+| `_normalized_diagonal` | `√(w² + h²)` (corner-to-corner) | "What fraction of the drawing's extent does the per-pair error span?" Captures the actual visible footprint. |
+| `_normalized_area` | `√(w · h)` (geometric mean of sides) | "What fraction of the average side length does the per-pair error span?" Less sensitive to extreme aspect ratios than the diagonal. |
+
+For paper purposes the recommendation is to report `_normalized_edge` (most-cited) but include `_normalized_diagonal` and the raw value as alternatives in the appendix; reviewers comfortable with different normalisation conventions can cross-check. PAGDrawer ships all three so the choice can be made at write-up time, not at compute time.
+
+Implementation note: `computeStressFromAPSP(nodes, apsp, layoutScale)` accepts the scale as an optional argument (default `1`, which is the raw stress). `computeStress()` runs the function four times against a single APSP matrix — each evaluation is O(|V|²), so the total cost is well within the modal's open-time budget.
 
 ---
 

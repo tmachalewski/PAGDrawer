@@ -696,6 +696,44 @@ describe('computeStressFromAPSP (M1)', () => {
         expect(r.reachablePairCount).toBe(1);
         expect(r.stressUnreachablePairs).toBe(2);
     });
+
+    describe('layoutScale parameter (normalisation)', () => {
+        const nodes = [mkN('a', 0, 0), mkN('b', 10, 0)];
+        const apsp = new Map([
+            ['a', new Map([['a', 0], ['b', 1]])],
+            ['b', new Map([['a', 1], ['b', 0]])],
+        ]);
+
+        it('default scale=1 reproduces raw stress', () => {
+            // (10 - 1)² = 81
+            expect(computeStressFromAPSP(nodes, apsp).stressPerPair).toBeCloseTo(81, 6);
+        });
+
+        it('scale=10 (e.g. mean edge length) gives layout_dist=1, matches d_ij → stress 0', () => {
+            // (10/10 - 1)² = 0
+            expect(computeStressFromAPSP(nodes, apsp, 10).stressPerPair).toBeCloseTo(0, 6);
+        });
+
+        it('scale=2 → layout_dist=5, (5-1)² = 16', () => {
+            expect(computeStressFromAPSP(nodes, apsp, 2).stressPerPair).toBeCloseTo(16, 6);
+        });
+
+        it('rejects non-positive scale (returns 0 stress, still counts pairs)', () => {
+            const r = computeStressFromAPSP(nodes, apsp, 0);
+            expect(r.stressPerPair).toBe(0);
+            expect(r.reachablePairCount).toBe(1); // pair-counting still works
+        });
+
+        it('rejects NaN and negative scale defensively', () => {
+            expect(computeStressFromAPSP(nodes, apsp, NaN).stressPerPair).toBe(0);
+            expect(computeStressFromAPSP(nodes, apsp, -1).stressPerPair).toBe(0);
+        });
+
+        it('Infinity scale is mathematically valid: layout_dist effectively 0, stress = mean of d_ij²', () => {
+            // 1/∞ = 0, then (0 - 1)² = 1. One pair → mean = 1.
+            expect(computeStressFromAPSP(nodes, apsp, Infinity).stressPerPair).toBe(1);
+        });
+    });
 });
 
 describe('computeAspectRatio (M9)', () => {
@@ -806,20 +844,23 @@ describe('metricsToCSV', () => {
         stressPerPair: 12.5,
         stressUnreachablePairs: 4,
         stressReachablePairs: 41,
+        stressPerPairNormalizedEdge: 0.5,
+        stressPerPairNormalizedDiagonal: 0.0125,
+        stressPerPairNormalizedArea: 0.025,
     };
 
     it('emits all columns with unique_cves and empty trivy_vuln_count when context missing', () => {
         const csv = metricsToCSV(baseMetrics);
         const lines = csv.trim().split('\n');
         expect(lines.length).toBe(2);
-        expect(lines[0]).toBe('nodes,edges,unique_cves,trivy_vuln_count,crossings_raw,crossings_normalized,crossings_per_edge,drawing_area,area_per_node,edge_length_cv,aspect_ratio,compound_groups_count,compound_largest_group_size,compound_singleton_fraction,crossings_mean_angle_deg,crossings_min_angle_deg,crossings_right_angle_ratio,crossings_top_pair_share,crossings_top_pair_label,stress_per_pair,stress_unreachable_pairs,stress_reachable_pairs');
-        expect(lines[1]).toBe('10,15,7,,3,0.9500,0.2000,12345.67,1234.57,0.4200,0.5000,4,5,0.2500,67.50,30.00,0.5000,0.6000,HAS_VULN×LEADS_TO,12.50,4,41');
+        expect(lines[0]).toBe('nodes,edges,unique_cves,trivy_vuln_count,crossings_raw,crossings_normalized,crossings_per_edge,drawing_area,area_per_node,edge_length_cv,aspect_ratio,compound_groups_count,compound_largest_group_size,compound_singleton_fraction,crossings_mean_angle_deg,crossings_min_angle_deg,crossings_right_angle_ratio,crossings_top_pair_share,crossings_top_pair_label,stress_per_pair,stress_per_pair_normalized_edge,stress_per_pair_normalized_diagonal,stress_per_pair_normalized_area,stress_unreachable_pairs,stress_reachable_pairs');
+        expect(lines[1]).toBe('10,15,7,,3,0.9500,0.2000,12345.67,1234.57,0.4200,0.5000,4,5,0.2500,67.50,30.00,0.5000,0.6000,HAS_VULN×LEADS_TO,12.50,0.5000,0.0125,0.0250,4,41');
     });
 
     it('populates trivy_vuln_count when provided via context', () => {
         const csv = metricsToCSV(baseMetrics, { trivyVulnCount: 189 });
         const lines = csv.trim().split('\n');
-        expect(lines[1]).toBe('10,15,7,189,3,0.9500,0.2000,12345.67,1234.57,0.4200,0.5000,4,5,0.2500,67.50,30.00,0.5000,0.6000,HAS_VULN×LEADS_TO,12.50,4,41');
+        expect(lines[1]).toBe('10,15,7,189,3,0.9500,0.2000,12345.67,1234.57,0.4200,0.5000,4,5,0.2500,67.50,30.00,0.5000,0.6000,HAS_VULN×LEADS_TO,12.50,0.5000,0.0125,0.0250,4,41');
     });
 
     it('CSV-quotes a top-pair label that contains a comma or quote', () => {
@@ -866,6 +907,9 @@ describe('JSON metrics export (schema v1)', () => {
         stressPerPair: 12.5,
         stressUnreachablePairs: 4,
         stressReachablePairs: 41,
+        stressPerPairNormalizedEdge: 0.5,
+        stressPerPairNormalizedDiagonal: 0.0125,
+        stressPerPairNormalizedArea: 0.025,
     };
 
     const baseSettings: SettingsSnapshot = {
@@ -938,6 +982,9 @@ describe('JSON metrics export (schema v1)', () => {
             crossings_top_pair_label: 'HAS_VULN×LEADS_TO',
             crossings_type_pair_distribution: { 'HAS_VULN×LEADS_TO': 3, 'HAS_VULN×ENABLES': 2 },
             stress_per_pair: 12.5,
+            stress_per_pair_normalized_edge: 0.5,
+            stress_per_pair_normalized_diagonal: 0.0125,
+            stress_per_pair_normalized_area: 0.025,
             stress_unreachable_pairs: 4,
             stress_reachable_pairs: 41,
         });
@@ -996,6 +1043,9 @@ describe('JSON metrics export (schema v1)', () => {
             'edges',
             'nodes',
             'stress_per_pair',
+            'stress_per_pair_normalized_area',
+            'stress_per_pair_normalized_diagonal',
+            'stress_per_pair_normalized_edge',
             'stress_reachable_pairs',
             'stress_unreachable_pairs',
             'trivy_vuln_count',

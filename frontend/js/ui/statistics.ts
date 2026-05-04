@@ -336,6 +336,24 @@ function populateDrawingMetrics(): void {
                 ? `${m.stressPerPair.toFixed(2)}   (${m.stressReachablePairs} pairs${m.stressUnreachablePairs > 0 ? `, ${m.stressUnreachablePairs} unreachable` : ''})`
                 : '—',
         ],
+        [
+            'Stress / mean edge length (M1)',
+            m.stressReachablePairs > 0
+                ? `${m.stressPerPairNormalizedEdge.toFixed(4)}   (Kamada-Kawai, dimensionless)`
+                : '—',
+        ],
+        [
+            'Stress / bbox diagonal (M1)',
+            m.stressReachablePairs > 0
+                ? `${m.stressPerPairNormalizedDiagonal.toFixed(4)}   (dimensionless)`
+                : '—',
+        ],
+        [
+            'Stress / √area (M1)',
+            m.stressReachablePairs > 0
+                ? `${m.stressPerPairNormalizedArea.toFixed(4)}   (dimensionless)`
+                : '—',
+        ],
         ['Drawing area (logical units²)', m.drawingArea.toFixed(2)],
         ['Area per node (logical units²)', m.areaPerNode.toFixed(2) + '   (lower = denser)'],
         ['Aspect ratio (M9)', m.aspectRatio.toFixed(4) + '   (1 = square)'],
