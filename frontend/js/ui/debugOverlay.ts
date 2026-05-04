@@ -685,28 +685,43 @@ function hideStressPairPanel(): void {
  * visualisations. Idempotent — the namespaced handle is replaced on
  * each call. Synthetic debug nodes are filtered at fire-time.
  */
+// Hold a direct reference to the bound handler so we can remove it
+// reliably with `cy.off(event, handler)` — which is more deterministic
+// than namespaced removal in some Cytoscape versions.
+type CyTapHandler = (e: { target: unknown; cy?: unknown }) => void;
+let stressVisHandler: CyTapHandler | null = null;
+let stressVisBoundCy: unknown = null;
+
 function wireStressVisualizationHandlers(): void {
     const cy = getCy();
     if (!cy) return;
-    cy.off('tap.stress-vis');
 
-    // Single delegated listener with runtime filtering — avoids
-    // selector-delegation paths in Cytoscape that have been intermittent
-    // for synthetic / dynamically-added nodes elsewhere.
-    cy.on('tap.stress-vis', (e) => {
-        const target = e.target;
+    // Detach previous handler if any. If the cy changed (rebuild), the
+    // old reference belongs to a destroyed cy and can't be safely
+    // operated on, so we just drop it.
+    if (stressVisHandler && stressVisBoundCy === cy) {
+        (cy as { off: (event: string, h: CyTapHandler) => void }).off('tap', stressVisHandler);
+    }
+    stressVisHandler = null;
+    stressVisBoundCy = null;
+
+    // Build the new handler.
+    const handler: CyTapHandler = (e) => {
+        const target = e.target as {
+            isNode?: () => boolean;
+            data?: (k: string) => unknown;
+            id?: () => string;
+        };
         if (target === cy) {
-            // Background tap clears any pending stress-vis state.
             if (currentState.stressDistanceColoring) clearDistanceColoring();
             if (currentState.stressPairDistance) hideStressPairPanel();
             return;
         }
-        // Only nodes participate (not edges).
         if (typeof target?.isNode !== 'function' || !target.isNode()) return;
-
         const t = target.data?.('type');
         if (t === 'CROSSING_DEBUG' || t === 'AREA_DEBUG' || t === 'UNIT_EDGE_NODE') return;
-        const id = target.id();
+        const id = target.id?.();
+        if (typeof id !== 'string') return;
 
         if (currentState.stressDistanceColoring) {
             applyDistanceColoring(id);
@@ -716,15 +731,23 @@ function wireStressVisualizationHandlers(): void {
                 stressPairFirst = id;
             } else if (stressPairFirst !== id) {
                 showStressPairPanel(stressPairFirst, id);
-                stressPairFirst = null; // ready for next pair
+                stressPairFirst = null;
             }
         }
-    });
+    };
+
+    (cy as { on: (event: string, h: CyTapHandler) => void }).on('tap', handler);
+    stressVisHandler = handler;
+    stressVisBoundCy = cy;
 }
 
 function unwireStressVisualizationHandlers(): void {
     const cy = getCy();
-    if (cy) cy.off('tap.stress-vis');
+    if (cy && stressVisHandler && stressVisBoundCy === cy) {
+        (cy as { off: (event: string, h: CyTapHandler) => void }).off('tap', stressVisHandler);
+    }
+    stressVisHandler = null;
+    stressVisBoundCy = null;
     clearDistanceColoring();
     hideStressPairPanel();
 }
