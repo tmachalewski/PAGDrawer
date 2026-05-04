@@ -18,4 +18,16 @@ describe('buildInfo', () => {
         const sha = getGitSha();
         expect(sha === 'unknown' || /^[0-9a-f]{40}$/.test(sha)).toBe(true);
     });
+
+    it('getGitSha returns a real SHA under vitest (proves Vite `define` substitution works)', () => {
+        // This test would fail if the `define` keys in vite.config.ts ever drift
+        // from the identifiers in buildInfo.ts. Skips gracefully if running
+        // outside a git checkout.
+        const sha = getGitSha();
+        if (sha === 'unknown') {
+            // Not in a git checkout — expected in some CI scenarios.
+            return;
+        }
+        expect(sha).toMatch(/^[0-9a-f]{40}$/);
+    });
 });

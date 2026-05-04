@@ -130,10 +130,10 @@ describe('gatherCurrentSettings', () => {
         expect(snap.environment_filter).toEqual({ ui: null, ac: null });
     });
 
-    it('captures exploit_paths_active boolean', async () => {
+    it('captures exploit_paths_only_active boolean', async () => {
         mockedIsExploitPathsActive.mockReturnValue(true);
         const snap = await gatherCurrentSettings();
-        expect(snap.exploit_paths_active).toBe(true);
+        expect(snap.exploit_paths_only_active).toBe(true);
     });
 
     it('captures force_refresh_on_last_rebuild from DOM checkbox', async () => {
@@ -166,7 +166,7 @@ describe('gatherCurrentSettings', () => {
         expect(Object.keys(snap).sort()).toEqual([
             'cve_merge_mode',
             'environment_filter',
-            'exploit_paths_active',
+            'exploit_paths_only_active',
             'force_refresh_on_last_rebuild',
             'granularity',
             'layout',

@@ -11,7 +11,9 @@
  *   visibility_hidden           ← getHiddenTypes() (filter.ts)
  *   cve_merge_mode              ← getMergeMode() (cveMerge.ts)
  *   environment_filter          ← DOM <select id="env-ui">, <select id="env-ac">
- *   exploit_paths_active        ← isExploitPathsActive() (exploitPaths.ts)
+ *   exploit_paths_only_active   ← isExploitPathsActive() (exploitPaths.ts)
+ *                                 (true when "show only exploit paths" mode
+ *                                  is on; the rest of the graph is hidden)
  *   force_refresh_on_last_rebuild ← DOM <input id="force-refresh-checkbox">
  *   layout                      ← getCurrentLayout() (layout.ts)
  *
@@ -49,7 +51,7 @@ export interface SettingsSnapshot {
     visibility_hidden: string[];      // sorted, deterministic
     cve_merge_mode: string;            // "none" | "prereqs" | "outcomes" (from MergeMode)
     environment_filter: EnvironmentFilter;
-    exploit_paths_active: boolean;
+    exploit_paths_only_active: boolean;
     force_refresh_on_last_rebuild: boolean;
     layout: string;                    // "dagre" | "breadthfirst" | "cose" | "circle"
 }
@@ -142,7 +144,7 @@ export async function gatherCurrentSettings(): Promise<SettingsSnapshot> {
             ui: readSelect('env-ui'),
             ac: readSelect('env-ac'),
         },
-        exploit_paths_active: readExploitPathsActive(),
+        exploit_paths_only_active: readExploitPathsActive(),
         force_refresh_on_last_rebuild: readCheckbox('force-refresh-checkbox'),
         layout: readLayout(),
     };

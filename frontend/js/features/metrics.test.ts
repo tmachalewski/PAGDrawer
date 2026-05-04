@@ -360,7 +360,7 @@ describe('JSON metrics export (schema v1)', () => {
         visibility_hidden: ['CWE', 'TI'],
         cve_merge_mode: 'outcomes',
         environment_filter: { ui: 'N', ac: 'L' },
-        exploit_paths_active: false,
+        exploit_paths_only_active: false,
         force_refresh_on_last_rebuild: false,
         layout: 'dagre',
     };

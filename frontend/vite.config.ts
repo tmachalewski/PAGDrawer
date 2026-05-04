@@ -45,8 +45,11 @@ export default defineConfig({
     root: '.',
     base: '/',
     define: {
-        'import.meta.env.VITE_GIT_SHA': JSON.stringify(gitSha),
-        'import.meta.env.VITE_APP_VERSION': JSON.stringify(appVersion),
+        // Plain global identifiers — Vite's `define` does literal text
+        // replacement, so the source must reference these exact tokens.
+        // See `frontend/js/config/buildInfo.ts`.
+        __GIT_SHA__: JSON.stringify(gitSha),
+        __APP_VERSION__: JSON.stringify(appVersion),
     },
     build: {
         outDir: 'dist',

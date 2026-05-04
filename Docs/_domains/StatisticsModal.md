@@ -168,7 +168,7 @@ Click 📄 **Export JSON** and a `pagdrawer-metrics-YYYY-MM-DD-HH-mm.json` file 
     "visibility_hidden": ["CWE", "TI"],          // sorted, deterministic
     "cve_merge_mode": "outcomes",                // "none" | "prereqs" | "outcomes"
     "environment_filter": { "ui": "N", "ac": "L" },
-    "exploit_paths_active": false,
+    "exploit_paths_only_active": false,         // true when "show only exploit paths" mode is on
     "force_refresh_on_last_rebuild": false,
     "layout": "dagre"
   },
@@ -196,7 +196,7 @@ Click 📄 **Export JSON** and a `pagdrawer-metrics-YYYY-MM-DD-HH-mm.json` file 
 
 - `git_sha` is injected at build time from `git rev-parse HEAD` (Vite `define`). In dev mode it reflects HEAD even with uncommitted changes — clean tree recommended for paper figures.
 - `settings` is captured at the same moment metrics are computed (when the modal opens or refreshes), so the file's settings always match its numbers.
-- **Exploit paths gap:** `exploit_paths_active: true` does not capture the seed selection that triggered the hiding. Reproducing an exploit-paths state requires manually re-triggering the same seed in the new session.
+- **Exploit paths gap:** `exploit_paths_only_active: true` does not capture the seed selection that triggered the hiding. Reproducing an exploit-paths state requires manually re-triggering the same seed in the new session.
 
 ### Why JSON in addition to CSV
 

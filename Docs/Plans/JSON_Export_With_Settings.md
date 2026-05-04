@@ -66,7 +66,7 @@ The two formats coexist; the user picks per export.
     "visibility_hidden": ["CWE", "TI"],
     "cve_merge_mode": "outcomes",
     "environment_filter": { "ui": "N", "ac": "L" },
-    "exploit_paths_active": true,
+    "exploit_paths_only_active": true,
     "force_refresh_on_last_rebuild": false
   },
 
