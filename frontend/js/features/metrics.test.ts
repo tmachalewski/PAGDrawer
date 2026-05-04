@@ -827,6 +827,8 @@ describe('metricsToCSV', () => {
         crossingsNormalized: 0.95,
         crossingsPerEdge: 0.2,
         drawingArea: 12345.67,
+        bboxWidth: 200,
+        bboxHeight: 61.73,
         areaPerNode: 1234.567,
         edgeLengthCV: 0.42,
         uniqueCves: 7,
@@ -853,14 +855,14 @@ describe('metricsToCSV', () => {
         const csv = metricsToCSV(baseMetrics);
         const lines = csv.trim().split('\n');
         expect(lines.length).toBe(2);
-        expect(lines[0]).toBe('nodes,edges,unique_cves,trivy_vuln_count,crossings_raw,crossings_normalized,crossings_per_edge,drawing_area,area_per_node,edge_length_cv,aspect_ratio,compound_groups_count,compound_largest_group_size,compound_singleton_fraction,crossings_mean_angle_deg,crossings_min_angle_deg,crossings_right_angle_ratio,crossings_top_pair_share,crossings_top_pair_label,stress_per_pair,stress_per_pair_normalized_edge,stress_per_pair_normalized_diagonal,stress_per_pair_normalized_area,stress_unreachable_pairs,stress_reachable_pairs');
-        expect(lines[1]).toBe('10,15,7,,3,0.9500,0.2000,12345.67,1234.57,0.4200,0.5000,4,5,0.2500,67.50,30.00,0.5000,0.6000,HAS_VULN×LEADS_TO,12.50,0.5000,0.0125,0.0250,4,41');
+        expect(lines[0]).toBe('nodes,edges,unique_cves,trivy_vuln_count,crossings_raw,crossings_normalized,crossings_per_edge,drawing_area,bbox_width,bbox_height,area_per_node,edge_length_cv,aspect_ratio,compound_groups_count,compound_largest_group_size,compound_singleton_fraction,crossings_mean_angle_deg,crossings_min_angle_deg,crossings_right_angle_ratio,crossings_top_pair_share,crossings_top_pair_label,stress_per_pair,stress_per_pair_normalized_edge,stress_per_pair_normalized_diagonal,stress_per_pair_normalized_area,stress_unreachable_pairs,stress_reachable_pairs');
+        expect(lines[1]).toBe('10,15,7,,3,0.9500,0.2000,12345.67,200.00,61.73,1234.57,0.4200,0.5000,4,5,0.2500,67.50,30.00,0.5000,0.6000,HAS_VULN×LEADS_TO,12.50,0.5000,0.0125,0.0250,4,41');
     });
 
     it('populates trivy_vuln_count when provided via context', () => {
         const csv = metricsToCSV(baseMetrics, { trivyVulnCount: 189 });
         const lines = csv.trim().split('\n');
-        expect(lines[1]).toBe('10,15,7,189,3,0.9500,0.2000,12345.67,1234.57,0.4200,0.5000,4,5,0.2500,67.50,30.00,0.5000,0.6000,HAS_VULN×LEADS_TO,12.50,0.5000,0.0125,0.0250,4,41');
+        expect(lines[1]).toBe('10,15,7,189,3,0.9500,0.2000,12345.67,200.00,61.73,1234.57,0.4200,0.5000,4,5,0.2500,67.50,30.00,0.5000,0.6000,HAS_VULN×LEADS_TO,12.50,0.5000,0.0125,0.0250,4,41');
     });
 
     it('CSV-quotes a top-pair label that contains a comma or quote', () => {
@@ -890,6 +892,8 @@ describe('JSON metrics export (schema v1)', () => {
         crossingsNormalized: 0.95,
         crossingsPerEdge: 0.2,
         drawingArea: 12345.67,
+        bboxWidth: 200,
+        bboxHeight: 61.73,
         areaPerNode: 1234.567,
         edgeLengthCV: 0.42,
         uniqueCves: 7,
@@ -968,6 +972,8 @@ describe('JSON metrics export (schema v1)', () => {
             crossings_normalized: 0.95,
             crossings_per_edge: 0.2,
             drawing_area: 12345.67,
+            bbox_width: 200,
+            bbox_height: 61.73,
             area_per_node: 1234.567,
             edge_length_cv: 0.42,
             aspect_ratio: 0.5,
@@ -1025,6 +1031,8 @@ describe('JSON metrics export (schema v1)', () => {
         expect(metricKeys).toEqual([
             'area_per_node',
             'aspect_ratio',
+            'bbox_height',
+            'bbox_width',
             'compound_groups_count',
             'compound_largest_group_size',
             'compound_singleton_fraction',

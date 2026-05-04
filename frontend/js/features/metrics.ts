@@ -23,6 +23,8 @@ export interface DrawingMetrics {
     crossingsNormalized: number;  // [0, 1], 1 = no crossings (Purchase 2002)
     crossingsPerEdge: number;      // raw crossings / |E|, 0 if |E| = 0
     drawingArea: number;           // logical units squared, center-point method
+    bboxWidth: number;             // bounding-box width  (maxX - minX), 0 if empty
+    bboxHeight: number;            // bounding-box height (maxY - minY), 0 if empty
     areaPerNode: number;           // drawing area / |V|, 0 if |V| = 0
     edgeLengthCV: number;          // std / mean, 0 if undefined
     uniqueCves: number;            // distinct base CVE IDs in the live graph (:dN/@... stripped)
@@ -240,6 +242,8 @@ export function computeMetrics(): DrawingMetrics | null {
 
     // 2. Drawing area (center-point bounding box) + M9 aspect ratio
     const bbox = computeBoundingBox(points);
+    const bboxWidth = bbox ? bbox.maxX - bbox.minX : 0;
+    const bboxHeight = bbox ? bbox.maxY - bbox.minY : 0;
     const drawingArea = computeDrawingArea(points);
     const areaPerNode = nodeCount > 0 ? drawingArea / nodeCount : 0;
     const aspectRatio = computeAspectRatio(bbox);
@@ -272,6 +276,8 @@ export function computeMetrics(): DrawingMetrics | null {
         crossingsNormalized,
         crossingsPerEdge,
         drawingArea,
+        bboxWidth,
+        bboxHeight,
         areaPerNode,
         edgeLengthCV,
         uniqueCves,
@@ -715,6 +721,8 @@ export function metricsToCSV(m: DrawingMetrics, context: MetricsCsvContext = {})
         'crossings_normalized',
         'crossings_per_edge',
         'drawing_area',
+        'bbox_width',
+        'bbox_height',
         'area_per_node',
         'edge_length_cv',
         'aspect_ratio',
@@ -742,6 +750,8 @@ export function metricsToCSV(m: DrawingMetrics, context: MetricsCsvContext = {})
         m.crossingsNormalized.toFixed(4),
         m.crossingsPerEdge.toFixed(4),
         m.drawingArea.toFixed(2),
+        m.bboxWidth.toFixed(2),
+        m.bboxHeight.toFixed(2),
         m.areaPerNode.toFixed(2),
         m.edgeLengthCV.toFixed(4),
         m.aspectRatio.toFixed(4),
@@ -1180,6 +1190,8 @@ export function metricsToJsonObject(
         crossings_normalized: m.crossingsNormalized,
         crossings_per_edge: m.crossingsPerEdge,
         drawing_area: m.drawingArea,
+        bbox_width: m.bboxWidth,
+        bbox_height: m.bboxHeight,
         area_per_node: m.areaPerNode,
         edge_length_cv: m.edgeLengthCV,
         aspect_ratio: m.aspectRatio,
