@@ -446,12 +446,33 @@ function clearGroupCardinalityBadges(): void {
 }
 
 /**
- * Bind mouseover / mouseout handlers on the crossing dots so the `.hovered`
- * class flips, which the stylesheet uses to reveal the M2/M25 hint label.
- *
- * Idempotent: each call removes any previously bound handler in the
- * `crossing-hover` namespace before re-binding. This way redraw() stays
- * clean and no listeners stack across overlay toggles.
+ * Inline style applied on hover so the M2/M25 hint label appears next to
+ * the crossing dot. Using inline `node.style({...})` rather than a
+ * `.hovered` class keeps the rendering deterministic — class-selector
+ * stylesheet rules can be sensitive to load-order and `data()` mapper
+ * re-evaluation timing.
+ */
+const CROSSING_HOVER_STYLE = {
+    'label': 'data(hoverLabel)',
+    'font-size': '11px',
+    'font-weight': 'bold',
+    'color': '#ffffff',
+    'text-outline-color': '#000000',
+    'text-outline-width': 2,
+    'text-valign': 'top' as const,
+    'text-halign': 'right' as const,
+    'text-margin-x': 6,
+    'text-margin-y': -6,
+    'z-index': 10000,
+};
+
+const CROSSING_HOVER_STYLE_KEYS = Object.keys(CROSSING_HOVER_STYLE);
+
+/**
+ * Bind mouseover / mouseout handlers on the crossing dots so the M2/M25
+ * hint label appears next to the hovered dot. Idempotent: each call
+ * removes any previously bound handler in the `crossing-hover` namespace
+ * before re-binding, so redraw() doesn't stack listeners.
  */
 function wireCrossingHoverHandlers(): void {
     const cy = getCy();
@@ -459,10 +480,11 @@ function wireCrossingHoverHandlers(): void {
     cy.off('mouseover.crossing-hover', 'node[type="CROSSING_DEBUG"]');
     cy.off('mouseout.crossing-hover', 'node[type="CROSSING_DEBUG"]');
     cy.on('mouseover.crossing-hover', 'node[type="CROSSING_DEBUG"]', (e) => {
-        e.target.addClass('hovered');
+        e.target.style(CROSSING_HOVER_STYLE);
     });
     cy.on('mouseout.crossing-hover', 'node[type="CROSSING_DEBUG"]', (e) => {
-        e.target.removeClass('hovered');
+        // Remove only the keys we set — preserves the colour-by override.
+        CROSSING_HOVER_STYLE_KEYS.forEach(k => e.target.removeStyle(k));
     });
 }
 
