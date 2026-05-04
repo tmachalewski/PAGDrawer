@@ -350,6 +350,13 @@
                 </div>
 
                 <div class="debug-overlay-section">
+                    <div class="debug-overlay-section-title">Crossings — color dots by</div>
+                    <label class="debug-overlay-toggle"><input type="radio" name="crossingsColorBy" data-overlay-radio="crossingsColorBy" value="none"> none (default red)</label>
+                    <label class="debug-overlay-toggle"><input type="radio" name="crossingsColorBy" data-overlay-radio="crossingsColorBy" value="angle"> angle (M2) — red acute → green ≈ 90°</label>
+                    <label class="debug-overlay-toggle"><input type="radio" name="crossingsColorBy" data-overlay-radio="crossingsColorBy" value="typePair"> type pair (M25) — categorical palette</label>
+                </div>
+
+                <div class="debug-overlay-section">
                     <div class="debug-overlay-section-title">New overlays</div>
                     <label class="debug-overlay-toggle"><input type="checkbox" data-overlay-key="aspectRatio"> Aspect ratio in bbox label (M9)</label>
                     <label class="debug-overlay-toggle"><input type="checkbox" data-overlay-key="groupCardinality"> Compound group size ×N (M21)</label>

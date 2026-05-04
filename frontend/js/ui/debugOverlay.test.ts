@@ -15,9 +15,13 @@ import {
     countEnabledOverlays,
     validateState,
     isDebugOverlayActive,
+    angleToColor,
+    pickCrossingColor,
+    buildTypePairPalette,
     _resetForTests,
     type OverlayState,
 } from './debugOverlay';
+import type { CrossingInfo } from '../features/metrics';
 
 // debugOverlay.ts imports getCy at the top of the module. We don't need it
 // for state-machine tests, but `setOverlayState` calls `redraw()` which
@@ -43,6 +47,7 @@ describe('DEFAULT_OVERLAY_STATE', () => {
             stdDevLine: true,
             aspectRatio: false,
             groupCardinality: false,
+            crossingsColorBy: 'none',
         });
     });
 });
@@ -109,7 +114,13 @@ describe('applyPreset', () => {
             stdDevLine: false,
             aspectRatio: false,
             groupCardinality: true,
+            crossingsColorBy: 'none',
         });
+    });
+
+    it('crossings preset turns on type-pair coloring (M25)', () => {
+        applyPreset('crossings');
+        expect(getOverlayState().crossingsColorBy).toBe('typePair');
     });
 
     it('defaults preset matches DEFAULT_OVERLAY_STATE', () => {
@@ -120,10 +131,16 @@ describe('applyPreset', () => {
         expect(getOverlayState()).toEqual(DEFAULT_OVERLAY_STATE);
     });
 
-    it('clear preset turns every overlay off', () => {
+    it('clear preset turns every boolean toggle off and color mode to "none"', () => {
         applyPreset('clear');
         const s = getOverlayState();
-        expect(Object.values(s).every(v => v === false)).toBe(true);
+        expect(s.crossings).toBe(false);
+        expect(s.drawingArea).toBe(false);
+        expect(s.meanEdgeLine).toBe(false);
+        expect(s.stdDevLine).toBe(false);
+        expect(s.aspectRatio).toBe(false);
+        expect(s.groupCardinality).toBe(false);
+        expect(s.crossingsColorBy).toBe('none');
     });
 
     it('PRESETS exposes exactly the five named presets', () => {
@@ -157,8 +174,16 @@ describe('countEnabledOverlays', () => {
             stdDevLine: true,
             aspectRatio: true,
             groupCardinality: true,
+            crossingsColorBy: 'angle',
         };
         expect(countEnabledOverlays(all)).toBe(6);
+    });
+
+    it('does not count the crossingsColorBy radio mode (only boolean toggles)', () => {
+        // crossingsColorBy is a sub-mode of `crossings`, not a separate overlay.
+        // 'none' is a non-empty string and would erroneously be truthy if we
+        // counted Object.values(state).filter(Boolean).
+        expect(countEnabledOverlays(PRESETS.clear)).toBe(0); // even though 'none' is truthy
     });
 
     it('uses currentState as the default when no argument is given', () => {
@@ -194,6 +219,17 @@ describe('validateState', () => {
         expect(r).toEqual(DEFAULT_OVERLAY_STATE);
         expect((r as Record<string, unknown>).futureFlag).toBeUndefined();
     });
+
+    it('accepts valid crossingsColorBy values', () => {
+        expect(validateState({ ...DEFAULT_OVERLAY_STATE, crossingsColorBy: 'angle' }).crossingsColorBy).toBe('angle');
+        expect(validateState({ ...DEFAULT_OVERLAY_STATE, crossingsColorBy: 'typePair' }).crossingsColorBy).toBe('typePair');
+        expect(validateState({ ...DEFAULT_OVERLAY_STATE, crossingsColorBy: 'none' }).crossingsColorBy).toBe('none');
+    });
+
+    it('falls back to "none" for unknown crossingsColorBy values', () => {
+        expect(validateState({ ...DEFAULT_OVERLAY_STATE, crossingsColorBy: 'invalid' }).crossingsColorBy).toBe('none');
+        expect(validateState({ ...DEFAULT_OVERLAY_STATE, crossingsColorBy: 42 }).crossingsColorBy).toBe('none');
+    });
 });
 
 describe('localStorage round-trip', () => {
@@ -217,5 +253,75 @@ describe('localStorage round-trip', () => {
 describe('isDebugOverlayActive', () => {
     it('starts inactive after reset', () => {
         expect(isDebugOverlayActive()).toBe(false);
+    });
+});
+
+describe('crossings color picking (M2 + M25)', () => {
+    function mkInfo(angle: number, edgeAType = 'A', edgeBType = 'B'): CrossingInfo {
+        return {
+            point: { x: 0, y: 0 },
+            edgeA: { source: { x: 0, y: 0 }, target: { x: 1, y: 0 }, sourceId: 'a', targetId: 'b', type: edgeAType },
+            edgeB: { source: { x: 0, y: 0 }, target: { x: 1, y: 1 }, sourceId: 'c', targetId: 'd', type: edgeBType },
+            angle,
+            edgeAType, edgeBType,
+        };
+    }
+
+    describe('angleToColor (M2)', () => {
+        it('returns red-ish hue at 0 (acute)', () => {
+            expect(angleToColor(0)).toMatch(/^hsl\(0/);
+        });
+        it('returns yellow-ish hue at 45° (~hue 60)', () => {
+            expect(angleToColor(Math.PI / 4)).toMatch(/^hsl\(60/);
+        });
+        it('returns green-ish hue at 90° (~hue 120)', () => {
+            expect(angleToColor(Math.PI / 2)).toMatch(/^hsl\(120/);
+        });
+        it('clamps angles outside [0, π/2] (defensive)', () => {
+            expect(angleToColor(-1)).toMatch(/^hsl\(0/);
+            expect(angleToColor(Math.PI)).toMatch(/^hsl\(120/);
+        });
+    });
+
+    describe('buildTypePairPalette (M25)', () => {
+        it('orders palette slots by frequency (most-common gets index 0 = red)', () => {
+            const xs = [
+                mkInfo(0, 'A', 'B'), mkInfo(0, 'A', 'B'), mkInfo(0, 'A', 'B'),
+                mkInfo(0, 'C', 'D'),
+            ];
+            const palette = buildTypePairPalette(xs);
+            expect(palette.get('A×B')).toBe('#ef4444');     // first slot = red
+            expect(palette.get('C×D')).toBe('#f59e0b');     // second slot
+        });
+
+        it('breaks ties on count by lex-first key', () => {
+            const xs = [mkInfo(0, 'B', 'Z'), mkInfo(0, 'A', 'C')];
+            const palette = buildTypePairPalette(xs);
+            expect(palette.get('A×C')).toBe('#ef4444');
+            expect(palette.get('B×Z')).toBe('#f59e0b');
+        });
+    });
+
+    describe('pickCrossingColor', () => {
+        it('returns null in "none" mode (caller leaves stylesheet default)', () => {
+            const c = mkInfo(Math.PI / 4);
+            expect(pickCrossingColor(c, 'none', new Map())).toBeNull();
+        });
+
+        it('returns an HSL string in "angle" mode', () => {
+            const c = mkInfo(Math.PI / 2);
+            expect(pickCrossingColor(c, 'angle', new Map())).toMatch(/^hsl\(120/);
+        });
+
+        it('returns the palette colour in "typePair" mode', () => {
+            const c = mkInfo(0, 'A', 'B');
+            const palette = new Map([['A×B', '#3b82f6']]);
+            expect(pickCrossingColor(c, 'typePair', palette)).toBe('#3b82f6');
+        });
+
+        it('falls back to first palette slot for an unknown type pair', () => {
+            const c = mkInfo(0, 'X', 'Y');
+            expect(pickCrossingColor(c, 'typePair', new Map())).toBe('#ef4444');
+        });
     });
 });

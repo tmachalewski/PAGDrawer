@@ -16,6 +16,9 @@ import {
     computeEdgeLengthStd,
     computeAspectRatio,
     computeCompoundCardinalityFromCounts,
+    computeCrossingAngle,
+    computeCrossingAngleStats,
+    computeTypePairCrossingStats,
     metricsToCSV,
     metricsToJSON,
     metricsToJsonObject,
@@ -23,16 +26,23 @@ import {
     buildDataSourceSnapshot,
     type DrawingMetrics,
     type DataSourceSnapshot,
+    type CrossingInfo,
+    type EdgeEndpoints,
 } from './metrics';
 import type { SettingsSnapshot } from './settingsSnapshot';
 
 // Helper to build edge records for testing
-function mkEdge(sId: string, tId: string, sx: number, sy: number, tx: number, ty: number) {
+function mkEdge(
+    sId: string, tId: string,
+    sx: number, sy: number, tx: number, ty: number,
+    type: string = '',
+): EdgeEndpoints {
     return {
         source: { x: sx, y: sy },
         target: { x: tx, y: ty },
         sourceId: sId,
-        targetId: tId
+        targetId: tId,
+        type,
     };
 }
 
@@ -311,6 +321,147 @@ describe('computeEdgeLengthStd', () => {
     });
 });
 
+describe('computeCrossingAngle (M2)', () => {
+    it('returns π/2 for perpendicular edges', () => {
+        const a = mkEdge('a', 'b', 0, 0, 10, 0);     // horizontal
+        const b = mkEdge('c', 'd', 5, -5, 5, 5);     // vertical
+        expect(computeCrossingAngle(a, b)).toBeCloseTo(Math.PI / 2, 6);
+    });
+
+    it('is invariant to edge direction (source/target swap)', () => {
+        const a = mkEdge('a', 'b', 0, 0, 10, 0);
+        const b = mkEdge('c', 'd', 5, -5, 5, 5);
+        const bRev = mkEdge('d', 'c', 5, 5, 5, -5);
+        expect(computeCrossingAngle(a, b)).toBeCloseTo(computeCrossingAngle(a, bRev), 6);
+    });
+
+    it('returns π/4 for a 45° crossing', () => {
+        const a = mkEdge('a', 'b', 0, 0, 10, 0);
+        const b = mkEdge('c', 'd', 0, -5, 10, 5);    // 45° slope
+        expect(computeCrossingAngle(a, b)).toBeCloseTo(Math.PI / 4, 6);
+    });
+
+    it('returns 0 for parallel edges', () => {
+        const a = mkEdge('a', 'b', 0, 0, 10, 0);
+        const b = mkEdge('c', 'd', 0, 5, 10, 5);
+        expect(computeCrossingAngle(a, b)).toBe(0);
+    });
+
+    it('returns 0 for a degenerate (zero-length) edge', () => {
+        const a = mkEdge('a', 'b', 5, 5, 5, 5);      // zero length
+        const b = mkEdge('c', 'd', 0, 0, 10, 10);
+        expect(computeCrossingAngle(a, b)).toBe(0);
+    });
+});
+
+describe('computeCrossingAngleStats (M2)', () => {
+    function mkCrossing(angle: number, edgeAType = '', edgeBType = ''): CrossingInfo {
+        return {
+            point: { x: 0, y: 0 },
+            edgeA: mkEdge('a', 'b', 0, 0, 1, 0, edgeAType),
+            edgeB: mkEdge('c', 'd', 0, 0, 1, 1, edgeBType),
+            angle,
+            edgeAType, edgeBType,
+        };
+    }
+
+    it('returns zeros for empty input', () => {
+        expect(computeCrossingAngleStats([])).toEqual({
+            meanRad: 0, minRad: 0, rightAngleRatio: 0,
+        });
+    });
+
+    it('computes mean and min over a small set', () => {
+        const xs = [mkCrossing(Math.PI / 6), mkCrossing(Math.PI / 3), mkCrossing(Math.PI / 2)];
+        const r = computeCrossingAngleStats(xs);
+        expect(r.meanRad).toBeCloseTo((Math.PI / 6 + Math.PI / 3 + Math.PI / 2) / 3, 6);
+        expect(r.minRad).toBeCloseTo(Math.PI / 6, 6);
+    });
+
+    it('right-angle ratio counts crossings within ±15° of 90°', () => {
+        // 76°, 80°, 90°, 89° all in window (folded crossing angles ≤ 90°)
+        const xs = [76, 80, 90, 89].map(d => mkCrossing(d * Math.PI / 180));
+        expect(computeCrossingAngleStats(xs).rightAngleRatio).toBe(1.0);
+
+        // 30° is outside the ±15° window → 0/1
+        expect(computeCrossingAngleStats([mkCrossing(Math.PI / 6)]).rightAngleRatio).toBe(0);
+
+        // Mixed: 30°, 80°, 89°, 30° → 2 of 4 within window
+        const mixed = [30, 80, 89, 30].map(d => mkCrossing(d * Math.PI / 180));
+        expect(computeCrossingAngleStats(mixed).rightAngleRatio).toBe(0.5);
+    });
+
+    it('respects a custom tolerance argument', () => {
+        const c = mkCrossing((90 - 20) * Math.PI / 180);  // 70° — outside default 15°
+        expect(computeCrossingAngleStats([c]).rightAngleRatio).toBe(0);
+        expect(computeCrossingAngleStats([c], 25 * Math.PI / 180).rightAngleRatio).toBe(1);
+    });
+});
+
+describe('computeTypePairCrossingStats (M25)', () => {
+    function mkCrossing(edgeAType: string, edgeBType: string): CrossingInfo {
+        return {
+            point: { x: 0, y: 0 },
+            edgeA: mkEdge('a', 'b', 0, 0, 1, 0, edgeAType),
+            edgeB: mkEdge('c', 'd', 0, 0, 1, 1, edgeBType),
+            angle: Math.PI / 4,
+            edgeAType, edgeBType,
+        };
+    }
+
+    it('returns zeros + empty for empty input', () => {
+        expect(computeTypePairCrossingStats([])).toEqual({
+            distribution: {}, topPairLabel: '', topPairShare: 0,
+        });
+    });
+
+    it('counts a type-pair distribution and reports top pair', () => {
+        const xs = [
+            mkCrossing('HAS_VULN', 'LEADS_TO'),
+            mkCrossing('HAS_VULN', 'LEADS_TO'),
+            mkCrossing('HAS_VULN', 'LEADS_TO'),
+            mkCrossing('HAS_VULN', 'ENABLES'),
+            mkCrossing('HAS_VULN', 'ENABLES'),
+        ];
+        const r = computeTypePairCrossingStats(xs);
+        expect(r.distribution).toEqual({
+            'HAS_VULN×LEADS_TO': 3,
+            'HAS_VULN×ENABLES': 2,
+        });
+        expect(r.topPairLabel).toBe('HAS_VULN×LEADS_TO');
+        expect(r.topPairShare).toBe(0.6);
+    });
+
+    it('breaks ties by lexicographic key (deterministic)', () => {
+        // Two pairs at count 1 each: lex-first wins
+        const xs = [
+            mkCrossing('B_TYPE', 'Z_TYPE'),
+            mkCrossing('A_TYPE', 'C_TYPE'),
+        ];
+        const r = computeTypePairCrossingStats(xs);
+        expect(r.topPairLabel).toBe('A_TYPE×C_TYPE');
+        expect(r.topPairShare).toBe(0.5);
+    });
+});
+
+describe('findCrossings — type-pair sorting (M25 input)', () => {
+    it('sorts edge type pair lexicographically so {(A,B), (B,A)} collapse', () => {
+        const a = mkEdge('a', 'b', 0, 0, 10, 0, 'B_TYPE');
+        const b = mkEdge('c', 'd', 5, -5, 5, 5, 'A_TYPE');
+        const xs = findCrossings([a, b]);
+        expect(xs).toHaveLength(1);
+        expect(xs[0].edgeAType).toBe('A_TYPE');
+        expect(xs[0].edgeBType).toBe('B_TYPE');
+    });
+
+    it('attaches the computed angle to each CrossingInfo', () => {
+        const a = mkEdge('a', 'b', 0, 0, 10, 0);
+        const b = mkEdge('c', 'd', 5, -5, 5, 5);
+        const xs = findCrossings([a, b]);
+        expect(xs[0].angle).toBeCloseTo(Math.PI / 2, 6);
+    });
+});
+
 describe('computeAspectRatio (M9)', () => {
     it('returns 1 for a square bbox', () => {
         expect(computeAspectRatio({ minX: 0, maxX: 10, minY: 0, maxY: 10 })).toBe(1);
@@ -410,20 +561,39 @@ describe('metricsToCSV', () => {
         compoundSingletonFraction: 0.25,
         compoundGroupsCount: 4,
         compoundSizeDistribution: { 1: 1, 3: 2, 5: 1 },
+        crossingsMeanAngleDeg: 67.5,
+        crossingsMinAngleDeg: 30,
+        crossingsRightAngleRatio: 0.5,
+        crossingsTopPairShare: 0.6,
+        crossingsTopPairLabel: 'HAS_VULN×LEADS_TO',
+        crossingsTypePairDistribution: { 'HAS_VULN×LEADS_TO': 3, 'HAS_VULN×ENABLES': 2 },
     };
 
     it('emits all columns with unique_cves and empty trivy_vuln_count when context missing', () => {
         const csv = metricsToCSV(baseMetrics);
         const lines = csv.trim().split('\n');
         expect(lines.length).toBe(2);
-        expect(lines[0]).toBe('nodes,edges,unique_cves,trivy_vuln_count,crossings_raw,crossings_normalized,crossings_per_edge,drawing_area,area_per_node,edge_length_cv,aspect_ratio,compound_groups_count,compound_largest_group_size,compound_singleton_fraction');
-        expect(lines[1]).toBe('10,15,7,,3,0.9500,0.2000,12345.67,1234.57,0.4200,0.5000,4,5,0.2500');
+        expect(lines[0]).toBe('nodes,edges,unique_cves,trivy_vuln_count,crossings_raw,crossings_normalized,crossings_per_edge,drawing_area,area_per_node,edge_length_cv,aspect_ratio,compound_groups_count,compound_largest_group_size,compound_singleton_fraction,crossings_mean_angle_deg,crossings_min_angle_deg,crossings_right_angle_ratio,crossings_top_pair_share,crossings_top_pair_label');
+        expect(lines[1]).toBe('10,15,7,,3,0.9500,0.2000,12345.67,1234.57,0.4200,0.5000,4,5,0.2500,67.50,30.00,0.5000,0.6000,HAS_VULN×LEADS_TO');
     });
 
     it('populates trivy_vuln_count when provided via context', () => {
         const csv = metricsToCSV(baseMetrics, { trivyVulnCount: 189 });
         const lines = csv.trim().split('\n');
-        expect(lines[1]).toBe('10,15,7,189,3,0.9500,0.2000,12345.67,1234.57,0.4200,0.5000,4,5,0.2500');
+        expect(lines[1]).toBe('10,15,7,189,3,0.9500,0.2000,12345.67,1234.57,0.4200,0.5000,4,5,0.2500,67.50,30.00,0.5000,0.6000,HAS_VULN×LEADS_TO');
+    });
+
+    it('CSV-quotes a top-pair label that contains a comma or quote', () => {
+        const csv = metricsToCSV({ ...baseMetrics, crossingsTopPairLabel: 'A,B' });
+        expect(csv.trim().split('\n')[1].endsWith(',"A,B"')).toBe(true);
+        const csv2 = metricsToCSV({ ...baseMetrics, crossingsTopPairLabel: 'A"B' });
+        expect(csv2.trim().split('\n')[1].endsWith(',"A""B"')).toBe(true);
+    });
+
+    it('emits empty top-pair label as an empty trailing field, not ""', () => {
+        const csv = metricsToCSV({ ...baseMetrics, crossingsTopPairLabel: '' });
+        // Trailing comma followed by nothing
+        expect(csv.trim().split('\n')[1].endsWith(',')).toBe(true);
     });
 });
 
@@ -447,6 +617,12 @@ describe('JSON metrics export (schema v1)', () => {
         compoundSingletonFraction: 0.25,
         compoundGroupsCount: 4,
         compoundSizeDistribution: { 1: 1, 3: 2, 5: 1 },
+        crossingsMeanAngleDeg: 67.5,
+        crossingsMinAngleDeg: 30,
+        crossingsRightAngleRatio: 0.5,
+        crossingsTopPairShare: 0.6,
+        crossingsTopPairLabel: 'HAS_VULN×LEADS_TO',
+        crossingsTypePairDistribution: { 'HAS_VULN×LEADS_TO': 3, 'HAS_VULN×ENABLES': 2 },
     };
 
     const baseSettings: SettingsSnapshot = {
@@ -512,6 +688,12 @@ describe('JSON metrics export (schema v1)', () => {
             compound_largest_group_size: 5,
             compound_singleton_fraction: 0.25,
             compound_size_distribution: { 1: 1, 3: 2, 5: 1 },
+            crossings_mean_angle_deg: 67.5,
+            crossings_min_angle_deg: 30,
+            crossings_right_angle_ratio: 0.5,
+            crossings_top_pair_share: 0.6,
+            crossings_top_pair_label: 'HAS_VULN×LEADS_TO',
+            crossings_type_pair_distribution: { 'HAS_VULN×LEADS_TO': 3, 'HAS_VULN×ENABLES': 2 },
         });
     });
 
@@ -554,9 +736,15 @@ describe('JSON metrics export (schema v1)', () => {
             'compound_largest_group_size',
             'compound_singleton_fraction',
             'compound_size_distribution',
+            'crossings_mean_angle_deg',
+            'crossings_min_angle_deg',
             'crossings_normalized',
             'crossings_per_edge',
             'crossings_raw',
+            'crossings_right_angle_ratio',
+            'crossings_top_pair_label',
+            'crossings_top_pair_share',
+            'crossings_type_pair_distribution',
             'drawing_area',
             'edge_length_cv',
             'edges',

@@ -122,10 +122,15 @@ Single click → single-row CSV downloads as `pagdrawer-metrics-YYYY-MM-DD-HH-mm
 Columns:
 
 ```
-nodes,edges,unique_cves,trivy_vuln_count,crossings_raw,crossings_normalized,crossings_per_edge,drawing_area,area_per_node,edge_length_cv,aspect_ratio,compound_groups_count,compound_largest_group_size,compound_singleton_fraction
+nodes,edges,unique_cves,trivy_vuln_count,crossings_raw,crossings_normalized,crossings_per_edge,drawing_area,area_per_node,edge_length_cv,aspect_ratio,compound_groups_count,compound_largest_group_size,compound_singleton_fraction,crossings_mean_angle_deg,crossings_min_angle_deg,crossings_right_angle_ratio,crossings_top_pair_share,crossings_top_pair_label
 ```
 
-The full per-size compound distribution (a variable-cardinality dict) is intentionally not flattened into CSV because it would produce non-stable headers across runs. It is included in the JSON export under `metrics.compound_size_distribution` and rendered in the Statistics modal as a histogram-style row.
+Two variable-cardinality dictionaries are intentionally **not** flattened into CSV because they would produce non-stable headers across runs:
+
+- `metrics.compound_size_distribution` (M21) — compound-parent size → count
+- `metrics.crossings_type_pair_distribution` (M25) — type-pair label → count
+
+Both live in the JSON export and are rendered in the Statistics modal (M21 as a histogram-style row, M25 surfaced via the top-pair scalar). The `crossings_top_pair_label` CSV column is RFC 4180-quoted when its value contains a comma or double quote.
 
 Workflow for the ESORICS paper:
 
@@ -194,7 +199,17 @@ Click 📄 **Export JSON** and a `pagdrawer-metrics-YYYY-MM-DD-HH-mm.json` file 
     "compound_groups_count": 4,
     "compound_largest_group_size": 8,
     "compound_singleton_fraction": 0.0,
-    "compound_size_distribution": { "2": 1, "3": 1, "5": 1, "8": 1 }
+    "compound_size_distribution": { "2": 1, "3": 1, "5": 1, "8": 1 },
+    "crossings_mean_angle_deg": 67.4,
+    "crossings_min_angle_deg": 23.1,
+    "crossings_right_angle_ratio": 0.42,
+    "crossings_top_pair_share": 0.31,
+    "crossings_top_pair_label": "HAS_VULN×LEADS_TO",
+    "crossings_type_pair_distribution": {
+      "HAS_VULN×LEADS_TO": 10,
+      "HAS_VULN×ENABLES":   7,
+      "IS_INSTANCE_OF×LEADS_TO": 5
+    }
   }
 }
 ```
@@ -228,7 +243,7 @@ The 🔍 button toggles overlays on/off. Each overlay is **independently** toggl
 
 | Color / form | Marks | Underlying value | Default |
 |--------------|-------|------------------|---------|
-| 🔴 Red dots | One per counted edge crossing | `findCrossings(edges)[*].point` | on |
+| 🔴 Red dots | One per counted edge crossing — color follows the **Crossings color by** radio: `none` (default red), `angle` (M2: red→yellow→green by acuteness), `typePair` (M25: categorical palette per type-pair) | `findCrossings(edges)[*].point` + `.angle` + `.edgeAType` × `.edgeBType` | on |
 | 🔵 Blue dashed rectangle | Drawing area bounding box (label: `W × H`, optionally `(AR = …)`) | `computeBoundingBox(visibleNodes)` | on |
 | 🟢 Green solid line | Mean edge length, drawn horizontally above the bbox | `computeMeanEdgeLength(edges)` | on |
 | 🟠 Orange dashed line | Population std dev of edge lengths, drawn above the green line | `computeEdgeLengthStd(edges)` | on |
@@ -258,6 +273,11 @@ A dedicated modal that lets the user toggle each overlay individually and apply 
 │   ☑ Mean edge length (green line)                    │
 │   ☑ Std-dev (orange line)                            │
 │                                                       │
+│ Crossings — color dots by:                            │
+│   ◯ none (default red)                               │
+│   ◯ angle (M2)        red acute → green ≈ 90°        │
+│   ◯ type pair (M25)   categorical palette            │
+│                                                       │
 │ New overlays:                                         │
 │   ☐ Aspect ratio in bbox label (M9)                  │
 │   ☐ Compound group size ×N (M21)                     │
@@ -268,7 +288,7 @@ Five preset configurations:
 
 | Preset | Effect |
 |--------|--------|
-| 🎯 **Crossings analysis** | Crossings dots on + aspect ratio on; everything else off. |
+| 🎯 **Crossings analysis** | Crossings dots on (colored by **type pair**, M25) + aspect ratio on; everything else off. |
 | 📐 **Layout diagnostics** | Bbox + mean + std-dev + aspect ratio; crossings off. |
 | 🔗 **Reduction transparency** | Compound-cardinality badges only. |
 | ◌ **Defaults** | The original four overlays on; new ones off. |

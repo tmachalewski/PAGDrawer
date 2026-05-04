@@ -297,12 +297,31 @@ function populateDrawingMetrics(): void {
     const trivyLabel = lastTrivyVulnCount !== null
         ? `${lastTrivyVulnCount}   (${scansLabel})`
         : '—';
+    const noCrossings = m.crossingsRaw === 0;
     const rows: Array<[string, string]> = [
         ['Unique CVEs (graph)', String(m.uniqueCves)],
         ['Trivy vulnerabilities (scans)', trivyLabel],
         ['Edge crossings (raw)', String(m.crossingsRaw)],
         ['Edge crossings (normalized, Purchase)', m.crossingsNormalized.toFixed(4) + '   (1 = no crossings)'],
         ['Edge crossings per edge', m.crossingsPerEdge.toFixed(4) + '   (lower = cleaner)'],
+        [
+            'Mean crossing angle (M2)',
+            noCrossings ? '—' : m.crossingsMeanAngleDeg.toFixed(1) + '°   (90° = ideal)',
+        ],
+        [
+            'Minimum crossing angle (M2)',
+            noCrossings ? '—' : m.crossingsMinAngleDeg.toFixed(1) + '°   (worst case)',
+        ],
+        [
+            'Right-angle ratio (M2)',
+            noCrossings ? '—' : m.crossingsRightAngleRatio.toFixed(4) + '   (within ±15° of 90°)',
+        ],
+        [
+            'Top crossing type pair (M25)',
+            noCrossings
+                ? '—'
+                : `${m.crossingsTopPairLabel}   (${(m.crossingsTopPairShare * 100).toFixed(1)}%)`,
+        ],
         ['Drawing area (logical units²)', m.drawingArea.toFixed(2)],
         ['Area per node (logical units²)', m.areaPerNode.toFixed(2) + '   (lower = denser)'],
         ['Aspect ratio (M9)', m.aspectRatio.toFixed(4) + '   (1 = square)'],
