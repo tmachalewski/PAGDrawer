@@ -1381,3 +1381,53 @@ body {
     background: rgba(234, 179, 8, 0.12);
     color: #444;
 }
+
+/* ===== Debug Overlay Settings modal ===== */
+
+.debug-overlay-section {
+    margin-bottom: 14px;
+}
+
+.debug-overlay-section-title {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #aaa;
+    margin-bottom: 6px;
+}
+
+.debug-overlay-presets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.debug-overlay-presets .control-btn {
+    background: #4b5563;
+    font-size: 12px;
+    padding: 6px 10px;
+}
+
+.debug-overlay-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+    font-size: 13px;
+    cursor: pointer;
+    color: #ddd;
+}
+
+.debug-overlay-toggle input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+}
+
+.light-theme .debug-overlay-section-title {
+    color: #555;
+}
+
+.light-theme .debug-overlay-toggle {
+    color: #333;
+}

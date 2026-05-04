@@ -171,15 +171,15 @@ The Statistics modal's collapsible "⚠️ Interpretation notes" section flags t
 
 ## Implementation
 
-- **Module**: `frontend/js/features/metrics.ts` (~310 LOC)
-- **Tests**: `frontend/js/features/metrics.test.ts` (35 unit tests, pure functions, no Cytoscape instance needed)
-- **UI integration**: `frontend/js/ui/statistics.ts`
+- **Module**: `frontend/js/features/metrics.ts`
+- **Tests**: `frontend/js/features/metrics.test.ts` (57 unit tests, pure functions, no Cytoscape instance needed)
+- **UI integration**: `frontend/js/ui/statistics.ts` (table + export buttons), `frontend/js/ui/debugOverlay.ts` (per-overlay state machine + drawing pipeline)
 - **Cytoscape styles for overlay pseudo-nodes**: `frontend/js/config/constants.ts`
 
 Key public exports of `metrics.ts`:
 
 ```typescript
-computeMetrics() → DrawingMetrics | null   // includes uniqueCves
+computeMetrics() → DrawingMetrics | null   // includes uniqueCves, aspectRatio (M9), compound* (M21)
 countCrossings(edges) → number
 findCrossings(edges) → CrossingInfo[]
 normalizeCrossings(crossings, edges) → number
@@ -188,13 +188,36 @@ computeBoundingBox(points) → BBox | null
 computeMeanEdgeLength(edges) → number
 computeEdgeLengthStd(edges) → number
 computeEdgeLengthCV(edges) → number
-metricsToCSV(m, context?: MetricsCsvContext) → string   // context.trivyVulnCount
-downloadMetricsCSV(m, context?: MetricsCsvContext) → void
-getVisibleNodePoints() → Point[]     // helper for overlay
-getVisibleEdgeEndpoints() → EdgeEndpoints[]   // helper for overlay
+computeAspectRatio(bb) → number                                  // M9
+computeCompoundCardinality() → CompoundCardinality               // M21 — live cy
+computeCompoundCardinalityFromCounts(counts) → CompoundCardinality  // M21 — pure helper
+metricsToCSV(m, context?) → string
+downloadMetricsCSV(m, context?) → void
+metricsToJSON(m, context, settings, dataSource, now?) → string   // schema v1
+downloadMetricsJSON(m, context, settings, dataSource) → void
+buildMetricsJsonSnapshot(...) → MetricsJsonSnapshot
+buildDataSourceSnapshot(scans) → DataSourceSnapshot
+getVisibleNodePoints() → Point[]
+getVisibleEdgeEndpoints() → EdgeEndpoints[]
 ```
 
-All pure functions except `computeMetrics`, `getVisibleNodePoints`, `getVisibleEdgeEndpoints` (which depend on the live Cytoscape graph) and `downloadMetricsCSV` (triggers a browser download).
+All pure functions except `computeMetrics`, `computeCompoundCardinality`, `getVisibleNodePoints`, `getVisibleEdgeEndpoints` (live Cytoscape graph) and `downloadMetricsCSV` / `downloadMetricsJSON` (browser download).
+
+### M9 — Aspect Ratio
+
+`computeAspectRatio(bb)` returns `min(w, h) / max(w, h) ∈ [0, 1]`. 1 = square; values approaching 0 = elongated. Returns 0 for null / zero-extent bboxes. CSV column: `aspect_ratio`. The Debug Overlay Settings modal toggles a `(AR = 0.42)` suffix on the bbox label.
+
+### M21 — Compound Group Cardinality (generalised)
+
+`computeCompoundCardinality()` aggregates visible non-debug nodes by their compound parent and reports:
+
+- `largestGroupSize` — max children across all compound parents
+- `singletonFraction` — parents with exactly one child / total parents
+- `groups` — per-parent `(parentId, size)` tuples for overlay rendering
+
+The overlay appends `(×N)` to every compound parent label. Idempotent: if a label already ends with `(×<digits>)` (e.g. CVE_GROUP from the data layer), the overlay leaves it untouched. Hiding the overlay restores all original labels via a saved-originals map.
+
+CSV columns: `compound_largest_group_size`, `compound_singleton_fraction`.
 
 ---
 

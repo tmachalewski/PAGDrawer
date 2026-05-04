@@ -26,6 +26,16 @@ export interface DrawingMetrics {
     areaPerNode: number;           // drawing area / |V|, 0 if |V| = 0
     edgeLengthCV: number;          // std / mean, 0 if undefined
     uniqueCves: number;            // distinct base CVE IDs in the live graph (:dN/@... stripped)
+    aspectRatio: number;           // M9: min(w,h)/max(w,h) of bbox, [0, 1] (1 = square)
+    compoundLargestGroupSize: number; // M21: max children among compound parents
+    compoundSingletonFraction: number; // M21: fraction of compound parents with exactly 1 child
+}
+
+export interface CompoundCardinality {
+    largestGroupSize: number;
+    singletonFraction: number;
+    /** Per-parent member counts, useful for the overlay's per-parent badges. */
+    groups: Array<{ parentId: string; size: number }>;
 }
 
 export interface Point {
@@ -133,12 +143,17 @@ export function computeMetrics(): DrawingMetrics | null {
     const crossingsNormalized = normalizeCrossings(crossingsRaw, edges);
     const crossingsPerEdge = edges.length > 0 ? crossingsRaw / edges.length : 0;
 
-    // 2. Drawing area (center-point bounding box)
+    // 2. Drawing area (center-point bounding box) + M9 aspect ratio
+    const bbox = computeBoundingBox(points);
     const drawingArea = computeDrawingArea(points);
     const areaPerNode = nodeCount > 0 ? drawingArea / nodeCount : 0;
+    const aspectRatio = computeAspectRatio(bbox);
 
     // 3. Edge length CV
     const edgeLengthCV = computeEdgeLengthCV(edges);
+
+    // 5. M21 — compound-parent cardinality (largest group + singleton fraction)
+    const compound = computeCompoundCardinality();
 
     // 4. Unique CVE count — strip :dN depth and @... context suffixes
     const uniqueCveBases = new Set<string>();
@@ -159,7 +174,10 @@ export function computeMetrics(): DrawingMetrics | null {
         drawingArea,
         areaPerNode,
         edgeLengthCV,
-        uniqueCves
+        uniqueCves,
+        aspectRatio,
+        compoundLargestGroupSize: compound.largestGroupSize,
+        compoundSingletonFraction: compound.singletonFraction,
     };
 }
 
@@ -295,6 +313,77 @@ export function computeDrawingArea(points: Point[]): number {
 }
 
 /**
+ * M9 — Aspect ratio of the drawing's bounding box.
+ *
+ * Returns `min(w, h) / max(w, h)` ∈ [0, 1]. 1 is a perfect square; values
+ * approaching 0 indicate a degenerately-elongated bbox. Returns 0 for
+ * degenerate or empty bboxes (zero width/height).
+ */
+export function computeAspectRatio(
+    bb: { minX: number; maxX: number; minY: number; maxY: number } | null,
+): number {
+    if (!bb) return 0;
+    const w = bb.maxX - bb.minX;
+    const h = bb.maxY - bb.minY;
+    if (w <= 0 || h <= 0) return 0;
+    return Math.min(w, h) / Math.max(w, h);
+}
+
+/**
+ * M21 — Compound-parent cardinality scalars from a parent → member-count map.
+ *
+ * Pure helper so callers can supply counts gathered however they like (live
+ * Cytoscape graph, fixture, or test data). Returns:
+ *   - largestGroupSize: max children across compound parents
+ *   - singletonFraction: parents with exactly 1 child / total parents
+ *   - groups: per-parent (parentId, size) tuples for overlay badges
+ *
+ * Empty input returns zeros.
+ */
+export function computeCompoundCardinalityFromCounts(
+    counts: Map<string, number>,
+): CompoundCardinality {
+    if (counts.size === 0) {
+        return { largestGroupSize: 0, singletonFraction: 0, groups: [] };
+    }
+    const sizes = Array.from(counts.values());
+    const largestGroupSize = sizes.reduce((m, s) => (s > m ? s : m), 0);
+    const singletons = sizes.filter(s => s === 1).length;
+    const singletonFraction = singletons / sizes.length;
+    const groups = Array.from(counts.entries()).map(([parentId, size]) => ({ parentId, size }));
+    return { largestGroupSize, singletonFraction, groups };
+}
+
+/**
+ * Type predicate for the synthetic debug-overlay nodes that should never
+ * count toward graph metrics. Centralised so every metric path filters
+ * the same set.
+ */
+function isDebugOverlayType(t: unknown): boolean {
+    return t === 'CROSSING_DEBUG' || t === 'AREA_DEBUG' || t === 'UNIT_EDGE_NODE';
+}
+
+/**
+ * M21 — Compound-parent cardinality computed from the live Cytoscape graph.
+ * Aggregates visible non-debug nodes by their compound parent.
+ */
+export function computeCompoundCardinality(): CompoundCardinality {
+    const cy = getCy();
+    if (!cy) return { largestGroupSize: 0, singletonFraction: 0, groups: [] };
+    const counts = new Map<string, number>();
+    cy.nodes(':visible').forEach(n => {
+        if (isDebugOverlayType(n.data('type'))) return;
+        // n.parent() returns a (possibly empty) Cytoscape collection
+        const parents = n.parent();
+        if (parents && parents.length > 0) {
+            const pid = parents[0].id();
+            counts.set(pid, (counts.get(pid) || 0) + 1);
+        }
+    });
+    return computeCompoundCardinalityFromCounts(counts);
+}
+
+/**
  * Compute axis-aligned bounding box over a set of points.
  * Returns null if fewer than one point.
  */
@@ -390,6 +479,9 @@ export function metricsToCSV(m: DrawingMetrics, context: MetricsCsvContext = {})
         'drawing_area',
         'area_per_node',
         'edge_length_cv',
+        'aspect_ratio',
+        'compound_largest_group_size',
+        'compound_singleton_fraction',
     ].join(',');
     const row = [
         m.nodes,
@@ -402,6 +494,9 @@ export function metricsToCSV(m: DrawingMetrics, context: MetricsCsvContext = {})
         m.drawingArea.toFixed(2),
         m.areaPerNode.toFixed(2),
         m.edgeLengthCV.toFixed(4),
+        m.aspectRatio.toFixed(4),
+        m.compoundLargestGroupSize,
+        m.compoundSingletonFraction.toFixed(4),
     ].join(',');
     return header + '\n' + row + '\n';
 }
@@ -505,6 +600,9 @@ export function metricsToJsonObject(
         drawing_area: m.drawingArea,
         area_per_node: m.areaPerNode,
         edge_length_cv: m.edgeLengthCV,
+        aspect_ratio: m.aspectRatio,
+        compound_largest_group_size: m.compoundLargestGroupSize,
+        compound_singleton_fraction: m.compoundSingletonFraction,
     };
 }
 

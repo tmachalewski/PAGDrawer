@@ -292,6 +292,7 @@
                     </table>
                     <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px;">
                         <button class="control-btn" id="stats-toggle-crossings" style="background: #ff2d55; font-size: 12px; padding: 6px 12px;">🔍 Show debug overlay</button>
+                        <button class="control-btn" id="stats-debug-overlay-settings" title="Configure which overlays are shown" style="background: #6b7280; font-size: 12px; padding: 6px 10px;">⚙️</button>
                         <button class="control-btn" id="stats-export-csv" style="background: #22c55e; font-size: 12px; padding: 6px 12px;">📥 Export CSV</button>
                         <button class="control-btn" id="stats-export-json" style="background: #3b82f6; font-size: 12px; padding: 6px 12px;">📄 Export JSON</button>
                     </div>
@@ -315,6 +316,49 @@
                     <li><b>Drawing quality metrics</b> — Purchase (2002). Crossings excludes edge pairs sharing a node. Area uses center-point method in logical coordinates (zoom-invariant). Edge length CV uses population std dev.</li>
                 </ul>
             </details>
+        </div>
+    </div>
+
+    <!-- Debug Overlay Settings Modal -->
+    <div id="debug-overlay-modal" class="modal-overlay"
+         onclick="if(event.target===this)closeDebugOverlayModal()"
+         style="display: none;">
+        <div class="modal-content" style="max-width: 540px;">
+            <div class="modal-header">
+                <h2>🔍 Debug Overlay Settings</h2>
+                <button class="close-btn" onclick="closeDebugOverlayModal()">×</button>
+            </div>
+
+            <div class="modal-body">
+                <div class="debug-overlay-section">
+                    <div class="debug-overlay-section-title">Presets</div>
+                    <div class="debug-overlay-presets">
+                        <button class="control-btn" data-debug-preset="crossings" title="Highlight crossings + aspect ratio">🎯 Crossings analysis</button>
+                        <button class="control-btn" data-debug-preset="layout" title="Bbox + edge length stats + aspect ratio">📐 Layout diagnostics</button>
+                        <button class="control-btn" data-debug-preset="reductions" title="Compound group cardinality">🔗 Reduction transparency</button>
+                        <button class="control-btn" data-debug-preset="defaults" title="Restore the original 4 overlays">◌ Defaults</button>
+                        <button class="control-btn" data-debug-preset="clear" title="Turn everything off">⊘ Clear all</button>
+                    </div>
+                </div>
+
+                <div class="debug-overlay-section">
+                    <div class="debug-overlay-section-title">Existing overlays</div>
+                    <label class="debug-overlay-toggle"><input type="checkbox" data-overlay-key="crossings"> Edge crossings (red dots)</label>
+                    <label class="debug-overlay-toggle"><input type="checkbox" data-overlay-key="drawingArea"> Drawing area (blue rectangle)</label>
+                    <label class="debug-overlay-toggle"><input type="checkbox" data-overlay-key="meanEdgeLine"> Mean edge length (green line)</label>
+                    <label class="debug-overlay-toggle"><input type="checkbox" data-overlay-key="stdDevLine"> Std-dev (orange line)</label>
+                </div>
+
+                <div class="debug-overlay-section">
+                    <div class="debug-overlay-section-title">New overlays</div>
+                    <label class="debug-overlay-toggle"><input type="checkbox" data-overlay-key="aspectRatio"> Aspect ratio in bbox label (M9)</label>
+                    <label class="debug-overlay-toggle"><input type="checkbox" data-overlay-key="groupCardinality"> Compound group size ×N (M21)</label>
+                </div>
+
+                <div class="stats-card-hint" style="margin-top: 4px;">
+                    Settings persist across sessions in <code>localStorage</code> (<code>debugOverlayState_v1</code>).
+                </div>
+            </div>
         </div>
     </div>
 
