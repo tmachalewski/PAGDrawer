@@ -1,7 +1,7 @@
 # Debug Overlay Visualizations — Implementation Plan
 
 **Created:** 2026-05-03-19-42
-**Branches (proposed):** stage sub-branches under the umbrella `feature/metrics-roadmap` — overlay work spans `feature/metrics-roadmap/overlay-foundation`, `.../crossings`, `.../bridges-and-merges`, `.../layout-diagnostics`, plus the post-umbrella `feature/visualization-surface` for Stage 8. See Master roadmap for the full sequencing.
+**Branches (proposed):** stage sub-branches under the umbrella `feature/metrics-roadmap` — overlay work spans `feature/metrics-roadmap-overlay-foundation`, `.../crossings`, `.../bridges-and-merges`, `.../layout-diagnostics`, plus the post-umbrella `feature/visualization-surface` for Stage 8. See Master roadmap for the full sequencing.
 **Source plan:** `Docs/Plans/metric_proposals.md` (ratings ✅/⚠️/❌ per metric)
 **Sister plans:**
 - `Docs/Plans/Paper_Evaluation_Metrics.md` — paper-importance ordering (the "what reviewers want to see" set)
