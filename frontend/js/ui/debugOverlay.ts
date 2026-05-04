@@ -446,13 +446,13 @@ function clearGroupCardinalityBadges(): void {
 }
 
 /**
- * Inline style applied on hover so the M2/M25 hint label appears next to
- * the crossing dot. Using inline `node.style({...})` rather than a
- * `.hovered` class keeps the rendering deterministic — class-selector
+ * Inline style applied on click so the M2/M25 hint label appears next to
+ * the clicked crossing dot. Using inline `node.style({...})` rather than
+ * a `.hovered` class keeps the rendering deterministic — class-selector
  * stylesheet rules can be sensitive to load-order and `data()` mapper
  * re-evaluation timing.
  */
-const CROSSING_HOVER_STYLE = {
+const CROSSING_HINT_STYLE = {
     'label': 'data(hoverLabel)',
     'font-size': '11px',
     'font-weight': 'bold',
@@ -466,31 +466,73 @@ const CROSSING_HOVER_STYLE = {
     'z-index': 10000,
 };
 
-const CROSSING_HOVER_STYLE_KEYS = Object.keys(CROSSING_HOVER_STYLE);
+const CROSSING_HINT_STYLE_KEYS = Object.keys(CROSSING_HINT_STYLE);
 
 /**
- * Bind mouseover / mouseout handlers on the crossing dots so the M2/M25
- * hint label appears next to the hovered dot. Idempotent: each call
- * removes any previously bound handler in the `crossing-hover` namespace
- * before re-binding, so redraw() doesn't stack listeners.
+ * Track the currently-labelled crossing dot id, if any. Clicking a
+ * different dot moves the hint; clicking the same dot toggles it off;
+ * clicking the background also clears it.
+ */
+let activeHintDotId: string | null = null;
+
+function clearActiveHint(): void {
+    if (!activeHintDotId) return;
+    const cy = getCy();
+    if (cy) {
+        const node = cy.getElementById(activeHintDotId);
+        if (node.length > 0) {
+            CROSSING_HINT_STYLE_KEYS.forEach(k => node.removeStyle(k));
+        }
+    }
+    activeHintDotId = null;
+}
+
+/**
+ * Bind tap (click/touch) handlers on the crossing dots so the M2/M25 hint
+ * label appears next to the clicked dot, and on the background so a
+ * background click dismisses the hint. Idempotent: each call removes any
+ * previously bound handler in the `crossing-hint` namespace before
+ * re-binding, so redraw() doesn't stack listeners.
  */
 function wireCrossingHoverHandlers(): void {
     const cy = getCy();
     if (!cy) return;
-    cy.off('mouseover.crossing-hover', 'node[type="CROSSING_DEBUG"]');
-    cy.off('mouseout.crossing-hover', 'node[type="CROSSING_DEBUG"]');
-    cy.on('mouseover.crossing-hover', 'node[type="CROSSING_DEBUG"]', (e) => {
-        e.target.style(CROSSING_HOVER_STYLE);
+
+    // Clear any previously bound listeners + any stale hint label
+    cy.off('tap.crossing-hint');
+    clearActiveHint();
+
+    cy.on('tap.crossing-hint', 'node[type="CROSSING_DEBUG"]', (e) => {
+        const target = e.target;
+        const id = target.id();
+        if (activeHintDotId === id) {
+            // Toggle off — second click on the same dot
+            clearActiveHint();
+            return;
+        }
+        // Clear previous (if any) before showing the new one
+        clearActiveHint();
+        target.style(CROSSING_HINT_STYLE);
+        activeHintDotId = id;
     });
-    cy.on('mouseout.crossing-hover', 'node[type="CROSSING_DEBUG"]', (e) => {
-        // Remove only the keys we set — preserves the colour-by override.
-        CROSSING_HOVER_STYLE_KEYS.forEach(k => e.target.removeStyle(k));
+
+    // Background tap: dismiss the hint without disturbing the existing
+    // tooltip system's background-click handling (it has its own listener).
+    cy.on('tap.crossing-hint', (e) => {
+        if (e.target === cy) {
+            clearActiveHint();
+        }
     });
 }
 
 function clearAll(): void {
     const cy = getCy();
+    // The crossing-hint listener is bound on `cy`, not on individual dots,
+    // so removing the dots without clearing the hint state would leave the
+    // module pointing at a freed id.
+    activeHintDotId = null;
     if (cy) {
+        cy.off('tap.crossing-hint');
         elementIds.forEach(id => {
             const el = cy.getElementById(id);
             if (el.length) el.remove();
