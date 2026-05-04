@@ -163,8 +163,21 @@ export function getOverlayState(): OverlayState {
 }
 
 export function setOverlayState(partial: Partial<OverlayState>): void {
+    const prev = currentState;
     currentState = { ...currentState, ...partial };
     persistState(currentState);
+
+    // Clear stress-vis visuals when their respective mode is turned OFF.
+    // We don't clear when other overlays toggle (preserving the user's
+    // stress-vis context) or when these modes turn ON (no visuals exist
+    // yet — they materialise on the next click).
+    if (prev.stressDistanceColoring && !currentState.stressDistanceColoring) {
+        clearDistanceColoring();
+    }
+    if (prev.stressPairDistance && !currentState.stressPairDistance) {
+        hideStressPairPanel();
+    }
+
     // Stress visualisations are click-driven, not render-driven — they
     // need their listener bound regardless of whether the rest of the
     // overlay (crossings dots, bbox, etc.) is currently shown.
@@ -216,11 +229,16 @@ export function showDebugOverlay(): void {
 }
 
 /**
- * Remove every rendered overlay element. Restores any compound-parent labels
- * we modified for M21.
+ * Remove every rendered overlay element + tear down stress vis state.
+ * Restores any compound-parent labels we modified for M21.
+ *
+ * This is the full reset; `clearAll()` (used by `redraw()`) only tears
+ * down synthetic overlay elements so toggling individual overlays
+ * doesn't disturb the user's stress-vis context.
  */
 export function hideDebugOverlay(): void {
     clearAll();
+    unwireStressVisualizationHandlers();
     isActive = false;
 }
 
@@ -752,6 +770,17 @@ function unwireStressVisualizationHandlers(): void {
     hideStressPairPanel();
 }
 
+/**
+ * Tear down the synthetic overlay elements (crossing dots, bbox, unit
+ * edges) and restore the labels we modified for M21. Called from
+ * `redraw()` and `hideDebugOverlay()`.
+ *
+ * Does NOT touch the M1 stress visualisation state — those colours and
+ * the pair-selection persist across overlay redraws so the user can
+ * toggle other overlays (crossings, bbox, etc.) without losing their
+ * stress-vis context. `hideDebugOverlay()` calls
+ * `unwireStressVisualizationHandlers()` separately for the full reset.
+ */
 function clearAll(): void {
     const cy = getCy();
     if (cy) {
@@ -762,7 +791,6 @@ function clearAll(): void {
     }
     elementIds = [];
     clearGroupCardinalityBadges();
-    unwireStressVisualizationHandlers();
 }
 
 // =============================================================================
