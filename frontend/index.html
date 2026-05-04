@@ -319,6 +319,22 @@
         </div>
     </div>
 
+    <!-- M1 Stress: pair-distance floating panel.
+         Driven by frontend/js/ui/debugOverlay.ts — shown when user clicks
+         two nodes with the stressPairDistance overlay enabled. -->
+    <div id="stress-pair-panel" class="stress-pair-panel" style="display: none;">
+        <div class="stress-pair-header">
+            <span class="stress-pair-title">M1 — Pair distances</span>
+            <button class="stress-pair-close" onclick="closeStressPairPanel()">×</button>
+        </div>
+        <div class="stress-pair-row"><span class="stress-pair-key">From:</span> <span id="stress-pair-from"></span></div>
+        <div class="stress-pair-row"><span class="stress-pair-key">To:</span> <span id="stress-pair-to"></span></div>
+        <div class="stress-pair-row"><span class="stress-pair-key">d(from → to):</span> <span id="stress-pair-fwd"></span></div>
+        <div class="stress-pair-row"><span class="stress-pair-key">d(to → from):</span> <span id="stress-pair-bwd"></span></div>
+        <div class="stress-pair-row"><span class="stress-pair-key">symmetrised:</span> <span id="stress-pair-sym"></span></div>
+        <div class="stress-pair-row"><span class="stress-pair-key">Euclidean:</span> <span id="stress-pair-euc"></span></div>
+    </div>
+
     <!-- Debug Overlay Settings Modal -->
     <div id="debug-overlay-modal" class="modal-overlay"
          onclick="if(event.target===this)closeDebugOverlayModal()"
@@ -360,6 +376,12 @@
                     <div class="debug-overlay-section-title">New overlays</div>
                     <label class="debug-overlay-toggle"><input type="checkbox" data-overlay-key="aspectRatio"> Aspect ratio in bbox label (M9)</label>
                     <label class="debug-overlay-toggle"><input type="checkbox" data-overlay-key="groupCardinality"> Compound group size ×N (M21)</label>
+                </div>
+
+                <div class="debug-overlay-section">
+                    <div class="debug-overlay-section-title">Stress visualisation (M1)</div>
+                    <label class="debug-overlay-toggle"><input type="checkbox" data-overlay-key="stressDistanceColoring"> Color nodes by graph distance from clicked source</label>
+                    <label class="debug-overlay-toggle"><input type="checkbox" data-overlay-key="stressPairDistance"> Show pair distances on click (click two nodes)</label>
                 </div>
 
                 <div class="stats-card-hint" style="margin-top: 4px;">

@@ -252,6 +252,8 @@ The 🔍 button toggles overlays on/off. Each overlay is **independently** toggl
 | 🟠 Orange dashed line | Population std dev of edge lengths, drawn above the green line | `computeEdgeLengthStd(edges)` | on |
 | Bbox label suffix `(AR = 0.42)` (M9) | `min(w,h) / max(w,h)` of the bbox | `computeAspectRatio(bb)` | off |
 | Compound label suffix `(×N)` (M21) | Member count for every compound parent (idempotent: skips parents whose label already ends with `(×<digits>)`, e.g. CVE_GROUP) | `computeCompoundCardinality()` | off |
+| Node fills coloured by graph distance from clicked source (M1) | Click any node → red→yellow→green gradient by symmetrised graph distance; unreachable = translucent grey; source = black with yellow border | `computeAPSP` + `symmetrizedDistance`. See [`StressMetric.md`](StressMetric.md) § Visualisation. | off |
+| Floating pair-distance panel (M1) | Click two nodes in sequence → upper-right panel shows both directed distances, the symmetrised distance, and the Euclidean (layout) distance | same as above | off |
 
 All overlay shapes are added as Cytoscape pseudo-nodes/edges with custom `type` values (`CROSSING_DEBUG`, `AREA_DEBUG`, `UNIT_EDGE_NODE`, `UNIT_EDGE`, `UNIT_EDGE_STD`). They zoom and pan with the graph, ignore mouse events, and are explicitly filtered out of every metric computation so toggling the overlay never changes what the metrics report.
 
@@ -284,6 +286,11 @@ A dedicated modal that lets the user toggle each overlay individually and apply 
 │ New overlays:                                         │
 │   ☐ Aspect ratio in bbox label (M9)                  │
 │   ☐ Compound group size ×N (M21)                     │
+│                                                       │
+│ Stress visualisation (M1):                            │
+│   ☐ Color nodes by graph distance from clicked      │
+│     source                                            │
+│   ☐ Show pair distances on click                     │
 └──────────────────────────────────────────────────────┘
 ```
 
