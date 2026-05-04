@@ -466,6 +466,7 @@ describe('JSON metrics export (schema v1)', () => {
         scans_in_current_graph: [
             { id: 'scan-1', name: 'nginx:stable', vuln_count: 189 },
         ],
+        selection_was_implicit: true,
     };
 
     const fixedNow = new Date('2026-05-04T12:00:00.000Z');
@@ -572,23 +573,48 @@ describe('JSON metrics export (schema v1)', () => {
 });
 
 describe('buildDataSourceSnapshot', () => {
+    const scans = [
+        { id: 'a', name: 'nginx', filename: 'a.json', uploaded_at: 't', vuln_count: 5 },
+        { id: 'b', name: 'redis', filename: 'b.json', uploaded_at: 't', vuln_count: 12 },
+    ];
+
     it('returns mock-source for empty scan list', () => {
         const ds = buildDataSourceSnapshot([]);
         expect(ds.type).toBe('mock');
         expect(ds.scans_uploaded_total).toBe(0);
         expect(ds.scans_in_current_graph).toEqual([]);
+        expect(ds.selection_was_implicit).toBe(true);
     });
 
-    it('returns trivy-source with mapped scan refs when scans exist', () => {
-        const ds = buildDataSourceSnapshot([
-            { id: 'a', name: 'nginx', filename: 'a.json', uploaded_at: 't', vuln_count: 5 },
-            { id: 'b', name: 'redis', filename: 'b.json', uploaded_at: 't', vuln_count: 12 },
-        ]);
+    it('returns trivy-source with all scans when no selection is given (implicit)', () => {
+        const ds = buildDataSourceSnapshot(scans);
         expect(ds.type).toBe('trivy');
         expect(ds.scans_uploaded_total).toBe(2);
+        expect(ds.selection_was_implicit).toBe(true);
         expect(ds.scans_in_current_graph).toEqual([
             { id: 'a', name: 'nginx', vuln_count: 5 },
             { id: 'b', name: 'redis', vuln_count: 12 },
         ]);
+    });
+
+    it('treats undefined / null / [] selection as implicit (lists all uploaded)', () => {
+        expect(buildDataSourceSnapshot(scans, undefined).selection_was_implicit).toBe(true);
+        expect(buildDataSourceSnapshot(scans, null).selection_was_implicit).toBe(true);
+        expect(buildDataSourceSnapshot(scans, []).selection_was_implicit).toBe(true);
+        expect(buildDataSourceSnapshot(scans, []).scans_in_current_graph).toHaveLength(2);
+    });
+
+    it('filters scans_in_current_graph when an explicit selection is given', () => {
+        const ds = buildDataSourceSnapshot(scans, ['a']);
+        expect(ds.scans_uploaded_total).toBe(2);            // total still reflects uploads
+        expect(ds.scans_in_current_graph).toHaveLength(1);  // but only "a" is in the graph
+        expect(ds.scans_in_current_graph[0].id).toBe('a');
+        expect(ds.selection_was_implicit).toBe(false);
+    });
+
+    it('handles selection of unknown ids gracefully (filters to empty)', () => {
+        const ds = buildDataSourceSnapshot(scans, ['nonexistent']);
+        expect(ds.scans_in_current_graph).toEqual([]);
+        expect(ds.selection_was_implicit).toBe(false);
     });
 });

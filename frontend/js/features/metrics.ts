@@ -589,7 +589,19 @@ export interface DataSourceScanRef {
 export interface DataSourceSnapshot {
     type: 'trivy' | 'mock' | 'unknown';
     scans_uploaded_total: number;
+    /**
+     * Scans that actually fed the current graph. When the user has selected
+     * a subset (single-scan dropdown), this list contains only the chosen
+     * scan(s). When the dropdown is on "all", this lists every uploaded scan
+     * and `selection_was_implicit` is true.
+     */
     scans_in_current_graph: DataSourceScanRef[];
+    /**
+     * `true` when the user did NOT explicitly choose a scan (the dropdown
+     * was on "all"), so `scans_in_current_graph` was populated from the
+     * full upload list. `false` when at least one specific scan was picked.
+     */
+    selection_was_implicit: boolean;
 }
 
 export interface MetricsJsonSnapshot {
@@ -603,19 +615,37 @@ export interface MetricsJsonSnapshot {
 }
 
 /**
- * Build a DataSourceSnapshot from the list of scans currently uploaded.
- * For now `type` is heuristically Trivy if any scans exist; a future plan
- * may add explicit data-source typing.
+ * Build a DataSourceSnapshot from the full uploaded scan list and the
+ * (optionally) user-selected subset.
+ *
+ * @param scans       Every scan currently uploaded to the backend.
+ * @param selectedIds Scan IDs the user picked via the scan selector. Pass
+ *                    `undefined` (or omit) when the user chose "all" — the
+ *                    full upload list is used and `selection_was_implicit`
+ *                    is set to `true`.
+ *
+ * `type` is heuristically Trivy if any scans exist; a future plan may add
+ * explicit data-source typing.
  */
-export function buildDataSourceSnapshot(scans: ScanInfo[]): DataSourceSnapshot {
+export function buildDataSourceSnapshot(
+    scans: ScanInfo[],
+    selectedIds?: string[] | null,
+): DataSourceSnapshot {
+    const explicit = Array.isArray(selectedIds) && selectedIds.length > 0;
+    const selectedSet = explicit ? new Set(selectedIds) : null;
+    const filtered = selectedSet
+        ? scans.filter(s => selectedSet.has(s.id))
+        : scans;
+
     return {
         type: scans.length > 0 ? 'trivy' : 'mock',
         scans_uploaded_total: scans.length,
-        scans_in_current_graph: scans.map(s => ({
+        scans_in_current_graph: filtered.map(s => ({
             id: s.id,
             name: s.name,
             vuln_count: s.vuln_count,
         })),
+        selection_was_implicit: !explicit,
     };
 }
 

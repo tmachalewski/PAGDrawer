@@ -14,6 +14,7 @@ import {
     type DataSourceSnapshot,
 } from '../features/metrics';
 import { gatherCurrentSettings, type SettingsSnapshot } from '../features/settingsSnapshot';
+import { getSelectedScanIds } from '../features/dataSource';
 import {
     showDebugOverlay,
     hideDebugOverlay,
@@ -84,10 +85,15 @@ export async function refreshStatistics(): Promise<void> {
 async function populateTrivyVulnCount(): Promise<void> {
     try {
         const { scans } = await getScans();
-        lastTrivyVulnCount = scans.reduce((sum, s) => sum + (s.vuln_count || 0), 0);
-        // Capture data-source snapshot from the same scan list — keeps the
-        // JSON export's data_source consistent with the displayed Trivy count.
-        lastDataSource = buildDataSourceSnapshot(scans);
+        // Filter the displayed Trivy total to the user's scan-selector choice
+        // — when one scan is selected, only that scan's vuln_count contributes.
+        // The JSON export's data_source uses the same selection so the file
+        // and the modal agree.
+        const selectedIds = getSelectedScanIds();
+        const selectedSet = selectedIds && selectedIds.length > 0 ? new Set(selectedIds) : null;
+        const contributing = selectedSet ? scans.filter(s => selectedSet.has(s.id)) : scans;
+        lastTrivyVulnCount = contributing.reduce((sum, s) => sum + (s.vuln_count || 0), 0);
+        lastDataSource = buildDataSourceSnapshot(scans, selectedIds);
     } catch (err) {
         console.error('Failed to fetch scan list for Trivy vuln count:', err);
         lastTrivyVulnCount = null;
@@ -283,8 +289,13 @@ function populateDrawingMetrics(): void {
     }
 
     const m = lastMetrics;
+    const scansContributing = lastDataSource?.scans_in_current_graph.length ?? 0;
+    const totalUploaded = lastDataSource?.scans_uploaded_total ?? 0;
+    const scansLabel = lastDataSource?.selection_was_implicit
+        ? `all ${totalUploaded} uploaded scan${totalUploaded === 1 ? '' : 's'}`
+        : `${scansContributing} of ${totalUploaded} uploaded scan${totalUploaded === 1 ? '' : 's'}`;
     const trivyLabel = lastTrivyVulnCount !== null
-        ? `${lastTrivyVulnCount}   (all uploaded scans)`
+        ? `${lastTrivyVulnCount}   (${scansLabel})`
         : '—';
     const rows: Array<[string, string]> = [
         ['Unique CVEs (graph)', String(m.uniqueCves)],

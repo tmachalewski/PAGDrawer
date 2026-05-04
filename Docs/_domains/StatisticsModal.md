@@ -153,10 +153,12 @@ Click 📄 **Export JSON** and a `pagdrawer-metrics-YYYY-MM-DD-HH-mm.json` file 
 
   "data_source": {
     "type": "trivy",                             // "trivy" | "mock" | "unknown"
-    "scans_uploaded_total": 3,
-    "scans_in_current_graph": [
+    "scans_uploaded_total": 3,                   // every scan currently uploaded
+    "scans_in_current_graph": [                  // scans actually feeding this graph
       { "id": "scan-uuid-1", "name": "nginx:stable-trixie-perl", "vuln_count": 189 }
-    ]
+    ],
+    "selection_was_implicit": false              // true ⇒ user picked "all" and the
+                                                  // list above is the full upload set
   },
 
   "settings": {
