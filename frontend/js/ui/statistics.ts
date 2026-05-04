@@ -322,6 +322,12 @@ function populateDrawingMetrics(): void {
                 ? '—'
                 : `${m.crossingsTopPairLabel}   (${(m.crossingsTopPairShare * 100).toFixed(1)}%)`,
         ],
+        [
+            'Stress per pair (M1)',
+            m.stressReachablePairs > 0
+                ? `${m.stressPerPair.toFixed(2)}   (${m.stressReachablePairs} pairs${m.stressUnreachablePairs > 0 ? `, ${m.stressUnreachablePairs} unreachable` : ''})`
+                : '—',
+        ],
         ['Drawing area (logical units²)', m.drawingArea.toFixed(2)],
         ['Area per node (logical units²)', m.areaPerNode.toFixed(2) + '   (lower = denser)'],
         ['Aspect ratio (M9)', m.aspectRatio.toFixed(4) + '   (1 = square)'],
