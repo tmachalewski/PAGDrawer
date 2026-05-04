@@ -334,7 +334,13 @@ describe('computeAspectRatio (M9)', () => {
 describe('computeCompoundCardinalityFromCounts (M21)', () => {
     it('returns zeros for empty input', () => {
         const r = computeCompoundCardinalityFromCounts(new Map());
-        expect(r).toEqual({ largestGroupSize: 0, singletonFraction: 0, groups: [] });
+        expect(r).toEqual({
+            largestGroupSize: 0,
+            singletonFraction: 0,
+            groupsCount: 0,
+            sizeDistribution: {},
+            groups: [],
+        });
     });
 
     it('reports largest group across all parents', () => {
@@ -363,8 +369,28 @@ describe('computeCompoundCardinalityFromCounts (M21)', () => {
         expect(r).toEqual({
             largestGroupSize: 7,
             singletonFraction: 0,
+            groupsCount: 1,
+            sizeDistribution: { 7: 1 },
             groups: [{ parentId: 'solo', size: 7 }],
         });
+    });
+
+    it('emits a size→count distribution', () => {
+        // 4 parents at sizes [3, 3, 5, 7] → dist {3: 2, 5: 1, 7: 1}
+        const counts = new Map([
+            ['p1', 3], ['p2', 3], ['p3', 5], ['p4', 7],
+        ]);
+        const r = computeCompoundCardinalityFromCounts(counts);
+        expect(r.sizeDistribution).toEqual({ 3: 2, 5: 1, 7: 1 });
+        expect(r.groupsCount).toBe(4);
+    });
+
+    it('groupsCount equals total compound parents (independent of size)', () => {
+        const counts = new Map([['a', 1], ['b', 1], ['c', 1]]);
+        const r = computeCompoundCardinalityFromCounts(counts);
+        expect(r.groupsCount).toBe(3);
+        expect(r.sizeDistribution).toEqual({ 1: 3 });
+        expect(r.singletonFraction).toBe(1.0);
     });
 });
 
@@ -382,20 +408,22 @@ describe('metricsToCSV', () => {
         aspectRatio: 0.5,
         compoundLargestGroupSize: 5,
         compoundSingletonFraction: 0.25,
+        compoundGroupsCount: 4,
+        compoundSizeDistribution: { 1: 1, 3: 2, 5: 1 },
     };
 
     it('emits all columns with unique_cves and empty trivy_vuln_count when context missing', () => {
         const csv = metricsToCSV(baseMetrics);
         const lines = csv.trim().split('\n');
         expect(lines.length).toBe(2);
-        expect(lines[0]).toBe('nodes,edges,unique_cves,trivy_vuln_count,crossings_raw,crossings_normalized,crossings_per_edge,drawing_area,area_per_node,edge_length_cv,aspect_ratio,compound_largest_group_size,compound_singleton_fraction');
-        expect(lines[1]).toBe('10,15,7,,3,0.9500,0.2000,12345.67,1234.57,0.4200,0.5000,5,0.2500');
+        expect(lines[0]).toBe('nodes,edges,unique_cves,trivy_vuln_count,crossings_raw,crossings_normalized,crossings_per_edge,drawing_area,area_per_node,edge_length_cv,aspect_ratio,compound_groups_count,compound_largest_group_size,compound_singleton_fraction');
+        expect(lines[1]).toBe('10,15,7,,3,0.9500,0.2000,12345.67,1234.57,0.4200,0.5000,4,5,0.2500');
     });
 
     it('populates trivy_vuln_count when provided via context', () => {
         const csv = metricsToCSV(baseMetrics, { trivyVulnCount: 189 });
         const lines = csv.trim().split('\n');
-        expect(lines[1]).toBe('10,15,7,189,3,0.9500,0.2000,12345.67,1234.57,0.4200,0.5000,5,0.2500');
+        expect(lines[1]).toBe('10,15,7,189,3,0.9500,0.2000,12345.67,1234.57,0.4200,0.5000,4,5,0.2500');
     });
 });
 
@@ -417,6 +445,8 @@ describe('JSON metrics export (schema v1)', () => {
         aspectRatio: 0.5,
         compoundLargestGroupSize: 5,
         compoundSingletonFraction: 0.25,
+        compoundGroupsCount: 4,
+        compoundSizeDistribution: { 1: 1, 3: 2, 5: 1 },
     };
 
     const baseSettings: SettingsSnapshot = {
@@ -477,8 +507,10 @@ describe('JSON metrics export (schema v1)', () => {
             area_per_node: 1234.567,
             edge_length_cv: 0.42,
             aspect_ratio: 0.5,
+            compound_groups_count: 4,
             compound_largest_group_size: 5,
             compound_singleton_fraction: 0.25,
+            compound_size_distribution: { 1: 1, 3: 2, 5: 1 },
         });
     });
 
@@ -517,8 +549,10 @@ describe('JSON metrics export (schema v1)', () => {
         expect(metricKeys).toEqual([
             'area_per_node',
             'aspect_ratio',
+            'compound_groups_count',
             'compound_largest_group_size',
             'compound_singleton_fraction',
+            'compound_size_distribution',
             'crossings_normalized',
             'crossings_per_edge',
             'crossings_raw',

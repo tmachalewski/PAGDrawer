@@ -122,8 +122,10 @@ Single click → single-row CSV downloads as `pagdrawer-metrics-YYYY-MM-DD-HH-mm
 Columns:
 
 ```
-nodes,edges,unique_cves,trivy_vuln_count,crossings_raw,crossings_normalized,crossings_per_edge,drawing_area,area_per_node,edge_length_cv,aspect_ratio,compound_largest_group_size,compound_singleton_fraction
+nodes,edges,unique_cves,trivy_vuln_count,crossings_raw,crossings_normalized,crossings_per_edge,drawing_area,area_per_node,edge_length_cv,aspect_ratio,compound_groups_count,compound_largest_group_size,compound_singleton_fraction
 ```
+
+The full per-size compound distribution (a variable-cardinality dict) is intentionally not flattened into CSV because it would produce non-stable headers across runs. It is included in the JSON export under `metrics.compound_size_distribution` and rendered in the Statistics modal as a histogram-style row.
 
 Workflow for the ESORICS paper:
 
@@ -187,8 +189,10 @@ Click 📄 **Export JSON** and a `pagdrawer-metrics-YYYY-MM-DD-HH-mm.json` file 
     "area_per_node": 22737.32,
     "edge_length_cv": 0.7748,
     "aspect_ratio": 0.42,
+    "compound_groups_count": 4,
     "compound_largest_group_size": 8,
-    "compound_singleton_fraction": 0.25
+    "compound_singleton_fraction": 0.0,
+    "compound_size_distribution": { "2": 1, "3": 1, "5": 1, "8": 1 }
   }
 }
 ```

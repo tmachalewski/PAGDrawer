@@ -29,11 +29,22 @@ export interface DrawingMetrics {
     aspectRatio: number;           // M9: min(w,h)/max(w,h) of bbox, [0, 1] (1 = square)
     compoundLargestGroupSize: number; // M21: max children among compound parents
     compoundSingletonFraction: number; // M21: fraction of compound parents with exactly 1 child
+    compoundGroupsCount: number;    // M21: total number of compound parents
+    /**
+     * M21: full size → count distribution. Keys are member counts (e.g. 2, 3, 4),
+     * values are the number of compound parents with that exact size. Empty map
+     * when no compound parents exist. Lives in JSON export and modal histogram;
+     * not flattened into CSV (variable column set would break diffs).
+     */
+    compoundSizeDistribution: Record<number, number>;
 }
 
 export interface CompoundCardinality {
     largestGroupSize: number;
     singletonFraction: number;
+    groupsCount: number;
+    /** size → count map for the histogram. */
+    sizeDistribution: Record<number, number>;
     /** Per-parent member counts, useful for the overlay's per-parent badges. */
     groups: Array<{ parentId: string; size: number }>;
 }
@@ -178,6 +189,8 @@ export function computeMetrics(): DrawingMetrics | null {
         aspectRatio,
         compoundLargestGroupSize: compound.largestGroupSize,
         compoundSingletonFraction: compound.singletonFraction,
+        compoundGroupsCount: compound.groupsCount,
+        compoundSizeDistribution: compound.sizeDistribution,
     };
 }
 
@@ -344,14 +357,30 @@ export function computeCompoundCardinalityFromCounts(
     counts: Map<string, number>,
 ): CompoundCardinality {
     if (counts.size === 0) {
-        return { largestGroupSize: 0, singletonFraction: 0, groups: [] };
+        return {
+            largestGroupSize: 0,
+            singletonFraction: 0,
+            groupsCount: 0,
+            sizeDistribution: {},
+            groups: [],
+        };
     }
     const sizes = Array.from(counts.values());
     const largestGroupSize = sizes.reduce((m, s) => (s > m ? s : m), 0);
     const singletons = sizes.filter(s => s === 1).length;
     const singletonFraction = singletons / sizes.length;
+    const sizeDistribution: Record<number, number> = {};
+    for (const s of sizes) {
+        sizeDistribution[s] = (sizeDistribution[s] || 0) + 1;
+    }
     const groups = Array.from(counts.entries()).map(([parentId, size]) => ({ parentId, size }));
-    return { largestGroupSize, singletonFraction, groups };
+    return {
+        largestGroupSize,
+        singletonFraction,
+        groupsCount: counts.size,
+        sizeDistribution,
+        groups,
+    };
 }
 
 /**
@@ -369,7 +398,15 @@ function isDebugOverlayType(t: unknown): boolean {
  */
 export function computeCompoundCardinality(): CompoundCardinality {
     const cy = getCy();
-    if (!cy) return { largestGroupSize: 0, singletonFraction: 0, groups: [] };
+    if (!cy) {
+        return {
+            largestGroupSize: 0,
+            singletonFraction: 0,
+            groupsCount: 0,
+            sizeDistribution: {},
+            groups: [],
+        };
+    }
     const counts = new Map<string, number>();
     cy.nodes(':visible').forEach(n => {
         if (isDebugOverlayType(n.data('type'))) return;
@@ -480,6 +517,7 @@ export function metricsToCSV(m: DrawingMetrics, context: MetricsCsvContext = {})
         'area_per_node',
         'edge_length_cv',
         'aspect_ratio',
+        'compound_groups_count',
         'compound_largest_group_size',
         'compound_singleton_fraction',
     ].join(',');
@@ -495,6 +533,7 @@ export function metricsToCSV(m: DrawingMetrics, context: MetricsCsvContext = {})
         m.areaPerNode.toFixed(2),
         m.edgeLengthCV.toFixed(4),
         m.aspectRatio.toFixed(4),
+        m.compoundGroupsCount,
         m.compoundLargestGroupSize,
         m.compoundSingletonFraction.toFixed(4),
     ].join(',');
@@ -601,8 +640,10 @@ export function metricsToJsonObject(
         area_per_node: m.areaPerNode,
         edge_length_cv: m.edgeLengthCV,
         aspect_ratio: m.aspectRatio,
+        compound_groups_count: m.compoundGroupsCount,
         compound_largest_group_size: m.compoundLargestGroupSize,
         compound_singleton_fraction: m.compoundSingletonFraction,
+        compound_size_distribution: m.compoundSizeDistribution,
     };
 }
 

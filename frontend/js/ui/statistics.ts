@@ -249,6 +249,20 @@ function renderTypeTable(tableId: string, counts: Record<string, number>): void 
     });
 }
 
+/**
+ * Render the M21 compound-size distribution as a compact `size:count`
+ * histogram string for the modal table. Sorted by size ascending.
+ *
+ * Example: `{2: 5, 3: 8, 4: 2}` → `"2×5  3×8  4×2"` (12 px-wide, scannable).
+ */
+function formatSizeDistribution(dist: Record<number, number>): string {
+    const entries = Object.entries(dist)
+        .map(([size, count]) => [Number(size), count] as const)
+        .sort((a, b) => a[0] - b[0]);
+    if (entries.length === 0) return '—';
+    return entries.map(([size, count]) => `${size}×${count}`).join('  ');
+}
+
 function setText(id: string, value: string): void {
     const el = document.getElementById(id);
     if (el) el.textContent = value;
@@ -282,8 +296,13 @@ function populateDrawingMetrics(): void {
         ['Area per node (logical units²)', m.areaPerNode.toFixed(2) + '   (lower = denser)'],
         ['Aspect ratio (M9)', m.aspectRatio.toFixed(4) + '   (1 = square)'],
         ['Edge length CV', m.edgeLengthCV.toFixed(4) + '   (0 = uniform)'],
+        ['Compound groups (M21)', String(m.compoundGroupsCount)],
         ['Largest compound group (M21)', String(m.compoundLargestGroupSize)],
         ['Compound singleton fraction (M21)', m.compoundSingletonFraction.toFixed(4)],
+        [
+            'Compound size distribution (M21)',
+            formatSizeDistribution(m.compoundSizeDistribution),
+        ],
     ];
 
     rows.forEach(([label, value]) => {

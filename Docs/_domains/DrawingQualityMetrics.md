@@ -213,11 +213,17 @@ All pure functions except `computeMetrics`, `computeCompoundCardinality`, `getVi
 
 - `largestGroupSize` — max children across all compound parents
 - `singletonFraction` — parents with exactly one child / total parents
+- `groupsCount` — total number of compound parents
+- `sizeDistribution` — full size → count map for histogram display
 - `groups` — per-parent `(parentId, size)` tuples for overlay rendering
+
+**Note on `singletonFraction`:** the CVE-merge mechanism in `cveMerge.ts:176` skips groups with `< 2` members, so under normal operation `singletonFraction = 0`. The metric is preserved as a regression sentinel — a non-zero reading would surface immediately if a future merge mode produced singletons.
+
+**The size-distribution dict is JSON-only.** CSV exports include `compound_groups_count`, `compound_largest_group_size`, and `compound_singleton_fraction` as scalars; the per-size dict would produce non-stable column headers between runs and is therefore omitted from CSV. JSON exports include the full `compound_size_distribution` object. The Statistics modal renders the dict as a `2×5  3×8  4×2`-style histogram row.
 
 The overlay appends `(×N)` to every compound parent label. Idempotent: if a label already ends with `(×<digits>)` (e.g. CVE_GROUP from the data layer), the overlay leaves it untouched. Hiding the overlay restores all original labels via a saved-originals map.
 
-CSV columns: `compound_largest_group_size`, `compound_singleton_fraction`.
+CSV columns: `compound_groups_count`, `compound_largest_group_size`, `compound_singleton_fraction`.
 
 ---
 
