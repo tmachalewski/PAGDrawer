@@ -212,6 +212,14 @@ function drawAll(): void {
             const color = pickCrossingColor(c, currentState.crossingsColorBy, typePairPalette);
             const angleDeg = (c.angle * 180) / Math.PI;
             const typePair = `${c.edgeAType}×${c.edgeBType}`;
+            // Force `events: 'yes'` inline so a stale stylesheet (cached
+            // from a build before constants.ts was updated) can't suppress
+            // pointer events on these dots.
+            const inlineStyle: Record<string, unknown> = {
+                events: 'yes',
+                'overlay-opacity': 0,  // suppress Cytoscape's default click-overlay flash
+            };
+            if (color) inlineStyle['background-color'] = color;
             cy.add({
                 group: 'nodes',
                 data: {
@@ -221,8 +229,6 @@ function drawAll(): void {
                     edgeB: `${c.edgeB.sourceId} → ${c.edgeB.targetId}`,
                     angleDeg: angleDeg.toFixed(1),
                     typePair,
-                    // Pre-formatted hover hint shown via the `.hovered` class
-                    // on the [type="CROSSING_DEBUG"] selector in constants.ts.
                     // Empty type-pair (no data('type') on the underlying edges)
                     // renders as just the angle so the label stays readable.
                     hoverLabel: typePair === '×'
@@ -230,7 +236,7 @@ function drawAll(): void {
                         : `${angleDeg.toFixed(1)}°  ${typePair}`,
                 },
                 position: { x: c.point.x, y: c.point.y },
-                style: color ? { 'background-color': color } : undefined,
+                style: inlineStyle,
                 selectable: false,
                 grabbable: false,
             });
@@ -502,26 +508,27 @@ function wireCrossingHoverHandlers(): void {
     cy.off('tap.crossing-hint');
     clearActiveHint();
 
-    cy.on('tap.crossing-hint', 'node[type="CROSSING_DEBUG"]', (e) => {
-        const target = e.target;
-        const id = target.id();
-        if (activeHintDotId === id) {
-            // Toggle off — second click on the same dot
+    // One global tap listener with runtime type-check. Avoids relying on
+    // Cytoscape's selector-delegation when adding nodes after listener
+    // binding (it can be flaky if selector evaluation caches state).
+    cy.on('tap.crossing-hint', (e) => {
+        // Background tap — dismiss any active hint
+        if (e.target === cy) {
             clearActiveHint();
             return;
         }
-        // Clear previous (if any) before showing the new one
+        const target = e.target;
+        if (typeof target?.data !== 'function') return;
+        if (target.data('type') !== 'CROSSING_DEBUG') return;
+
+        const id = target.id();
+        if (activeHintDotId === id) {
+            clearActiveHint();
+            return;
+        }
         clearActiveHint();
         target.style(CROSSING_HINT_STYLE);
         activeHintDotId = id;
-    });
-
-    // Background tap: dismiss the hint without disturbing the existing
-    // tooltip system's background-click handling (it has its own listener).
-    cy.on('tap.crossing-hint', (e) => {
-        if (e.target === cy) {
-            clearActiveHint();
-        }
     });
 }
 
