@@ -51,7 +51,7 @@ Rows = metric. Columns = which daughter plan covers it.
 | M22 Attribute compression ratio | — | ✅ | Paper-only; export-only; needs `mergeKeys.ts` extraction |
 | M24 Column purity | ✅ | ✅ | Shared work |
 | M25 Type-pair crossings | ✅ | ✅ | Shared work |
-| M26 Edge-type distribution | — | ✅ | Paper-only; export-only; quoted JSON in cell |
+| M26 Edge-type distribution | — | ✅ | Paper-only; export-only; one CSV column per edge type |
 
 15 unique metrics; 5 shared between plans. (M14 and M28 are deferred per the Paper plan; they appear on neither side.)
 
@@ -128,7 +128,7 @@ End state: both reduction mechanisms are visually quantified. **Body-of-paper se
 **Daughter plan:** `Paper_Evaluation_Metrics.md` Phase 2 (remaining after M19)
 
 - M22 Attribute compression ratio (export-only) — includes extracting `mergeKeys.ts` from `cveMerge.ts` so M22 can use the merge key functions
-- M26 Edge-type distribution (export-only, **quoted JSON in cell**)
+- M26 Edge-type distribution (export-only; **one CSV column per edge type**, single nested object in JSON)
 
 End state: 2 of the 3 remaining Paper Phase 2 metrics done. M24 is in Stage 6 (shared with overlay plan).
 
@@ -221,10 +221,10 @@ These apply across stages and should be handled consistently throughout:
 | **CSV column ordering** | Append new columns at the end of the existing header. Document the order in `Docs/_domains/StatisticsModal.md` and `Docs/_domains/DrawingQualityMetrics.md`. |
 | **JSON schema versioning** | Stay at v1 throughout — additions are non-breaking per the JSON plan. Bump to v2 only on rename/remove. |
 | **Reproducibility** | Every JSON export carries the `git_sha` of the code that produced it. No manual `metric_version` bumping required. |
-| **M26 CSV cell format** | Quoted JSON object, RFC 4180-compliant. Document the convention so users opening with Excel know what they're looking at. |
+| **M26 column set** | One CSV column per edge type, sourced from the edge-type enum. JSON export carries a single nested `edge_type_distribution` object. A regression test asserts the CSV column set stays in sync with the enum. |
 | **Extraction prerequisite** | Stage 1 starts by moving the existing 4 overlays into the new `debugOverlay.ts` module before adding any new ones. Every subsequent stage's overlay work assumes the module exists. |
 | **Documentation** | After each stage, update `Docs/_domains/StatisticsModal.md` and `Docs/_domains/DrawingQualityMetrics.md`. Daily note per stage: `Docs/_dailyNotes/YYYY-MM-DD-HH-mm-Stage-N-...md`. |
-| **Branching** | One umbrella branch `feature/metrics-roadmap`; sub-branches per stage merging back into umbrella. Umbrella merges to `main` after Stage 7 (Paper plan complete). Stage 8 ships separately on a follow-up branch `feature/visualization-surface` after the umbrella merge — so the visual-only surface treatments don't block the paper-essential merge. |
+| **Branching** | One umbrella branch `feature/metrics-roadmap` off `main`; each stage gets its own sub-branch off the umbrella, named `feature/metrics-roadmap/<stage-slug>` (e.g. `feature/metrics-roadmap/json-export`, `feature/metrics-roadmap/overlay-foundation`, `feature/metrics-roadmap/crossings`, `feature/metrics-roadmap/stress`, `feature/metrics-roadmap/bridges-and-merges`, `feature/metrics-roadmap/paper-appendix`, `feature/metrics-roadmap/layout-diagnostics`, `feature/metrics-roadmap/topology-preservation`). Each sub-branch merges back into the umbrella once its acceptance criteria pass. Umbrella merges to `main` after Stage 7 (Paper plan complete). Stage 8 (visual-only surface treatments) ships on a separate post-umbrella branch `feature/visualization-surface` off `main` so it doesn't block the paper-essential merge. The daughter-plan-named branches (`feature/json-export`, `feature/paper-metrics`, `feature/debug-overlays`) listed in the daughter plans are aliases for the corresponding stage sub-branches above — kept in the docs for cross-reference. |
 | **Per-stage acceptance** | Each stage delivers a green test suite, an updated CSV column set, and an updated JSON schema. No half-shipped stages. |
 
 ---

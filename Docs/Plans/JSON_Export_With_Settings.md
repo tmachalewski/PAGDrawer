@@ -1,7 +1,7 @@
 # JSON Export with Settings Snapshot — Implementation Plan
 
 **Created:** 2026-05-03-21-42
-**Branch (proposed):** `feature/json-export`
+**Branch (proposed):** `feature/metrics-roadmap/json-export` (sub-branch of the umbrella `feature/metrics-roadmap`; see Master roadmap)
 **Sister plans:** `Debug_Overlay_Visualizations.md`, `Paper_Evaluation_Metrics.md`
 
 ---
@@ -25,7 +25,7 @@ The CSV export is unchanged and remains the default for spreadsheet workflows. J
 | Spreadsheet-native | ✅ | ❌ |
 | Nested structures (settings tree) | ❌ | ✅ |
 | Type fidelity (numbers vs strings, nulls) | ❌ | ✅ |
-| Free-form columns (e.g., M26's per-edge-type breakdown) | clumsy | natural |
+| Nested objects (e.g., M26's per-edge-type breakdown) | flat-columns workaround | natural single nested object |
 | Reproducibility (settings recoverable from the export) | ❌ | ✅ |
 
 The two formats coexist; the user picks per export.

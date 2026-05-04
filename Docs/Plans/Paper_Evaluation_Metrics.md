@@ -1,7 +1,7 @@
 # Paper Evaluation Metrics — Implementation Plan
 
 **Created:** 2026-05-03-19-42
-**Branch (proposed):** `feature/paper-metrics`
+**Branches (proposed):** stage sub-branches under the umbrella `feature/metrics-roadmap` — Paper-plan work spans `feature/metrics-roadmap/stress`, `.../bridges-and-merges`, `.../paper-appendix`, `.../layout-diagnostics`, `.../topology-preservation`. See Master roadmap for the full sequencing.
 **Source plan:** `Docs/Plans/metric_proposals.md` § "How I would prioritise"
 **Sister plans:**
 - `Docs/Plans/Debug_Overlay_Visualizations.md` — visualization-priority ordering
@@ -46,7 +46,7 @@ These should be revisited after Phase 3 lands. Excluded from the start per `metr
 | 5 | Implementation order: body metrics first (M1 → M2 → M20 → M25), then appendix metrics (M19 → M24 → M26 → M22 → M11 → M12). | Body metrics unblock the paper; appendix metrics polish it. |
 | 6 | Backend changes only for M19 (chain_length). | Minimize backend churn. |
 | 7 | M1 Stress uses BFS-based APSP for unweighted graphs (matches PAGDrawer's edge model). | Dijkstra unnecessary; BFS is simpler and faster. |
-| 8 | M26 emits a properly-quoted JSON string in the CSV cell, e.g. `'{"HAS_VULN":0.32,"IS_INSTANCE_OF":0.28}'`. | Preserves type fidelity; works with any RFC 4180-compliant CSV parser. JSON export gets the same data as a real nested object. |
+| 8 | M26 emits **one CSV column per edge type** (`edge_type_HAS_VULN`, `edge_type_IS_INSTANCE_OF`, ...). JSON export emits a single nested object. | The edge-type enum is fixed in the codebase; flat columns parse everywhere (Excel included), keep the CSV header self-describing, and avoid the escaped-string pitfalls of in-cell JSON. |
 
 ---
 
@@ -193,13 +193,10 @@ Each entry: scalar(s) for CSV / Statistics modal, algorithm, overlay status, ris
 
 **Why it matters**: isolates the visual cost of `ENABLES` back-edges (the most disruptive edge type for layered drawings).
 
-- **CSV column**: `edge_type_distribution` — a single column whose value is a **quoted JSON object**:
-  ```
-  "{""HAS_VULN"":0.36,""IS_INSTANCE_OF"":0.18,""LEADS_TO"":0.20,""ENABLES"":0.05,...}"
-  ```
-- **JSON export**: real nested object (no escaping)
+- **CSV columns**: one column per edge type — `edge_type_HAS_VULN`, `edge_type_IS_INSTANCE_OF`, `edge_type_LEADS_TO`, `edge_type_ENABLES`, etc. Each cell is a numeric share in `[0, 1]`. The column set is fixed by the edge-type enum in the codebase; absent edge types emit `0`.
+- **JSON export**: real nested object under `metrics.edge_type_distribution`, e.g. `{"HAS_VULN":0.36,"IS_INSTANCE_OF":0.18,...}` (no escaping; `0` for absent types).
 - **Overlay**: ❌ — already conveyed by edge color
-- **Implementation note**: emit per-edge-type **count share** by default. The length-weighted variant is interesting but doubles the column footprint; defer unless paper reviewers ask.
+- **Implementation note**: emit per-edge-type **count share** by default. The length-weighted variant is interesting but doubles the column footprint; defer unless paper reviewers ask. The fixed column list keeps CSV diffs across exports stable.
 
 ---
 
@@ -223,7 +220,7 @@ End state: the four body metrics are in the CSV. Paper draft can include them.
 - M19 Bridge contraction depth (incl. backend `chain_length` wiring)
 - M22 Attribute compression ratio (incl. extracting `mergeKeys.ts` from `cveMerge.ts`)
 - M24 Column purity
-- M26 Edge-type distribution (quoted JSON in CSV)
+- M26 Edge-type distribution (one CSV column per edge type)
 
 End state: appendix table is fleshed out.
 
@@ -243,7 +240,7 @@ End state: the dimension-reduction-style story is complete in CSV.
 - [ ] M19 backend `chain_length` covered by a unit test
 - [ ] M20 returns `null` outside outcomes-mode merge
 - [ ] M22 uses an extracted `mergeKeys.ts` module — no duplication of key logic
-- [ ] M26 CSV cell is RFC 4180–compliant quoted JSON; pandas `read_csv` can parse it
+- [ ] M26 emits one CSV column per edge type with column names matching the edge-type enum; JSON export emits a single nested `edge_type_distribution` object
 - [ ] Each new metric has at least one unit test
 - [ ] CSV header order documented in `Docs/_domains/StatisticsModal.md` and `Docs/_domains/DrawingQualityMetrics.md`
 
@@ -257,7 +254,7 @@ End state: the dimension-reduction-style story is complete in CSV.
 | 2 | M11/M12 require ranks of all nodes by both graph and layout distance | Cache between metrics; share with M1's APSP |
 | 3 | M19 backend `chain_length` recording at bridge-creation time may miss bridges added later | Bridges are immutable in current architecture; document and unit-test the create path |
 | 4 | M22 needs merge keys extracted from `cveMerge.ts` | Plan an explicit `mergeKeys.ts` extraction step at the top of Phase 2 |
-| 5 | M26 quoted JSON in CSV may surprise users opening with Excel's default settings | Document in `Docs/_domains/StatisticsModal.md`; recommend pandas / `csv` module for programmatic reads |
+| 5 | M26 column set must stay in sync with the edge-type enum — adding a new edge type silently widens the CSV header | Sourced from the same enum that produces edge styles; a single source-of-truth constant ensures additions propagate to both. Add a regression test asserting CSV column names == enum values. |
 
 ---
 
@@ -277,6 +274,6 @@ End state: the dimension-reduction-style story is complete in CSV.
 - `tests/test_builder.py` — M19 unit test
 
 **Documentation updates after implementation**:
-- `Docs/_domains/StatisticsModal.md` — list the new CSV columns and the M26 quoted-JSON convention
+- `Docs/_domains/StatisticsModal.md` — list the new CSV columns including the per-edge-type M26 columns
 - `Docs/_domains/DrawingQualityMetrics.md` — formal definitions for the 10 new metrics
 - `Docs/_dailyNotes/...-Paper_Metrics.md` — implementation log

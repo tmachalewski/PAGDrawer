@@ -1,7 +1,7 @@
 # Debug Overlay Visualizations — Implementation Plan
 
 **Created:** 2026-05-03-19-42
-**Branch (proposed):** `feature/debug-overlays`
+**Branches (proposed):** stage sub-branches under the umbrella `feature/metrics-roadmap` — overlay work spans `feature/metrics-roadmap/overlay-foundation`, `.../crossings`, `.../bridges-and-merges`, `.../layout-diagnostics`, plus the post-umbrella `feature/visualization-surface` for Stage 8. See Master roadmap for the full sequencing.
 **Source plan:** `Docs/Plans/metric_proposals.md` (ratings ✅/⚠️/❌ per metric)
 **Sister plans:**
 - `Docs/Plans/Paper_Evaluation_Metrics.md` — paper-importance ordering (the "what reviewers want to see" set)
@@ -330,7 +330,7 @@ Overlay selection persists in `localStorage` under key `debugOverlayState_v1`. N
 
 ## Implementation Phases
 
-Each phase ships independently to `feature/debug-overlays`, then the whole branch merges to `main` at the end (or after each phase if intermediate merges are preferred).
+Each phase ships on its own stage sub-branch under the umbrella `feature/metrics-roadmap`, merging back to the umbrella when its acceptance criteria pass. The umbrella merges to `main` after Paper Stage 7 per the Master roadmap. Phase 5 of this plan (Stage 8 in the Master roadmap) ships separately on `feature/visualization-surface` off `main` after the umbrella merge.
 
 ### Phase 1 — Foundation (extraction + quick wins)
 
