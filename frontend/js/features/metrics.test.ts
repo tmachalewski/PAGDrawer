@@ -19,6 +19,9 @@ import {
     computeCrossingAngle,
     computeCrossingAngleStats,
     computeTypePairCrossingStats,
+    computeAPSP,
+    computeStressFromAPSP,
+    type NodeWithPosition,
     metricsToCSV,
     metricsToJSON,
     metricsToJsonObject,
@@ -462,6 +465,149 @@ describe('findCrossings — type-pair sorting (M25 input)', () => {
     });
 });
 
+describe('computeAPSP (BFS, undirected, unweighted)', () => {
+    function mkE(s: string, t: string) {
+        return { sourceId: s, targetId: t };
+    }
+
+    it('returns empty for empty input', () => {
+        expect(computeAPSP([], []).size).toBe(0);
+    });
+
+    it('reports 0 self-distance for every node', () => {
+        const apsp = computeAPSP(['a', 'b'], [mkE('a', 'b')]);
+        expect(apsp.get('a')!.get('a')).toBe(0);
+        expect(apsp.get('b')!.get('b')).toBe(0);
+    });
+
+    it('reports 1-hop distance on a simple chain a-b-c', () => {
+        const apsp = computeAPSP(['a', 'b', 'c'], [mkE('a', 'b'), mkE('b', 'c')]);
+        expect(apsp.get('a')!.get('b')).toBe(1);
+        expect(apsp.get('b')!.get('a')).toBe(1);
+        expect(apsp.get('a')!.get('c')).toBe(2);
+        expect(apsp.get('c')!.get('a')).toBe(2);
+    });
+
+    it('treats edges as undirected even if source/target naming is directional', () => {
+        // a → b → c (directional declaration), but BFS sees the reverse
+        const apsp = computeAPSP(['a', 'b', 'c'], [mkE('a', 'b'), mkE('b', 'c')]);
+        expect(apsp.get('c')!.get('a')).toBe(2);
+    });
+
+    it('omits unreachable pairs from the inner map', () => {
+        // Two disconnected components: {a, b} and {c, d}
+        const apsp = computeAPSP(
+            ['a', 'b', 'c', 'd'],
+            [mkE('a', 'b'), mkE('c', 'd')],
+        );
+        expect(apsp.get('a')!.has('c')).toBe(false);
+        expect(apsp.get('a')!.has('d')).toBe(false);
+        expect(apsp.get('a')!.get('b')).toBe(1);
+        expect(apsp.get('c')!.get('d')).toBe(1);
+    });
+
+    it('skips edges with endpoints not in nodeIds', () => {
+        const apsp = computeAPSP(['a', 'b'], [mkE('a', 'b'), mkE('a', 'orphan')]);
+        expect(apsp.get('a')!.has('orphan')).toBe(false);
+        expect(apsp.get('a')!.get('b')).toBe(1);
+    });
+
+    it('handles self-loops by ignoring them', () => {
+        const apsp = computeAPSP(['a', 'b'], [mkE('a', 'a'), mkE('a', 'b')]);
+        expect(apsp.get('a')!.get('b')).toBe(1);
+    });
+
+    it('reports correct distances on a 4-cycle', () => {
+        // a—b—c—d—a; diameter 2, every pair reachable
+        const apsp = computeAPSP(
+            ['a', 'b', 'c', 'd'],
+            [mkE('a', 'b'), mkE('b', 'c'), mkE('c', 'd'), mkE('d', 'a')],
+        );
+        expect(apsp.get('a')!.get('c')).toBe(2);
+        expect(apsp.get('b')!.get('d')).toBe(2);
+        expect(apsp.get('a')!.get('b')).toBe(1);
+    });
+});
+
+describe('computeStressFromAPSP (M1)', () => {
+    function mkN(id: string, x: number, y: number): NodeWithPosition {
+        return { id, x, y };
+    }
+
+    it('returns zeros for empty / single-node input', () => {
+        expect(computeStressFromAPSP([], new Map())).toEqual({
+            stressPerPair: 0, stressUnreachablePairs: 0, reachablePairCount: 0,
+        });
+        expect(computeStressFromAPSP([mkN('a', 0, 0)], new Map())).toEqual({
+            stressPerPair: 0, stressUnreachablePairs: 0, reachablePairCount: 0,
+        });
+    });
+
+    it('returns 0 stress when layout distance equals graph distance for every pair', () => {
+        // Two nodes 1 unit apart, graph distance 1 → diff 0 → stress 0
+        const nodes = [mkN('a', 0, 0), mkN('b', 1, 0)];
+        const apsp = new Map([
+            ['a', new Map([['a', 0], ['b', 1]])],
+            ['b', new Map([['a', 1], ['b', 0]])],
+        ]);
+        const r = computeStressFromAPSP(nodes, apsp);
+        expect(r.stressPerPair).toBe(0);
+        expect(r.reachablePairCount).toBe(1);
+        expect(r.stressUnreachablePairs).toBe(0);
+    });
+
+    it('squared difference: layout 5, graph 1 → contribution = 16', () => {
+        const nodes = [mkN('a', 0, 0), mkN('b', 5, 0)];
+        const apsp = new Map([
+            ['a', new Map([['a', 0], ['b', 1]])],
+            ['b', new Map([['a', 1], ['b', 0]])],
+        ]);
+        const r = computeStressFromAPSP(nodes, apsp);
+        // (5 - 1)^2 / 1 = 16
+        expect(r.stressPerPair).toBeCloseTo(16, 6);
+    });
+
+    it('counts unreachable pairs (skip-and-report convention)', () => {
+        // a-b connected, c isolated
+        const nodes = [mkN('a', 0, 0), mkN('b', 1, 0), mkN('c', 99, 99)];
+        const apsp = new Map([
+            ['a', new Map([['a', 0], ['b', 1]])],
+            ['b', new Map([['a', 1], ['b', 0]])],
+            ['c', new Map([['c', 0]])],
+        ]);
+        const r = computeStressFromAPSP(nodes, apsp);
+        // (a,b) reachable; (a,c) and (b,c) both unreachable
+        expect(r.reachablePairCount).toBe(1);
+        expect(r.stressUnreachablePairs).toBe(2);
+    });
+
+    it('iterates only the upper triangle (each pair counted once)', () => {
+        // 3 nodes all connected, layout matches graph perfectly
+        const nodes = [mkN('a', 0, 0), mkN('b', 1, 0), mkN('c', 2, 0)];
+        const apsp = new Map([
+            ['a', new Map([['a', 0], ['b', 1], ['c', 2]])],
+            ['b', new Map([['a', 1], ['b', 0], ['c', 1]])],
+            ['c', new Map([['a', 2], ['b', 1], ['c', 0]])],
+        ]);
+        const r = computeStressFromAPSP(nodes, apsp);
+        expect(r.reachablePairCount).toBe(3); // C(3,2) = 3, NOT 6
+    });
+
+    it('stress per pair averages over reachable pairs only', () => {
+        // 3 nodes: (a,b) diff 0, (a,c) diff 0, (b,c) unreachable
+        const nodes = [mkN('a', 0, 0), mkN('b', 1, 0), mkN('c', 2, 0)];
+        const apsp = new Map([
+            ['a', new Map([['a', 0], ['b', 1], ['c', 2]])],
+            ['b', new Map([['a', 1], ['b', 0]])],          // no path to c
+            ['c', new Map([['a', 2], ['c', 0]])],
+        ]);
+        const r = computeStressFromAPSP(nodes, apsp);
+        expect(r.reachablePairCount).toBe(2);
+        expect(r.stressUnreachablePairs).toBe(1);
+        expect(r.stressPerPair).toBe(0); // both reachable pairs match perfectly
+    });
+});
+
 describe('computeAspectRatio (M9)', () => {
     it('returns 1 for a square bbox', () => {
         expect(computeAspectRatio({ minX: 0, maxX: 10, minY: 0, maxY: 10 })).toBe(1);
@@ -567,33 +713,37 @@ describe('metricsToCSV', () => {
         crossingsTopPairShare: 0.6,
         crossingsTopPairLabel: 'HAS_VULN×LEADS_TO',
         crossingsTypePairDistribution: { 'HAS_VULN×LEADS_TO': 3, 'HAS_VULN×ENABLES': 2 },
+        stressPerPair: 12.5,
+        stressUnreachablePairs: 4,
+        stressReachablePairs: 41,
     };
 
     it('emits all columns with unique_cves and empty trivy_vuln_count when context missing', () => {
         const csv = metricsToCSV(baseMetrics);
         const lines = csv.trim().split('\n');
         expect(lines.length).toBe(2);
-        expect(lines[0]).toBe('nodes,edges,unique_cves,trivy_vuln_count,crossings_raw,crossings_normalized,crossings_per_edge,drawing_area,area_per_node,edge_length_cv,aspect_ratio,compound_groups_count,compound_largest_group_size,compound_singleton_fraction,crossings_mean_angle_deg,crossings_min_angle_deg,crossings_right_angle_ratio,crossings_top_pair_share,crossings_top_pair_label');
-        expect(lines[1]).toBe('10,15,7,,3,0.9500,0.2000,12345.67,1234.57,0.4200,0.5000,4,5,0.2500,67.50,30.00,0.5000,0.6000,HAS_VULN×LEADS_TO');
+        expect(lines[0]).toBe('nodes,edges,unique_cves,trivy_vuln_count,crossings_raw,crossings_normalized,crossings_per_edge,drawing_area,area_per_node,edge_length_cv,aspect_ratio,compound_groups_count,compound_largest_group_size,compound_singleton_fraction,crossings_mean_angle_deg,crossings_min_angle_deg,crossings_right_angle_ratio,crossings_top_pair_share,crossings_top_pair_label,stress_per_pair,stress_unreachable_pairs,stress_reachable_pairs');
+        expect(lines[1]).toBe('10,15,7,,3,0.9500,0.2000,12345.67,1234.57,0.4200,0.5000,4,5,0.2500,67.50,30.00,0.5000,0.6000,HAS_VULN×LEADS_TO,12.50,4,41');
     });
 
     it('populates trivy_vuln_count when provided via context', () => {
         const csv = metricsToCSV(baseMetrics, { trivyVulnCount: 189 });
         const lines = csv.trim().split('\n');
-        expect(lines[1]).toBe('10,15,7,189,3,0.9500,0.2000,12345.67,1234.57,0.4200,0.5000,4,5,0.2500,67.50,30.00,0.5000,0.6000,HAS_VULN×LEADS_TO');
+        expect(lines[1]).toBe('10,15,7,189,3,0.9500,0.2000,12345.67,1234.57,0.4200,0.5000,4,5,0.2500,67.50,30.00,0.5000,0.6000,HAS_VULN×LEADS_TO,12.50,4,41');
     });
 
     it('CSV-quotes a top-pair label that contains a comma or quote', () => {
         const csv = metricsToCSV({ ...baseMetrics, crossingsTopPairLabel: 'A,B' });
-        expect(csv.trim().split('\n')[1].endsWith(',"A,B"')).toBe(true);
+        // Stress columns are appended after the label; check for the embedded label
+        expect(csv.trim().split('\n')[1]).toContain(',"A,B",');
         const csv2 = metricsToCSV({ ...baseMetrics, crossingsTopPairLabel: 'A"B' });
-        expect(csv2.trim().split('\n')[1].endsWith(',"A""B"')).toBe(true);
+        expect(csv2.trim().split('\n')[1]).toContain(',"A""B",');
     });
 
-    it('emits empty top-pair label as an empty trailing field, not ""', () => {
+    it('emits empty top-pair label as an empty field, not ""', () => {
         const csv = metricsToCSV({ ...baseMetrics, crossingsTopPairLabel: '' });
-        // Trailing comma followed by nothing
-        expect(csv.trim().split('\n')[1].endsWith(',')).toBe(true);
+        // Two consecutive commas where the label sits, followed by stress columns
+        expect(csv.trim().split('\n')[1]).toContain(',,12.50,');
     });
 });
 
@@ -623,6 +773,9 @@ describe('JSON metrics export (schema v1)', () => {
         crossingsTopPairShare: 0.6,
         crossingsTopPairLabel: 'HAS_VULN×LEADS_TO',
         crossingsTypePairDistribution: { 'HAS_VULN×LEADS_TO': 3, 'HAS_VULN×ENABLES': 2 },
+        stressPerPair: 12.5,
+        stressUnreachablePairs: 4,
+        stressReachablePairs: 41,
     };
 
     const baseSettings: SettingsSnapshot = {
@@ -694,6 +847,9 @@ describe('JSON metrics export (schema v1)', () => {
             crossings_top_pair_share: 0.6,
             crossings_top_pair_label: 'HAS_VULN×LEADS_TO',
             crossings_type_pair_distribution: { 'HAS_VULN×LEADS_TO': 3, 'HAS_VULN×ENABLES': 2 },
+            stress_per_pair: 12.5,
+            stress_unreachable_pairs: 4,
+            stress_reachable_pairs: 41,
         });
     });
 
@@ -749,6 +905,9 @@ describe('JSON metrics export (schema v1)', () => {
             'edge_length_cv',
             'edges',
             'nodes',
+            'stress_per_pair',
+            'stress_reachable_pairs',
+            'stress_unreachable_pairs',
             'trivy_vuln_count',
             'unique_cves',
         ]);

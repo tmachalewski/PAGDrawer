@@ -52,6 +52,11 @@ export interface DrawingMetrics {
      * would break stable CSV headers).
      */
     crossingsTypePairDistribution: Record<string, number>;
+
+    // M1 — Stress (Purchase 2002 / Kamada-Kawai-style).
+    stressPerPair: number;             // mean (‖p_i − p_j‖_layout − d_ij)² over reachable pairs
+    stressUnreachablePairs: number;    // unordered i<j pair count where d_ij is undefined
+    stressReachablePairs: number;      // denominator for stressPerPair (useful for weighting)
 }
 
 export interface CompoundCardinality {
@@ -82,6 +87,17 @@ export interface EdgeEndpoints {
     type: string;
 }
 
+/**
+ * A visible node with its id and logical position. Used by metrics that
+ * need to correlate graph topology (via id) with layout geometry (via
+ * position) — currently M1 Stress, future M11/M12.
+ */
+export interface NodeWithPosition {
+    id: string;
+    x: number;
+    y: number;
+}
+
 export interface CrossingInfo {
     point: Point;
     edgeA: EdgeEndpoints;
@@ -109,6 +125,24 @@ export function getVisibleNodePoints(): Point[] {
         points.push({ x: p.x, y: p.y });
     });
     return points;
+}
+
+/**
+ * Visible non-debug nodes, paired with their ids. Used by topology-
+ * preservation metrics (M1 Stress, future M11/M12) which need to look up
+ * graph distance by id while reading layout distance from (x, y).
+ */
+export function getVisibleNodesWithIds(): NodeWithPosition[] {
+    const cy = getCy();
+    if (!cy) return [];
+    const nodes: NodeWithPosition[] = [];
+    cy.nodes(':visible').forEach(n => {
+        const t = n.data('type');
+        if (t === 'CROSSING_DEBUG' || t === 'AREA_DEBUG' || t === 'UNIT_EDGE_NODE') return;
+        const p = n.position();
+        nodes.push({ id: n.id(), x: p.x, y: p.y });
+    });
+    return nodes;
 }
 
 export function getVisibleEdgeEndpoints(): EdgeEndpoints[] {
@@ -199,6 +233,11 @@ export function computeMetrics(): DrawingMetrics | null {
     // 5. M21 — compound-parent cardinality (largest group + singleton fraction)
     const compound = computeCompoundCardinality();
 
+    // 6. M1 — Stress (Purchase 2002). Reuses the same visible-edge list and
+    // a fresh BFS-APSP. The APSP matrix is also the prerequisite for
+    // M11/M12 (Stage 7) — a future cache will share it across metrics.
+    const stress = computeStress();
+
     // 4. Unique CVE count — strip :dN depth and @... context suffixes
     const uniqueCveBases = new Set<string>();
     visibleNodes.forEach(n => {
@@ -230,6 +269,9 @@ export function computeMetrics(): DrawingMetrics | null {
         crossingsTopPairShare: typePairStats.topPairShare,
         crossingsTopPairLabel: typePairStats.topPairLabel,
         crossingsTypePairDistribution: typePairStats.distribution,
+        stressPerPair: stress.stressPerPair,
+        stressUnreachablePairs: stress.stressUnreachablePairs,
+        stressReachablePairs: stress.reachablePairCount,
     };
 }
 
@@ -664,6 +706,9 @@ export function metricsToCSV(m: DrawingMetrics, context: MetricsCsvContext = {})
         'crossings_right_angle_ratio',
         'crossings_top_pair_share',
         'crossings_top_pair_label',
+        'stress_per_pair',
+        'stress_unreachable_pairs',
+        'stress_reachable_pairs',
     ].join(',');
     const row = [
         m.nodes,
@@ -685,6 +730,9 @@ export function metricsToCSV(m: DrawingMetrics, context: MetricsCsvContext = {})
         m.crossingsRightAngleRatio.toFixed(4),
         m.crossingsTopPairShare.toFixed(4),
         csvEscape(m.crossingsTopPairLabel),
+        m.stressPerPair.toFixed(2),
+        m.stressUnreachablePairs,
+        m.stressReachablePairs,
     ].join(',');
     return header + '\n' + row + '\n';
 }
@@ -724,6 +772,160 @@ function csvEscape(s: string): string {
 function formatTimestamp(d: Date): string {
     const pad = (n: number) => String(n).padStart(2, '0');
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}-${pad(d.getHours())}-${pad(d.getMinutes())}`;
+}
+
+// =============================================================================
+// M1 — Stress (Purchase 2002, Kamada-Kawai-style aesthetic)
+//
+// Stress measures how well layout distances match graph (topology) distances.
+// For every pair (i, j) of nodes, it sums the squared difference between
+// the Euclidean distance in the layout and the shortest-path distance in
+// the graph:
+//
+//     stress = Σ (‖p_i − p_j‖_layout − d_ij)²   over all reachable pairs
+//
+// We report the per-pair mean (size-normalised) plus the count of
+// unreachable pairs (PAGDrawer graphs can be disconnected when visibility
+// toggles partition them; per the metric_proposals.md "skip-and-report"
+// convention, those pairs are excluded from the average and reported
+// separately).
+//
+// Both M11 (k-NN preservation) and M12 (trustworthiness) need the same
+// APSP matrix, so the helper is exposed and intended for reuse.
+// =============================================================================
+
+/**
+ * All-pairs shortest paths via repeated BFS. The graph is treated as
+ * **undirected** for distance computation (matches Purchase 2002's
+ * convention and is appropriate for layout-quality metrics).
+ *
+ * @param nodeIds  ids of every node to include (typically all visible
+ *                 non-debug nodes).
+ * @param edges    visible edges. Only the source/target ids are read;
+ *                 geometry is ignored.
+ * @returns        Map<sourceId, Map<targetId, distance>>. Self-distance
+ *                 is 0; unreachable pairs are absent from the inner map.
+ *
+ * Complexity: O(|V| · (|V| + |E|)). For PAGDrawer-sized graphs (~70 nodes,
+ * ~90 edges) this is microseconds; for the largest scans (~500 nodes /
+ * ~1000 edges) it is sub-second on the main thread.
+ */
+export function computeAPSP(
+    nodeIds: string[],
+    edges: Array<{ sourceId: string; targetId: string }>,
+): Map<string, Map<string, number>> {
+    const result = new Map<string, Map<string, number>>();
+    if (nodeIds.length === 0) return result;
+
+    // Adjacency map (undirected). Skip edges whose endpoint isn't in nodeIds
+    // — defensive against debug-overlay edges or stale handles.
+    const idSet = new Set(nodeIds);
+    const adj = new Map<string, string[]>();
+    for (const id of nodeIds) adj.set(id, []);
+    for (const e of edges) {
+        if (!idSet.has(e.sourceId) || !idSet.has(e.targetId)) continue;
+        if (e.sourceId === e.targetId) continue; // self-loop: doesn't affect distances
+        adj.get(e.sourceId)!.push(e.targetId);
+        adj.get(e.targetId)!.push(e.sourceId);
+    }
+
+    // BFS from every node.
+    for (const start of nodeIds) {
+        const dist = new Map<string, number>();
+        dist.set(start, 0);
+        const queue: string[] = [start];
+        let head = 0;
+        while (head < queue.length) {
+            const u = queue[head++];
+            const d = dist.get(u)!;
+            for (const v of adj.get(u)!) {
+                if (!dist.has(v)) {
+                    dist.set(v, d + 1);
+                    queue.push(v);
+                }
+            }
+        }
+        result.set(start, dist);
+    }
+    return result;
+}
+
+/**
+ * M1 — Stress, normalised per pair.
+ *
+ * Pure function: takes node positions + an APSP matrix and produces the
+ * stress scalars. Tests pass synthetic inputs without needing a Cytoscape
+ * graph.
+ *
+ * Returns:
+ *   - stressPerPair: mean of `(‖p_i − p_j‖_layout − d_ij)²` over reachable
+ *                    pairs (i ≠ j, d_ij finite). 0 when fewer than 2
+ *                    reachable pairs exist.
+ *   - stressUnreachablePairs: count of ordered i ≠ j pairs where no path
+ *                             exists between the two nodes. Counted as
+ *                             `total_pairs − reachable_pairs` over
+ *                             unordered pairs (so a fully-disconnected
+ *                             pair contributes 1, not 2).
+ *   - reachablePairCount: denominator used for the mean (useful for
+ *                         downstream weighting).
+ *
+ * Implementation note: only iterates the upper triangle (i < j) so each
+ * unordered pair is counted once.
+ */
+export function computeStressFromAPSP(
+    nodes: NodeWithPosition[],
+    apsp: Map<string, Map<string, number>>,
+): { stressPerPair: number; stressUnreachablePairs: number; reachablePairCount: number } {
+    const n = nodes.length;
+    if (n < 2) {
+        return { stressPerPair: 0, stressUnreachablePairs: 0, reachablePairCount: 0 };
+    }
+    let sumSq = 0;
+    let reachable = 0;
+    let unreachable = 0;
+    for (let i = 0; i < n; i++) {
+        const a = nodes[i];
+        const distFromA = apsp.get(a.id);
+        for (let j = i + 1; j < n; j++) {
+            const b = nodes[j];
+            const dij = distFromA?.get(b.id);
+            if (dij === undefined) {
+                unreachable++;
+                continue;
+            }
+            const dx = a.x - b.x;
+            const dy = a.y - b.y;
+            const layoutDist = Math.sqrt(dx * dx + dy * dy);
+            const diff = layoutDist - dij;
+            sumSq += diff * diff;
+            reachable++;
+        }
+    }
+    return {
+        stressPerPair: reachable > 0 ? sumSq / reachable : 0,
+        stressUnreachablePairs: unreachable,
+        reachablePairCount: reachable,
+    };
+}
+
+/**
+ * M1 — Stress computed from the live Cytoscape graph. Wraps
+ * `computeAPSP` + `computeStressFromAPSP`. The APSP matrix is computed
+ * fresh on each call; future plans (M11/M12) may share a cached APSP
+ * across metrics within a single Statistics-modal lifecycle.
+ */
+export function computeStress(): {
+    stressPerPair: number;
+    stressUnreachablePairs: number;
+    reachablePairCount: number;
+} {
+    const nodes = getVisibleNodesWithIds();
+    if (nodes.length < 2) {
+        return { stressPerPair: 0, stressUnreachablePairs: 0, reachablePairCount: 0 };
+    }
+    const edges = getVisibleEdgeEndpoints();
+    const apsp = computeAPSP(nodes.map(n => n.id), edges);
+    return computeStressFromAPSP(nodes, apsp);
 }
 
 // =============================================================================
@@ -842,6 +1044,9 @@ export function metricsToJsonObject(
         crossings_top_pair_share: m.crossingsTopPairShare,
         crossings_top_pair_label: m.crossingsTopPairLabel,
         crossings_type_pair_distribution: m.crossingsTypePairDistribution,
+        stress_per_pair: m.stressPerPair,
+        stress_unreachable_pairs: m.stressUnreachablePairs,
+        stress_reachable_pairs: m.stressReachablePairs,
     };
 }
 

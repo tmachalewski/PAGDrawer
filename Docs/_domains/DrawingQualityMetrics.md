@@ -194,6 +194,10 @@ computeCompoundCardinalityFromCounts(counts) → CompoundCardinality  // M21 —
 computeCrossingAngle(a, b) → number                              // M2  — acute angle ∈ [0, π/2]
 computeCrossingAngleStats(crossings, tolRad?)                    // M2  — {meanRad, minRad, rightAngleRatio}
 computeTypePairCrossingStats(crossings)                          // M25 — {distribution, topPairLabel, topPairShare}
+computeAPSP(nodeIds, edges) → Map<string, Map<string, number>>   // BFS APSP, undirected, unweighted
+computeStress() → {stressPerPair, stressUnreachablePairs, ...}   // M1  — live cy
+computeStressFromAPSP(nodes, apsp)                               // M1  — pure helper
+getVisibleNodesWithIds() → NodeWithPosition[]                    // helper for M1 / M11 / M12
 metricsToCSV(m, context?) → string
 downloadMetricsCSV(m, context?) → void
 metricsToJSON(m, context, settings, dataSource, now?) → string   // schema v1
@@ -205,6 +209,41 @@ getVisibleEdgeEndpoints() → EdgeEndpoints[]
 ```
 
 All pure functions except `computeMetrics`, `computeCompoundCardinality`, `getVisibleNodePoints`, `getVisibleEdgeEndpoints` (live Cytoscape graph) and `downloadMetricsCSV` / `downloadMetricsJSON` (browser download).
+
+### M1 — Stress (Purchase 2002)
+
+The most-cited graph-drawing layout-quality metric. Reviewers expect it.
+
+For every unordered pair of nodes `(i, j)` where a path exists, sum the
+squared difference between their **layout** (Euclidean) distance and their
+**graph** (shortest-path) distance:
+
+```
+stress_per_pair = mean over reachable pairs of (‖p_i − p_j‖_layout − d_ij)²
+```
+
+Reported alongside `stress_unreachable_pairs` (count of disconnected pairs)
+and `stress_reachable_pairs` (denominator) per the metric_proposals.md
+"skip-and-report" convention. Disconnected components don't pollute the
+mean but are still surfaced so they can't be missed.
+
+Algorithm: `computeAPSP(nodeIds, edges)` runs **BFS from every node** —
+the graph is undirected and unweighted (matches Purchase 2002), so BFS is
+both simpler and faster than Dijkstra. Complexity is O(|V|·(|V|+|E|));
+microseconds for typical PAGDrawer graphs and sub-second for the largest
+ones.
+
+`computeStressFromAPSP(nodes, apsp)` is a pure helper — accepts a node
+list and a precomputed APSP matrix and returns the scalars. The same
+APSP is the prerequisite for **M11** (k-NN preservation) and **M12**
+(trustworthiness) in Stage 7; the helper exists so all three can share
+it once a within-modal cache lands.
+
+Overlay: ❌ none in this iteration. A visual stress metric requires a
+distance-comparison overlay (e.g. a per-pair line-thickness mapping) that
+warrants its own future plan.
+
+CSV columns: `stress_per_pair`, `stress_unreachable_pairs`, `stress_reachable_pairs`.
 
 ### M2 — Crossing-Angle Metrics
 
