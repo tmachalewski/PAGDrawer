@@ -92,14 +92,16 @@ function createArrowsContainer(): void {
 }
 
 /**
- * Debug-overlay synthetic nodes (red crossing dots, blue bbox, green/orange
- * unit edges) are real Cytoscape nodes but should not surface the regular
- * draggable node tooltip. The crossing dots get their own lightweight
- * hover label via `debugOverlay.ts` instead.
+ * Debug-overlay synthetic nodes that should never surface the tooltip:
+ *   - AREA_DEBUG (the bbox rectangle — covers the whole drawing)
+ *   - UNIT_EDGE_NODE (endpoints of the green/orange reference edges)
+ *
+ * CROSSING_DEBUG dots intentionally DO surface the standard tooltip so
+ * users can read each crossing's angle and edge type pair.
  */
-function isDebugOverlayNode(node: NodeSingular): boolean {
+function isOpaqueDebugOverlayNode(node: NodeSingular): boolean {
     const t = node.data('type');
-    return t === 'CROSSING_DEBUG' || t === 'AREA_DEBUG' || t === 'UNIT_EDGE_NODE';
+    return t === 'AREA_DEBUG' || t === 'UNIT_EDGE_NODE';
 }
 
 /**
@@ -109,7 +111,7 @@ function handleNodeMouseOver(evt: EventObject): void {
     if (isFilterActive) return;
 
     const node = evt.target as NodeSingular;
-    if (isDebugOverlayNode(node)) return; // own hover handler in debugOverlay.ts
+    if (isOpaqueDebugOverlayNode(node)) return;
     hoveredNode = node;
     updateAllTooltips();
 }
@@ -139,7 +141,7 @@ function handleNodeClick(evt: EventObject): void {
     if (isFilterActive) return;
 
     const node = evt.target as NodeSingular;
-    if (isDebugOverlayNode(node)) return; // synthetic — never selectable
+    if (isOpaqueDebugOverlayNode(node)) return; // synthetic — never selectable
     const originalEvent = evt.originalEvent as MouseEvent;
     const isCtrlPressed = originalEvent?.ctrlKey || originalEvent?.metaKey;
     const cy = getCy();

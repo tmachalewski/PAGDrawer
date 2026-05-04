@@ -195,8 +195,9 @@ export function getCytoscapeStyles(): any[] {
                 'shape': 'ellipse',
                 'label': '',
                 'z-index': 9999,
-                // 'events: yes' enables pointer events so the M2/M25 hover
-                // hint (configured via the .hovered class below) fires.
+                // Pointer events enabled so the standard tooltip system
+                // (frontend/js/ui/tooltip.ts) surfaces each crossing dot's
+                // angle / type-pair on hover and click, just like real nodes.
                 'events': 'yes'
             }
         },

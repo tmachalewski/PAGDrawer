@@ -217,7 +217,7 @@ describe('validateState', () => {
     it('drops unknown keys (forward-compat against schema additions)', () => {
         const r = validateState({ ...DEFAULT_OVERLAY_STATE, futureFlag: true });
         expect(r).toEqual(DEFAULT_OVERLAY_STATE);
-        expect((r as Record<string, unknown>).futureFlag).toBeUndefined();
+        expect((r as unknown as Record<string, unknown>).futureFlag).toBeUndefined();
     });
 
     it('accepts valid crossingsColorBy values', () => {

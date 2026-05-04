@@ -212,35 +212,31 @@ function drawAll(): void {
             const color = pickCrossingColor(c, currentState.crossingsColorBy, typePairPalette);
             const angleDeg = (c.angle * 180) / Math.PI;
             const typePair = `${c.edgeAType}×${c.edgeBType}`;
-            const hoverLabel = typePair === '×'
-                ? `${angleDeg.toFixed(1)}°`
-                : `${angleDeg.toFixed(1)}°  ${typePair}`;
+            // Pretty-print fields shown by the standard tooltip when the
+            // user clicks (or hovers) the dot. The tooltip iterates every
+            // string/number key in `data`, so naming + formatting these
+            // fields is what shapes the user-facing layout.
+            const angleField = `${angleDeg.toFixed(1)}°`;
+            const pairField = typePair === '×' ? '—' : typePair;
             const added = cy.add({
                 group: 'nodes',
                 data: {
                     id,
                     type: 'CROSSING_DEBUG',
-                    edgeA: `${c.edgeA.sourceId} → ${c.edgeA.targetId}`,
-                    edgeB: `${c.edgeB.sourceId} → ${c.edgeB.targetId}`,
-                    angleDeg: angleDeg.toFixed(1),
-                    typePair,
-                    hoverLabel,
+                    'crossing angle': angleField,
+                    'edge type pair': pairField,
+                    'edge A': `${c.edgeA.sourceId} → ${c.edgeA.targetId}`,
+                    'edge B': `${c.edgeB.sourceId} → ${c.edgeB.targetId}`,
                 },
                 position: { x: c.point.x, y: c.point.y },
                 selectable: false,
                 grabbable: false,
             });
-            // Apply colour override AFTER add so we don't trigger
-            // Cytoscape's "style bypass at element creation" warning.
+            // Apply colour override AFTER add so Cytoscape doesn't warn
+            // about a style bypass at element creation.
             if (color) added.style('background-color', color);
-
-            // Per-dot tap listener — avoids the delegation path entirely.
-            // Idempotent because we just added the node; nothing to un-bind.
-            added.on('tap', () => toggleCrossingHint(id));
             elementIds.push(id);
         });
-        // Background tap to dismiss the active hint
-        wireBackgroundTapToClearHint();
     }
 
     // 2. Drawing area bbox — optional M9 aspect ratio appended to label.
@@ -449,97 +445,9 @@ function clearGroupCardinalityBadges(): void {
     originalParentLabels = null;
 }
 
-/**
- * Inline style applied on click so the M2/M25 hint label appears next to
- * the clicked crossing dot. Using inline `node.style({...})` rather than
- * a `.hovered` class keeps the rendering deterministic — class-selector
- * stylesheet rules can be sensitive to load-order and `data()` mapper
- * re-evaluation timing.
- */
-const CROSSING_HINT_STYLE = {
-    'label': 'data(hoverLabel)',
-    'font-size': '11px',
-    'font-weight': 'bold',
-    'color': '#ffffff',
-    'text-outline-color': '#000000',
-    'text-outline-width': 2,
-    'text-valign': 'top' as const,
-    'text-halign': 'right' as const,
-    'text-margin-x': 6,
-    'text-margin-y': -6,
-    'z-index': 10000,
-};
-
-const CROSSING_HINT_STYLE_KEYS = Object.keys(CROSSING_HINT_STYLE);
-
-/**
- * Track the currently-labelled crossing dot id, if any. Clicking a
- * different dot moves the hint; clicking the same dot toggles it off;
- * clicking the background also clears it.
- */
-let activeHintDotId: string | null = null;
-
-function clearActiveHint(): void {
-    if (!activeHintDotId) return;
-    const cy = getCy();
-    if (cy) {
-        const node = cy.getElementById(activeHintDotId);
-        if (node.length > 0) {
-            CROSSING_HINT_STYLE_KEYS.forEach(k => node.removeStyle(k));
-        }
-    }
-    activeHintDotId = null;
-}
-
-/**
- * Bind tap (click/touch) handlers on the crossing dots so the M2/M25 hint
- * label appears next to the clicked dot, and on the background so a
- * background click dismisses the hint. Idempotent: each call removes any
- * previously bound handler in the `crossing-hint` namespace before
- * re-binding, so redraw() doesn't stack listeners.
- */
-/**
- * Toggle the M2/M25 hint on a single crossing dot.
- * - Same dot clicked twice → hide
- * - Different dot clicked  → move hint to the new one
- */
-function toggleCrossingHint(id: string): void {
-    if (activeHintDotId === id) {
-        clearActiveHint();
-        return;
-    }
-    clearActiveHint();
-    const cy = getCy();
-    if (!cy) return;
-    const node = cy.getElementById(id);
-    if (node.length === 0) return;
-    node.style(CROSSING_HINT_STYLE);
-    activeHintDotId = id;
-}
-
-/**
- * Bind a single background-tap listener so clicking empty graph area
- * dismisses the hint. Idempotent — the namespaced `.crossing-hint`
- * handle is replaced on each call.
- */
-function wireBackgroundTapToClearHint(): void {
-    const cy = getCy();
-    if (!cy) return;
-    cy.off('tap.crossing-hint');
-    cy.on('tap.crossing-hint', (e) => {
-        if (e.target === cy) clearActiveHint();
-    });
-}
-
-
 function clearAll(): void {
     const cy = getCy();
-    // The crossing-hint listener is bound on `cy`, not on individual dots,
-    // so removing the dots without clearing the hint state would leave the
-    // module pointing at a freed id.
-    activeHintDotId = null;
     if (cy) {
-        cy.off('tap.crossing-hint');
         elementIds.forEach(id => {
             const el = cy.getElementById(id);
             if (el.length) el.remove();
