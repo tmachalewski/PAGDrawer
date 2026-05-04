@@ -795,14 +795,24 @@ function formatTimestamp(d: Date): string {
 // =============================================================================
 
 /**
- * All-pairs shortest paths via repeated BFS. The graph is treated as
- * **undirected** for distance computation (matches Purchase 2002's
- * convention and is appropriate for layout-quality metrics).
+ * All-pairs shortest paths via repeated BFS.
+ *
+ * **Defaults to directed** because PAGDrawer's graph is directed (an
+ * attack graph: ATTACKER → HOST → CPE → CVE → CWE → TI → VC, plus
+ * back-edges via ENABLES). Pass `{ directed: false }` to treat the
+ * adjacency as undirected (what some Purchase-2002 stress variants
+ * assume — but see `Docs/_domains/StressMetric.md` for why we don't
+ * use that here).
+ *
+ * BFS is the right algorithm for an unweighted graph: O(|V|+|E|) per
+ * source vs. Dijkstra's O(|E|+|V|log|V|) on the same input. Floyd-
+ * Warshall would be O(|V|³), much worse for sparse graphs like ours.
  *
  * @param nodeIds  ids of every node to include (typically all visible
  *                 non-debug nodes).
  * @param edges    visible edges. Only the source/target ids are read;
  *                 geometry is ignored.
+ * @param options  `directed: false` to treat edges as undirected.
  * @returns        Map<sourceId, Map<targetId, distance>>. Self-distance
  *                 is 0; unreachable pairs are absent from the inner map.
  *
@@ -813,12 +823,14 @@ function formatTimestamp(d: Date): string {
 export function computeAPSP(
     nodeIds: string[],
     edges: Array<{ sourceId: string; targetId: string }>,
+    options: { directed?: boolean } = {},
 ): Map<string, Map<string, number>> {
+    const directed = options.directed !== false; // default true
     const result = new Map<string, Map<string, number>>();
     if (nodeIds.length === 0) return result;
 
-    // Adjacency map (undirected). Skip edges whose endpoint isn't in nodeIds
-    // — defensive against debug-overlay edges or stale handles.
+    // Skip edges whose endpoint isn't in nodeIds — defensive against
+    // debug-overlay edges or stale handles.
     const idSet = new Set(nodeIds);
     const adj = new Map<string, string[]>();
     for (const id of nodeIds) adj.set(id, []);
@@ -826,7 +838,7 @@ export function computeAPSP(
         if (!idSet.has(e.sourceId) || !idSet.has(e.targetId)) continue;
         if (e.sourceId === e.targetId) continue; // self-loop: doesn't affect distances
         adj.get(e.sourceId)!.push(e.targetId);
-        adj.get(e.targetId)!.push(e.sourceId);
+        if (!directed) adj.get(e.targetId)!.push(e.sourceId);
     }
 
     // BFS from every node.
@@ -851,23 +863,50 @@ export function computeAPSP(
 }
 
 /**
- * M1 — Stress, normalised per pair.
+ * Symmetrise a directed APSP for a single unordered pair: returns the
+ * shorter of the two directed paths, or `undefined` if neither direction
+ * is reachable.
  *
- * Pure function: takes node positions + an APSP matrix and produces the
- * stress scalars. Tests pass synthetic inputs without needing a Cytoscape
- * graph.
+ * Used by the stress metric — Euclidean layout distance is symmetric, so
+ * the graph-side comparison must be too. See `Docs/_domains/StressMetric.md`
+ * for the full justification.
+ */
+export function symmetrizedDistance(
+    apsp: Map<string, Map<string, number>>,
+    a: string,
+    b: string,
+): number | undefined {
+    const dab = apsp.get(a)?.get(b);
+    const dba = apsp.get(b)?.get(a);
+    if (dab === undefined && dba === undefined) return undefined;
+    if (dab === undefined) return dba;
+    if (dba === undefined) return dab;
+    return dab < dba ? dab : dba;
+}
+
+/**
+ * M1 — Stress, normalised per pair, **symmetrised** for the directed
+ * graph. See `Docs/_domains/StressMetric.md` for the rationale.
+ *
+ * For each unordered pair (i, j) we use the symmetrised graph distance
+ * d_ij = min(d_directed(i→j), d_directed(j→i)), or treat the pair as
+ * unreachable if neither direction has a path. The Euclidean distance
+ * is intrinsically symmetric, so the graph-side comparison must be too —
+ * otherwise every back-edge in the schema (ENABLES) would inflate the
+ * unreachable count even though the layout couldn't possibly be wrong
+ * about pairs that are visibly close.
+ *
+ * Pure function: takes node positions + a (directed) APSP matrix and
+ * produces the stress scalars. Tests pass synthetic inputs without
+ * needing a Cytoscape graph.
  *
  * Returns:
- *   - stressPerPair: mean of `(‖p_i − p_j‖_layout − d_ij)²` over reachable
- *                    pairs (i ≠ j, d_ij finite). 0 when fewer than 2
- *                    reachable pairs exist.
- *   - stressUnreachablePairs: count of ordered i ≠ j pairs where no path
- *                             exists between the two nodes. Counted as
- *                             `total_pairs − reachable_pairs` over
- *                             unordered pairs (so a fully-disconnected
- *                             pair contributes 1, not 2).
- *   - reachablePairCount: denominator used for the mean (useful for
- *                         downstream weighting).
+ *   - stressPerPair: mean of `(‖p_i − p_j‖_layout − d_ij)²` over
+ *                    reachable unordered pairs. 0 when fewer than one
+ *                    reachable pair exists.
+ *   - stressUnreachablePairs: count of unordered pairs where neither
+ *                             direction has a path.
+ *   - reachablePairCount: denominator used for the mean.
  *
  * Implementation note: only iterates the upper triangle (i < j) so each
  * unordered pair is counted once.
@@ -885,10 +924,9 @@ export function computeStressFromAPSP(
     let unreachable = 0;
     for (let i = 0; i < n; i++) {
         const a = nodes[i];
-        const distFromA = apsp.get(a.id);
         for (let j = i + 1; j < n; j++) {
             const b = nodes[j];
-            const dij = distFromA?.get(b.id);
+            const dij = symmetrizedDistance(apsp, a.id, b.id);
             if (dij === undefined) {
                 unreachable++;
                 continue;

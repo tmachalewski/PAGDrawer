@@ -194,7 +194,8 @@ computeCompoundCardinalityFromCounts(counts) → CompoundCardinality  // M21 —
 computeCrossingAngle(a, b) → number                              // M2  — acute angle ∈ [0, π/2]
 computeCrossingAngleStats(crossings, tolRad?)                    // M2  — {meanRad, minRad, rightAngleRatio}
 computeTypePairCrossingStats(crossings)                          // M25 — {distribution, topPairLabel, topPairShare}
-computeAPSP(nodeIds, edges) → Map<string, Map<string, number>>   // BFS APSP, undirected, unweighted
+computeAPSP(nodeIds, edges, opts?) → Map<string, Map<string, number>>  // BFS APSP, default directed, unweighted
+symmetrizedDistance(apsp, a, b) → number | undefined              // min of two directed paths
 computeStress() → {stressPerPair, stressUnreachablePairs, ...}   // M1  — live cy
 computeStressFromAPSP(nodes, apsp)                               // M1  — pure helper
 getVisibleNodesWithIds() → NodeWithPosition[]                    // helper for M1 / M11 / M12
@@ -214,34 +215,21 @@ All pure functions except `computeMetrics`, `computeCompoundCardinality`, `getVi
 
 The most-cited graph-drawing layout-quality metric. Reviewers expect it.
 
-For every unordered pair of nodes `(i, j)` where a path exists, sum the
-squared difference between their **layout** (Euclidean) distance and their
-**graph** (shortest-path) distance:
+> **See [`StressMetric.md`](StressMetric.md) for the full explanation:** what stress measures, why it matters, the directed-vs-undirected adaptation we ship, and the visualisation plan.
+
+Headline summary:
 
 ```
 stress_per_pair = mean over reachable pairs of (‖p_i − p_j‖_layout − d_ij)²
 ```
 
-Reported alongside `stress_unreachable_pairs` (count of disconnected pairs)
-and `stress_reachable_pairs` (denominator) per the metric_proposals.md
-"skip-and-report" convention. Disconnected components don't pollute the
-mean but are still surfaced so they can't be missed.
+PAGDrawer's graph is a directed DAG, so we run **directed BFS** for the APSP and use the **symmetrised distance** `d_ij = min(d(i→j), d(j→i))` for the metric — Euclidean is symmetric, the graph-side comparison must be too. Pairs unreachable in both directions are excluded from the mean and reported separately under `stress_unreachable_pairs`. See `StressMetric.md` § "What PAGDrawer ships" for why this beats both the strict-undirected and strict-directed alternatives.
 
-Algorithm: `computeAPSP(nodeIds, edges)` runs **BFS from every node** —
-the graph is undirected and unweighted (matches Purchase 2002), so BFS is
-both simpler and faster than Dijkstra. Complexity is O(|V|·(|V|+|E|));
-microseconds for typical PAGDrawer graphs and sub-second for the largest
-ones.
+Algorithm: `computeAPSP(nodeIds, edges, { directed?: boolean })` runs BFS from every node. BFS is the right algorithm for unweighted graphs — Dijkstra reduces to it but with heap overhead, Floyd-Warshall is O(|V|³). Default mode is directed; pass `{ directed: false }` for the undirected variant. Complexity is O(|V|·(|V|+|E|)); microseconds for typical PAGDrawer graphs and sub-second for the largest ones.
 
-`computeStressFromAPSP(nodes, apsp)` is a pure helper — accepts a node
-list and a precomputed APSP matrix and returns the scalars. The same
-APSP is the prerequisite for **M11** (k-NN preservation) and **M12**
-(trustworthiness) in Stage 7; the helper exists so all three can share
-it once a within-modal cache lands.
+`computeStressFromAPSP(nodes, apsp)` is a pure helper that consumes a (directed) APSP matrix and returns the symmetrised stress scalars. The same APSP is the prerequisite for **M11** (k-NN preservation) and **M12** (trustworthiness) in Stage 7; the helper exists so all three can share it once a within-modal cache lands.
 
-Overlay: ❌ none in this iteration. A visual stress metric requires a
-distance-comparison overlay (e.g. a per-pair line-thickness mapping) that
-warrants its own future plan.
+Overlay: ❌ none in this iteration. A visualisation is planned (click a node → colour reachable nodes by symmetrised graph distance) — see `StressMetric.md` § "Visualisation".
 
 CSV columns: `stress_per_pair`, `stress_unreachable_pairs`, `stress_reachable_pairs`.
 

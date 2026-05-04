@@ -21,6 +21,7 @@ import {
     computeTypePairCrossingStats,
     computeAPSP,
     computeStressFromAPSP,
+    symmetrizedDistance,
     type NodeWithPosition,
     metricsToCSV,
     metricsToJSON,
@@ -465,7 +466,7 @@ describe('findCrossings — type-pair sorting (M25 input)', () => {
     });
 });
 
-describe('computeAPSP (BFS, undirected, unweighted)', () => {
+describe('computeAPSP (BFS, unweighted)', () => {
     function mkE(s: string, t: string) {
         return { sourceId: s, targetId: t };
     }
@@ -480,52 +481,112 @@ describe('computeAPSP (BFS, undirected, unweighted)', () => {
         expect(apsp.get('b')!.get('b')).toBe(0);
     });
 
-    it('reports 1-hop distance on a simple chain a-b-c', () => {
-        const apsp = computeAPSP(['a', 'b', 'c'], [mkE('a', 'b'), mkE('b', 'c')]);
-        expect(apsp.get('a')!.get('b')).toBe(1);
-        expect(apsp.get('b')!.get('a')).toBe(1);
-        expect(apsp.get('a')!.get('c')).toBe(2);
-        expect(apsp.get('c')!.get('a')).toBe(2);
+    describe('directed mode (default)', () => {
+        it('only follows source → target', () => {
+            const apsp = computeAPSP(['a', 'b', 'c'], [mkE('a', 'b'), mkE('b', 'c')]);
+            // Forward distances: present
+            expect(apsp.get('a')!.get('b')).toBe(1);
+            expect(apsp.get('a')!.get('c')).toBe(2);
+            expect(apsp.get('b')!.get('c')).toBe(1);
+            // Backward distances: NOT present
+            expect(apsp.get('b')!.has('a')).toBe(false);
+            expect(apsp.get('c')!.has('a')).toBe(false);
+            expect(apsp.get('c')!.has('b')).toBe(false);
+        });
+
+        it('reachable in only one direction (DAG case)', () => {
+            // a → b but no path b → a in directed mode
+            const apsp = computeAPSP(['a', 'b'], [mkE('a', 'b')]);
+            expect(apsp.get('a')!.get('b')).toBe(1);
+            expect(apsp.get('b')!.has('a')).toBe(false);
+        });
+
+        it('omits unreachable pairs from the inner map', () => {
+            // Two disconnected components: {a, b} and {c, d}
+            const apsp = computeAPSP(
+                ['a', 'b', 'c', 'd'],
+                [mkE('a', 'b'), mkE('c', 'd')],
+            );
+            expect(apsp.get('a')!.has('c')).toBe(false);
+            expect(apsp.get('a')!.has('d')).toBe(false);
+            expect(apsp.get('a')!.get('b')).toBe(1);
+            expect(apsp.get('c')!.get('d')).toBe(1);
+        });
+
+        it('skips edges with endpoints not in nodeIds', () => {
+            const apsp = computeAPSP(['a', 'b'], [mkE('a', 'b'), mkE('a', 'orphan')]);
+            expect(apsp.get('a')!.has('orphan')).toBe(false);
+            expect(apsp.get('a')!.get('b')).toBe(1);
+        });
+
+        it('handles self-loops by ignoring them', () => {
+            const apsp = computeAPSP(['a', 'b'], [mkE('a', 'a'), mkE('a', 'b')]);
+            expect(apsp.get('a')!.get('b')).toBe(1);
+        });
+
+        it('reports correct distances on a directed 4-cycle', () => {
+            // a → b → c → d → a, all directed; from a, all reachable forward
+            const apsp = computeAPSP(
+                ['a', 'b', 'c', 'd'],
+                [mkE('a', 'b'), mkE('b', 'c'), mkE('c', 'd'), mkE('d', 'a')],
+            );
+            expect(apsp.get('a')!.get('b')).toBe(1);
+            expect(apsp.get('a')!.get('c')).toBe(2);
+            expect(apsp.get('a')!.get('d')).toBe(3);
+            // cycle eventually wraps back, distance from b to a is 3
+            expect(apsp.get('b')!.get('a')).toBe(3);
+        });
     });
 
-    it('treats edges as undirected even if source/target naming is directional', () => {
-        // a → b → c (directional declaration), but BFS sees the reverse
-        const apsp = computeAPSP(['a', 'b', 'c'], [mkE('a', 'b'), mkE('b', 'c')]);
-        expect(apsp.get('c')!.get('a')).toBe(2);
+    describe('undirected mode (opt-in)', () => {
+        it('treats edges as undirected when options.directed = false', () => {
+            const apsp = computeAPSP(
+                ['a', 'b', 'c'],
+                [mkE('a', 'b'), mkE('b', 'c')],
+                { directed: false },
+            );
+            expect(apsp.get('a')!.get('c')).toBe(2);
+            expect(apsp.get('c')!.get('a')).toBe(2); // backward, only with undirected
+            expect(apsp.get('b')!.get('a')).toBe(1);
+        });
+    });
+});
+
+describe('symmetrizedDistance', () => {
+    it('returns the smaller of two directed distances', () => {
+        const apsp = new Map([
+            ['a', new Map([['b', 1]])],
+            ['b', new Map([['a', 5]])],
+        ]);
+        expect(symmetrizedDistance(apsp, 'a', 'b')).toBe(1);
+        expect(symmetrizedDistance(apsp, 'b', 'a')).toBe(1);
     });
 
-    it('omits unreachable pairs from the inner map', () => {
-        // Two disconnected components: {a, b} and {c, d}
-        const apsp = computeAPSP(
-            ['a', 'b', 'c', 'd'],
-            [mkE('a', 'b'), mkE('c', 'd')],
-        );
-        expect(apsp.get('a')!.has('c')).toBe(false);
-        expect(apsp.get('a')!.has('d')).toBe(false);
-        expect(apsp.get('a')!.get('b')).toBe(1);
-        expect(apsp.get('c')!.get('d')).toBe(1);
+    it('returns the only available distance when one direction is missing', () => {
+        const apsp = new Map([
+            ['a', new Map([['b', 3]])],
+            ['b', new Map<string, number>()],
+        ]);
+        expect(symmetrizedDistance(apsp, 'a', 'b')).toBe(3);
+        expect(symmetrizedDistance(apsp, 'b', 'a')).toBe(3);
     });
 
-    it('skips edges with endpoints not in nodeIds', () => {
-        const apsp = computeAPSP(['a', 'b'], [mkE('a', 'b'), mkE('a', 'orphan')]);
-        expect(apsp.get('a')!.has('orphan')).toBe(false);
-        expect(apsp.get('a')!.get('b')).toBe(1);
+    it('returns undefined when neither direction is reachable', () => {
+        const apsp = new Map([
+            ['a', new Map<string, number>()],
+            ['b', new Map<string, number>()],
+        ]);
+        expect(symmetrizedDistance(apsp, 'a', 'b')).toBeUndefined();
     });
 
-    it('handles self-loops by ignoring them', () => {
-        const apsp = computeAPSP(['a', 'b'], [mkE('a', 'a'), mkE('a', 'b')]);
-        expect(apsp.get('a')!.get('b')).toBe(1);
-    });
-
-    it('reports correct distances on a 4-cycle', () => {
-        // a—b—c—d—a; diameter 2, every pair reachable
-        const apsp = computeAPSP(
-            ['a', 'b', 'c', 'd'],
-            [mkE('a', 'b'), mkE('b', 'c'), mkE('c', 'd'), mkE('d', 'a')],
-        );
-        expect(apsp.get('a')!.get('c')).toBe(2);
-        expect(apsp.get('b')!.get('d')).toBe(2);
-        expect(apsp.get('a')!.get('b')).toBe(1);
+    it('handles missing source node id (defensive)', () => {
+        const apsp = new Map([
+            ['a', new Map([['b', 1]])],
+        ]);
+        // 'b' is referenced as a target but has no own row — treat as
+        // "no path from b to a known"
+        expect(symmetrizedDistance(apsp, 'a', 'b')).toBe(1);
+        expect(symmetrizedDistance(apsp, 'b', 'a')).toBe(1);
     });
 });
 
@@ -605,6 +666,35 @@ describe('computeStressFromAPSP (M1)', () => {
         expect(r.reachablePairCount).toBe(2);
         expect(r.stressUnreachablePairs).toBe(1);
         expect(r.stressPerPair).toBe(0); // both reachable pairs match perfectly
+    });
+
+    it('symmetrises directed APSP for stress (DAG case)', () => {
+        // a → b in the directed APSP; no path back. The pair is still
+        // reachable for the purposes of stress (Euclidean is symmetric).
+        const nodes = [mkN('a', 0, 0), mkN('b', 1, 0)];
+        const apsp = new Map([
+            ['a', new Map([['a', 0], ['b', 1]])],
+            ['b', new Map<string, number>([['b', 0]])],   // no entry for 'a'
+        ]);
+        const r = computeStressFromAPSP(nodes, apsp);
+        expect(r.reachablePairCount).toBe(1);
+        expect(r.stressUnreachablePairs).toBe(0);
+        expect(r.stressPerPair).toBe(0);  // layout matches graph
+    });
+
+    it('treats pair as unreachable only when neither direction has a path', () => {
+        // Two components with only intra-component edges: (a,b) and (c)
+        const nodes = [mkN('a', 0, 0), mkN('b', 1, 0), mkN('c', 9, 9)];
+        const apsp = new Map([
+            ['a', new Map([['a', 0], ['b', 1]])],
+            ['b', new Map([['b', 0]])],
+            ['c', new Map([['c', 0]])],
+        ]);
+        const r = computeStressFromAPSP(nodes, apsp);
+        // (a,b) reachable in one direction → reachable for stress.
+        // (a,c) and (b,c) unreachable in both directions → unreachable.
+        expect(r.reachablePairCount).toBe(1);
+        expect(r.stressUnreachablePairs).toBe(2);
     });
 });
 
