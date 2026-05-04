@@ -14,6 +14,8 @@ import {
     computeEdgeLengthCV,
     computeMeanEdgeLength,
     computeEdgeLengthStd,
+    computeAspectRatio,
+    computeCompoundCardinalityFromCounts,
     metricsToCSV,
     metricsToJSON,
     metricsToJsonObject,
@@ -309,6 +311,63 @@ describe('computeEdgeLengthStd', () => {
     });
 });
 
+describe('computeAspectRatio (M9)', () => {
+    it('returns 1 for a square bbox', () => {
+        expect(computeAspectRatio({ minX: 0, maxX: 10, minY: 0, maxY: 10 })).toBe(1);
+    });
+
+    it('returns 0.5 for a 2:1 rectangle (any orientation)', () => {
+        expect(computeAspectRatio({ minX: 0, maxX: 20, minY: 0, maxY: 10 })).toBe(0.5);
+        expect(computeAspectRatio({ minX: 0, maxX: 10, minY: 0, maxY: 20 })).toBe(0.5);
+    });
+
+    it('returns 0 for null bbox', () => {
+        expect(computeAspectRatio(null)).toBe(0);
+    });
+
+    it('returns 0 for degenerate bboxes (zero width or height)', () => {
+        expect(computeAspectRatio({ minX: 0, maxX: 0, minY: 0, maxY: 10 })).toBe(0);
+        expect(computeAspectRatio({ minX: 0, maxX: 10, minY: 5, maxY: 5 })).toBe(0);
+    });
+});
+
+describe('computeCompoundCardinalityFromCounts (M21)', () => {
+    it('returns zeros for empty input', () => {
+        const r = computeCompoundCardinalityFromCounts(new Map());
+        expect(r).toEqual({ largestGroupSize: 0, singletonFraction: 0, groups: [] });
+    });
+
+    it('reports largest group across all parents', () => {
+        const counts = new Map([['p1', 5], ['p2', 3], ['p3', 8]]);
+        const r = computeCompoundCardinalityFromCounts(counts);
+        expect(r.largestGroupSize).toBe(8);
+    });
+
+    it('singletonFraction counts parents with exactly 1 child', () => {
+        const counts = new Map([['p1', 1], ['p2', 1], ['p3', 4], ['p4', 1]]);
+        const r = computeCompoundCardinalityFromCounts(counts);
+        expect(r.singletonFraction).toBe(0.75);
+    });
+
+    it('emits per-parent (parentId, size) tuples for overlay rendering', () => {
+        const counts = new Map([['p1', 2], ['p2', 5]]);
+        const r = computeCompoundCardinalityFromCounts(counts);
+        expect(r.groups).toEqual([
+            { parentId: 'p1', size: 2 },
+            { parentId: 'p2', size: 5 },
+        ]);
+    });
+
+    it('handles a single parent', () => {
+        const r = computeCompoundCardinalityFromCounts(new Map([['solo', 7]]));
+        expect(r).toEqual({
+            largestGroupSize: 7,
+            singletonFraction: 0,
+            groups: [{ parentId: 'solo', size: 7 }],
+        });
+    });
+});
+
 describe('metricsToCSV', () => {
     const baseMetrics: DrawingMetrics = {
         nodes: 10,
@@ -320,20 +379,23 @@ describe('metricsToCSV', () => {
         areaPerNode: 1234.567,
         edgeLengthCV: 0.42,
         uniqueCves: 7,
+        aspectRatio: 0.5,
+        compoundLargestGroupSize: 5,
+        compoundSingletonFraction: 0.25,
     };
 
     it('emits all columns with unique_cves and empty trivy_vuln_count when context missing', () => {
         const csv = metricsToCSV(baseMetrics);
         const lines = csv.trim().split('\n');
         expect(lines.length).toBe(2);
-        expect(lines[0]).toBe('nodes,edges,unique_cves,trivy_vuln_count,crossings_raw,crossings_normalized,crossings_per_edge,drawing_area,area_per_node,edge_length_cv');
-        expect(lines[1]).toBe('10,15,7,,3,0.9500,0.2000,12345.67,1234.57,0.4200');
+        expect(lines[0]).toBe('nodes,edges,unique_cves,trivy_vuln_count,crossings_raw,crossings_normalized,crossings_per_edge,drawing_area,area_per_node,edge_length_cv,aspect_ratio,compound_largest_group_size,compound_singleton_fraction');
+        expect(lines[1]).toBe('10,15,7,,3,0.9500,0.2000,12345.67,1234.57,0.4200,0.5000,5,0.2500');
     });
 
     it('populates trivy_vuln_count when provided via context', () => {
         const csv = metricsToCSV(baseMetrics, { trivyVulnCount: 189 });
         const lines = csv.trim().split('\n');
-        expect(lines[1]).toBe('10,15,7,189,3,0.9500,0.2000,12345.67,1234.57,0.4200');
+        expect(lines[1]).toBe('10,15,7,189,3,0.9500,0.2000,12345.67,1234.57,0.4200,0.5000,5,0.2500');
     });
 });
 
@@ -352,6 +414,9 @@ describe('JSON metrics export (schema v1)', () => {
         areaPerNode: 1234.567,
         edgeLengthCV: 0.42,
         uniqueCves: 7,
+        aspectRatio: 0.5,
+        compoundLargestGroupSize: 5,
+        compoundSingletonFraction: 0.25,
     };
 
     const baseSettings: SettingsSnapshot = {
@@ -411,6 +476,9 @@ describe('JSON metrics export (schema v1)', () => {
             drawing_area: 12345.67,
             area_per_node: 1234.567,
             edge_length_cv: 0.42,
+            aspect_ratio: 0.5,
+            compound_largest_group_size: 5,
+            compound_singleton_fraction: 0.25,
         });
     });
 
@@ -448,6 +516,9 @@ describe('JSON metrics export (schema v1)', () => {
         const metricKeys = Object.keys(snap.metrics).sort();
         expect(metricKeys).toEqual([
             'area_per_node',
+            'aspect_ratio',
+            'compound_largest_group_size',
+            'compound_singleton_fraction',
             'crossings_normalized',
             'crossings_per_edge',
             'crossings_raw',

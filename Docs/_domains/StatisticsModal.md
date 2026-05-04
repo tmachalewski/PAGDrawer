@@ -92,7 +92,9 @@ Plus two non-aesthetic counts useful for paper context:
 | Unique CVEs (graph) | same value as in the Clean Attack Graph table — repeated here so the Drawing Quality table is self-contained for the CSV export |
 | Trivy vulnerabilities (scans) | sum of `vuln_count` across all uploaded scans, fetched from `/api/data/scans` when the modal opens |
 
-The right column also has **three action buttons**: 🔍 **Show debug overlay**, 📥 **Export CSV**, and 📄 **Export JSON**.
+The right column has **four action buttons**: 🔍 **Show debug overlay**, ⚙️ (debug overlay settings), 📥 **Export CSV**, and 📄 **Export JSON**.
+
+The 🔍 button toggles all currently-enabled overlays on/off; its label reports how many are enabled (e.g. `🔍 Show debug overlay (3)`). The ⚙️ button opens the **Debug Overlay Settings modal** described below.
 
 ---
 
@@ -120,7 +122,7 @@ Single click → single-row CSV downloads as `pagdrawer-metrics-YYYY-MM-DD-HH-mm
 Columns:
 
 ```
-nodes,edges,unique_cves,trivy_vuln_count,crossings_raw,crossings_normalized,crossings_per_edge,drawing_area,area_per_node,edge_length_cv
+nodes,edges,unique_cves,trivy_vuln_count,crossings_raw,crossings_normalized,crossings_per_edge,drawing_area,area_per_node,edge_length_cv,aspect_ratio,compound_largest_group_size,compound_singleton_fraction
 ```
 
 Workflow for the ESORICS paper:
@@ -183,7 +185,10 @@ Click 📄 **Export JSON** and a `pagdrawer-metrics-YYYY-MM-DD-HH-mm.json` file 
     "crossings_per_edge": 0.3636,
     "drawing_area": 1523400.50,
     "area_per_node": 22737.32,
-    "edge_length_cv": 0.7748
+    "edge_length_cv": 0.7748,
+    "aspect_ratio": 0.42,
+    "compound_largest_group_size": 8,
+    "compound_singleton_fraction": 0.25
   }
 }
 ```
@@ -213,18 +218,59 @@ CSV stays the default for paper-table workflows; JSON is for archival, programma
 
 ## Debug overlay
 
-Toggled by the 🔍 button next to Export CSV. Draws four visual aids on the actual graph (not in the modal):
+The 🔍 button toggles overlays on/off. Each overlay is **independently** toggleable via the ⚙️ Debug Overlay Settings modal. Six overlays are available:
 
-| Color | Marks | Underlying value |
-|-------|-------|------------------|
-| 🔴 Red dots | One per counted edge crossing | `findCrossings(edges)[*].point` |
-| 🔵 Blue dashed rectangle | Drawing area bounding box | `computeBoundingBox(visibleNodes)` |
-| 🟢 Green solid line | Mean edge length, drawn horizontally above the bbox | `computeMeanEdgeLength(edges)` |
-| 🟠 Orange dashed line | Population std dev of edge lengths, drawn above the green line | `computeEdgeLengthStd(edges)` |
+| Color / form | Marks | Underlying value | Default |
+|--------------|-------|------------------|---------|
+| 🔴 Red dots | One per counted edge crossing | `findCrossings(edges)[*].point` | on |
+| 🔵 Blue dashed rectangle | Drawing area bounding box (label: `W × H`, optionally `(AR = …)`) | `computeBoundingBox(visibleNodes)` | on |
+| 🟢 Green solid line | Mean edge length, drawn horizontally above the bbox | `computeMeanEdgeLength(edges)` | on |
+| 🟠 Orange dashed line | Population std dev of edge lengths, drawn above the green line | `computeEdgeLengthStd(edges)` | on |
+| Bbox label suffix `(AR = 0.42)` (M9) | `min(w,h) / max(w,h)` of the bbox | `computeAspectRatio(bb)` | off |
+| Compound label suffix `(×N)` (M21) | Member count for every compound parent (idempotent: skips parents whose label already ends with `(×<digits>)`, e.g. CVE_GROUP) | `computeCompoundCardinality()` | off |
 
-All four are added as Cytoscape pseudo-nodes/edges with custom `type` values (`CROSSING_DEBUG`, `AREA_DEBUG`, `UNIT_EDGE_NODE`, `UNIT_EDGE`, `UNIT_EDGE_STD`). They zoom and pan with the graph, ignore mouse events, and are explicitly filtered out of every metric computation so toggling the overlay never changes what the metrics report.
+All overlay shapes are added as Cytoscape pseudo-nodes/edges with custom `type` values (`CROSSING_DEBUG`, `AREA_DEBUG`, `UNIT_EDGE_NODE`, `UNIT_EDGE`, `UNIT_EDGE_STD`). They zoom and pan with the graph, ignore mouse events, and are explicitly filtered out of every metric computation so toggling the overlay never changes what the metrics report.
 
-The button toggles between `🔍 Show debug overlay` and `❌ Hide debug overlay` based on whether any debug elements currently exist. State is kept in `debugElementIds[]` in `statistics.ts`.
+The 🔍 button label reflects the count of enabled overlays (`🔍 Show debug overlay (4)`). When overlays are rendered the button switches to `❌ Hide debug overlay`.
+
+### Debug Overlay Settings modal (⚙️)
+
+A dedicated modal that lets the user toggle each overlay individually and apply named presets. Layout:
+
+```
+┌──────────────────────────────────────────────────────┐
+│ 🔍 Debug Overlay Settings                  [×]      │
+├──────────────────────────────────────────────────────┤
+│ Presets:                                             │
+│   [🎯 Crossings analysis]  [📐 Layout diagnostics]  │
+│   [🔗 Reduction transparency]  [◌ Defaults]          │
+│   [⊘ Clear all]                                       │
+│                                                       │
+│ Existing overlays:                                    │
+│   ☑ Edge crossings (red dots)                        │
+│   ☑ Drawing area (blue rectangle)                    │
+│   ☑ Mean edge length (green line)                    │
+│   ☑ Std-dev (orange line)                            │
+│                                                       │
+│ New overlays:                                         │
+│   ☐ Aspect ratio in bbox label (M9)                  │
+│   ☐ Compound group size ×N (M21)                     │
+└──────────────────────────────────────────────────────┘
+```
+
+Five preset configurations:
+
+| Preset | Effect |
+|--------|--------|
+| 🎯 **Crossings analysis** | Crossings dots on + aspect ratio on; everything else off. |
+| 📐 **Layout diagnostics** | Bbox + mean + std-dev + aspect ratio; crossings off. |
+| 🔗 **Reduction transparency** | Compound-cardinality badges only. |
+| ◌ **Defaults** | The original four overlays on; new ones off. |
+| ⊘ **Clear all** | Every overlay off. |
+
+State persists in `localStorage` under the versioned key `debugOverlayState_v1`. A future schema change bumps the version suffix to invalidate stale state cleanly.
+
+Module: `frontend/js/ui/debugOverlay.ts` — exports `showDebugOverlay`, `hideDebugOverlay`, `getOverlayState`, `setOverlayState`, `applyPreset`, `countEnabledOverlays`, `isDebugOverlayActive`, `validateState`, plus `openDebugOverlayModal` / `closeDebugOverlayModal` for the modal globals.
 
 Dark-theme debug overlay on a real Node.js Alpine scan:
 
@@ -255,9 +301,11 @@ The Settings modal kept the per-type counts that show up next to each slider (th
 
 | File | Role |
 |------|------|
-| `frontend/index.html` | Modal markup, toolbar button, three Drawing Quality action buttons |
-| `frontend/css/styles.css` | Modal styles (cards, tables, notes, two-column responsive) |
-| `frontend/js/ui/statistics.ts` | `openStatistics`, `closeStatistics`, `refreshStatistics`, section populators, debug overlay control, CSV / JSON export wiring |
+| `frontend/index.html` | Modal markup, toolbar button, four Drawing Quality action buttons, Debug Overlay Settings modal |
+| `frontend/css/styles.css` | Modal styles (cards, tables, notes, two-column responsive); Debug Overlay modal styles (`.debug-overlay-section`, `.debug-overlay-toggle`, presets row) |
+| `frontend/js/ui/statistics.ts` | `openStatistics`, `closeStatistics`, `refreshStatistics`, section populators, CSV / JSON export wiring; delegates overlay drawing to `debugOverlay.ts` |
+| `frontend/js/ui/debugOverlay.ts` | Per-overlay state machine, preset application, localStorage persistence, drawing pipeline for all 6 overlays, modal wiring |
+| `frontend/js/ui/debugOverlay.test.ts` | State machine + preset + validateState + localStorage round-trip tests (23 tests) |
 | `frontend/js/ui/sidebar.ts` | `updateLiveStats` simplified — only refreshes per-type slider counts now (totals moved here) |
 | `frontend/js/main.ts` | Wires globals (`window.openStatistics`, `window.closeStatistics`) |
 | `frontend/js/features/metrics.ts` | Computation + CSV serializer + JSON serializer (`metricsToJSON`, `buildMetricsJsonSnapshot`, `downloadMetricsJSON`) |

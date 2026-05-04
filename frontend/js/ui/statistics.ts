@@ -10,16 +10,18 @@ import {
     downloadMetricsCSV,
     downloadMetricsJSON,
     buildDataSourceSnapshot,
-    findCrossings,
-    getVisibleEdgeEndpoints,
-    getVisibleNodePoints,
-    computeBoundingBox,
-    computeMeanEdgeLength,
-    computeEdgeLengthStd,
     type DrawingMetrics,
     type DataSourceSnapshot,
 } from '../features/metrics';
 import { gatherCurrentSettings, type SettingsSnapshot } from '../features/settingsSnapshot';
+import {
+    showDebugOverlay,
+    hideDebugOverlay,
+    isDebugOverlayActive,
+    countEnabledOverlays,
+    getOverlayState,
+    openDebugOverlayModal,
+} from './debugOverlay';
 
 // Most recently computed metrics — used by Export CSV button
 let lastMetrics: DrawingMetrics | null = null;
@@ -33,9 +35,6 @@ let lastTrivyVulnCount: number | null = null;
 // metrics (Risk #5 in JSON_Export_With_Settings.md).
 let lastSettings: SettingsSnapshot | null = null;
 let lastDataSource: DataSourceSnapshot | null = null;
-
-// Tracks IDs of every debug element we add so we can clean them up.
-let debugElementIds: string[] = [];
 
 // Node types considered "structural artifacts" (not attack-graph steps)
 const ARTIFACT_NODE_TYPES = new Set(['ATTACKER', 'COMPOUND', 'BRIDGE', 'CVE_GROUP']);
@@ -281,7 +280,10 @@ function populateDrawingMetrics(): void {
         ['Edge crossings per edge', m.crossingsPerEdge.toFixed(4) + '   (lower = cleaner)'],
         ['Drawing area (logical units²)', m.drawingArea.toFixed(2)],
         ['Area per node (logical units²)', m.areaPerNode.toFixed(2) + '   (lower = denser)'],
-        ['Edge length CV', m.edgeLengthCV.toFixed(4) + '   (0 = uniform)']
+        ['Aspect ratio (M9)', m.aspectRatio.toFixed(4) + '   (1 = square)'],
+        ['Edge length CV', m.edgeLengthCV.toFixed(4) + '   (0 = uniform)'],
+        ['Largest compound group (M21)', String(m.compoundLargestGroupSize)],
+        ['Compound singleton fraction (M21)', m.compoundSingletonFraction.toFixed(4)],
     ];
 
     rows.forEach(([label, value]) => {
@@ -330,176 +332,51 @@ function wireExportButton(): void {
         };
     }
 
-    wireCrossingsToggle();
+    wireDebugOverlayToggle();
 }
 
 /**
- * Wire the "Show debug overlay" toggle: overlays crossings (red dots),
- * drawing-area bounding box (blue dashed rectangle), and a unit edge
- * (green line showing mean edge length).
+ * Wire the "🔍 Show debug overlay" button to the new debugOverlay module.
+ *
+ * Single click toggles overlays on/off using the user's last-saved
+ * `OverlayState` (default on first use: the 4 existing overlays). The
+ * `⚙️ Debug overlay settings` button next to it opens the new modal where
+ * each overlay can be toggled individually.
  */
-function wireCrossingsToggle(): void {
-    const btn = document.getElementById('stats-toggle-crossings') as HTMLButtonElement | null;
-    if (!btn) return;
+function wireDebugOverlayToggle(): void {
+    const toggleBtn = document.getElementById('stats-toggle-crossings') as HTMLButtonElement | null;
+    if (toggleBtn) {
+        updateOverlayToggleLabel(toggleBtn);
+        toggleBtn.onclick = () => {
+            if (isDebugOverlayActive()) {
+                hideDebugOverlay();
+            } else {
+                showDebugOverlay();
+            }
+            updateOverlayToggleLabel(toggleBtn);
+        };
+    }
 
-    updateCrossingsToggleLabel(btn);
-
-    btn.onclick = () => {
-        if (debugElementIds.length > 0) {
-            clearDebugOverlay();
-        } else {
-            drawDebugOverlay();
-        }
-        updateCrossingsToggleLabel(btn);
-    };
+    const settingsBtn = document.getElementById('stats-debug-overlay-settings') as HTMLButtonElement | null;
+    if (settingsBtn) {
+        settingsBtn.onclick = () => openDebugOverlayModal();
+    }
 }
 
-function updateCrossingsToggleLabel(btn: HTMLButtonElement): void {
-    if (debugElementIds.length > 0) {
-        btn.textContent = `❌ Hide debug overlay`;
+/**
+ * Reflect the active overlay state in the toggle button label so the user
+ * knows whether clicking will turn overlays on or off, and how many will
+ * appear when on.
+ */
+function updateOverlayToggleLabel(btn: HTMLButtonElement): void {
+    if (isDebugOverlayActive()) {
+        btn.textContent = '❌ Hide debug overlay';
     } else {
-        btn.textContent = '🔍 Show debug overlay';
+        const n = countEnabledOverlays(getOverlayState());
+        btn.textContent = n === 0
+            ? '🔍 Show debug overlay (none active)'
+            : `🔍 Show debug overlay (${n})`;
     }
-}
-
-/**
- * Draw all three debug overlays:
- *   1. Red dots at each counted edge crossing
- *   2. Blue dashed rectangle around the bounding box, labeled with W×H
- *   3. Green line outside the graph with length = mean edge length
- */
-function drawDebugOverlay(): void {
-    const cy = getCy();
-    if (!cy) return;
-
-    clearDebugOverlay();
-
-    // --- 1. Crossing dots ---
-    const edges = getVisibleEdgeEndpoints();
-    const crossings = findCrossings(edges);
-
-    crossings.forEach((c, idx) => {
-        const id = `__crossing_debug_${idx}`;
-        cy.add({
-            group: 'nodes',
-            data: {
-                id,
-                type: 'CROSSING_DEBUG',
-                edgeA: `${c.edgeA.sourceId} → ${c.edgeA.targetId}`,
-                edgeB: `${c.edgeB.sourceId} → ${c.edgeB.targetId}`
-            },
-            position: { x: c.point.x, y: c.point.y },
-            selectable: false,
-            grabbable: false
-        });
-        debugElementIds.push(id);
-    });
-
-    // --- 2. Drawing-area bounding box ---
-    const points = getVisibleNodePoints();
-    const bb = computeBoundingBox(points);
-    if (bb) {
-        const w = bb.maxX - bb.minX;
-        const h = bb.maxY - bb.minY;
-        if (w > 0 && h > 0) {
-            const cx = (bb.minX + bb.maxX) / 2;
-            const cy2 = (bb.minY + bb.maxY) / 2;
-            const id = '__area_debug';
-            cy.add({
-                group: 'nodes',
-                data: {
-                    id,
-                    type: 'AREA_DEBUG',
-                    label: `Drawing area  ${w.toFixed(0)} × ${h.toFixed(0)}`
-                },
-                position: { x: cx, y: cy2 },
-                style: {
-                    width: w,
-                    height: h
-                },
-                selectable: false,
-                grabbable: false
-            });
-            debugElementIds.push(id);
-        }
-    }
-
-    // --- 3. Unit edges: mean length + std-dev length ---
-    const meanLen = computeMeanEdgeLength(edges);
-    const stdLen = computeEdgeLengthStd(edges);
-    if (bb && meanLen > 0) {
-        const yPad = Math.max(30, (bb.maxY - bb.minY) * 0.04);
-        const yMean = bb.minY - yPad;
-        const yStd = yMean - Math.max(20, (bb.maxY - bb.minY) * 0.025);
-
-        addUnitEdge(cy, '__unit_mean', bb.minX, yMean, meanLen,
-            `mean edge length: ${meanLen.toFixed(1)}`, 'UNIT_EDGE');
-
-        if (stdLen > 0) {
-            addUnitEdge(cy, '__unit_std', bb.minX, yStd, stdLen,
-                `std dev: ${stdLen.toFixed(1)}`, 'UNIT_EDGE_STD');
-        }
-    }
-}
-
-/**
- * Helper: add a horizontal reference edge of a given length at (x, y)
- * going right. Tracks created element IDs in debugElementIds.
- */
-function addUnitEdge(
-    cy: any,
-    idPrefix: string,
-    x: number,
-    y: number,
-    length: number,
-    label: string,
-    edgeType: string
-): void {
-    const startId = `${idPrefix}_start`;
-    const endId = `${idPrefix}_end`;
-    const edgeId = `${idPrefix}_line`;
-
-    cy.add({
-        group: 'nodes',
-        data: { id: startId, type: 'UNIT_EDGE_NODE' },
-        position: { x, y },
-        selectable: false,
-        grabbable: false
-    });
-    cy.add({
-        group: 'nodes',
-        data: { id: endId, type: 'UNIT_EDGE_NODE' },
-        position: { x: x + length, y },
-        selectable: false,
-        grabbable: false
-    });
-    cy.add({
-        group: 'edges',
-        data: {
-            id: edgeId,
-            source: startId,
-            target: endId,
-            type: edgeType,
-            label
-        }
-    });
-    debugElementIds.push(startId, endId, edgeId);
-}
-
-/**
- * Remove all debug overlay elements from the graph.
- */
-function clearDebugOverlay(): void {
-    const cy = getCy();
-    if (!cy) {
-        debugElementIds = [];
-        return;
-    }
-    debugElementIds.forEach(id => {
-        const el = cy.getElementById(id);
-        if (el.length) el.remove();
-    });
-    debugElementIds = [];
 }
 
 // Expose globals for onclick handlers in index.html
