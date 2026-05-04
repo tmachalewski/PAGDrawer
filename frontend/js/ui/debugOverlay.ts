@@ -340,11 +340,15 @@ function drawAll(): void {
 
 /**
  * Bind/unbind the M1 stress visualisation listener based on whether either
- * mode is currently enabled. Idempotent. Called from `setOverlayState`
- * (whenever a checkbox toggles) and on first import via `loadState` →
- * the module-level `currentState` initialisation.
+ * mode is currently enabled. Idempotent. Exported so `statistics.ts` can
+ * call it on every modal refresh — that's the most reliable hook because
+ * cy is guaranteed to exist by then, even after a graph rebuild.
+ *
+ * Also called from `setOverlayState` (whenever a checkbox toggles), from
+ * `showDebugOverlay` / `openDebugOverlayModal`, and on first module
+ * import as a best-effort attempt to honour persisted localStorage state.
  */
-function syncStressVisualizationState(): void {
+export function syncStressVisualizationState(): void {
     if (currentState.stressDistanceColoring || currentState.stressPairDistance) {
         wireStressVisualizationHandlers();
     } else {

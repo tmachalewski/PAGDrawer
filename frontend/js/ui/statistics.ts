@@ -22,6 +22,7 @@ import {
     countEnabledOverlays,
     getOverlayState,
     openDebugOverlayModal,
+    syncStressVisualizationState,
 } from './debugOverlay';
 
 // Most recently computed metrics — used by Export CSV button
@@ -74,6 +75,13 @@ export async function refreshStatistics(): Promise<void> {
     populateDrawingMetrics();
     await captureSettingsSnapshot();
     wireExportButton();
+    // Re-bind the M1 stress-vis tap listener on the current cy.
+    // Modal-open is the most reliable rebind point: cy exists by now
+    // (a Statistics modal without a graph is meaningless), and a graph
+    // rebuild between modal opens would have left the prior listener
+    // orphaned on a destroyed cy instance. No-op if both stress modes
+    // are off.
+    syncStressVisualizationState();
 }
 
 /**
