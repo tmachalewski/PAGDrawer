@@ -15,8 +15,14 @@ import {
     computeMeanEdgeLength,
     computeEdgeLengthStd,
     metricsToCSV,
-    type DrawingMetrics
+    metricsToJSON,
+    metricsToJsonObject,
+    buildMetricsJsonSnapshot,
+    buildDataSourceSnapshot,
+    type DrawingMetrics,
+    type DataSourceSnapshot,
 } from './metrics';
+import type { SettingsSnapshot } from './settingsSnapshot';
 
 // Helper to build edge records for testing
 function mkEdge(sId: string, tId: string, sx: number, sy: number, tx: number, ty: number) {
@@ -328,5 +334,156 @@ describe('metricsToCSV', () => {
         const csv = metricsToCSV(baseMetrics, { trivyVulnCount: 189 });
         const lines = csv.trim().split('\n');
         expect(lines[1]).toBe('10,15,7,189,3,0.9500,0.2000,12345.67,1234.57,0.4200');
+    });
+});
+
+// =============================================================================
+// JSON export — schema v1
+// =============================================================================
+
+describe('JSON metrics export (schema v1)', () => {
+    const baseMetrics: DrawingMetrics = {
+        nodes: 10,
+        edges: 15,
+        crossingsRaw: 3,
+        crossingsNormalized: 0.95,
+        crossingsPerEdge: 0.2,
+        drawingArea: 12345.67,
+        areaPerNode: 1234.567,
+        edgeLengthCV: 0.42,
+        uniqueCves: 7,
+    };
+
+    const baseSettings: SettingsSnapshot = {
+        granularity: { HOST: 'ATTACKER', CPE: 'HOST', CVE: 'CPE', CWE: 'CVE', TI: 'CWE', VC: 'TI' },
+        skip_layer_2: false,
+        visibility_hidden: ['CWE', 'TI'],
+        cve_merge_mode: 'outcomes',
+        environment_filter: { ui: 'N', ac: 'L' },
+        exploit_paths_active: false,
+        force_refresh_on_last_rebuild: false,
+        layout: 'dagre',
+    };
+
+    const baseDataSource: DataSourceSnapshot = {
+        type: 'trivy',
+        scans_uploaded_total: 1,
+        scans_in_current_graph: [
+            { id: 'scan-1', name: 'nginx:stable', vuln_count: 189 },
+        ],
+    };
+
+    const fixedNow = new Date('2026-05-04T12:00:00.000Z');
+
+    it('produces valid parseable JSON', () => {
+        const json = metricsToJSON(baseMetrics, {}, baseSettings, baseDataSource, fixedNow);
+        expect(() => JSON.parse(json)).not.toThrow();
+    });
+
+    it('schema_version is 1', () => {
+        const snap = buildMetricsJsonSnapshot(baseMetrics, {}, baseSettings, baseDataSource, fixedNow);
+        expect(snap.schema_version).toBe(1);
+    });
+
+    it('exported_at is ISO 8601', () => {
+        const snap = buildMetricsJsonSnapshot(baseMetrics, {}, baseSettings, baseDataSource, fixedNow);
+        expect(snap.exported_at).toBe('2026-05-04T12:00:00.000Z');
+    });
+
+    it('has app_version and git_sha', () => {
+        const snap = buildMetricsJsonSnapshot(baseMetrics, {}, baseSettings, baseDataSource, fixedNow);
+        expect(typeof snap.app_version).toBe('string');
+        expect(snap.app_version.length).toBeGreaterThan(0);
+        expect(typeof snap.git_sha).toBe('string');
+        expect(snap.git_sha.length).toBeGreaterThan(0);
+    });
+
+    it('all DrawingMetrics fields appear under metrics key with correct names', () => {
+        const obj = metricsToJsonObject(baseMetrics, { trivyVulnCount: 189 });
+        expect(obj).toEqual({
+            nodes: 10,
+            edges: 15,
+            unique_cves: 7,
+            trivy_vuln_count: 189,
+            crossings_raw: 3,
+            crossings_normalized: 0.95,
+            crossings_per_edge: 0.2,
+            drawing_area: 12345.67,
+            area_per_node: 1234.567,
+            edge_length_cv: 0.42,
+        });
+    });
+
+    it('trivy_vuln_count is null when context omits it (vs CSV empty string)', () => {
+        const obj = metricsToJsonObject(baseMetrics);
+        expect(obj.trivy_vuln_count).toBeNull();
+    });
+
+    it('settings snapshot is included verbatim', () => {
+        const snap = buildMetricsJsonSnapshot(baseMetrics, {}, baseSettings, baseDataSource, fixedNow);
+        expect(snap.settings).toEqual(baseSettings);
+    });
+
+    it('data_source includes the scan list', () => {
+        const snap = buildMetricsJsonSnapshot(baseMetrics, {}, baseSettings, baseDataSource, fixedNow);
+        expect(snap.data_source.type).toBe('trivy');
+        expect(snap.data_source.scans_uploaded_total).toBe(1);
+        expect(snap.data_source.scans_in_current_graph).toHaveLength(1);
+    });
+
+    it('regression: keys present in v1 are stable (top-level + metrics)', () => {
+        // Adding a new metric should NOT remove these — protects forward-compat consumers.
+        const snap = buildMetricsJsonSnapshot(baseMetrics, {}, baseSettings, baseDataSource, fixedNow);
+        const topLevel = Object.keys(snap).sort();
+        expect(topLevel).toEqual([
+            'app_version',
+            'data_source',
+            'exported_at',
+            'git_sha',
+            'metrics',
+            'schema_version',
+            'settings',
+        ]);
+
+        const metricKeys = Object.keys(snap.metrics).sort();
+        expect(metricKeys).toEqual([
+            'area_per_node',
+            'crossings_normalized',
+            'crossings_per_edge',
+            'crossings_raw',
+            'drawing_area',
+            'edge_length_cv',
+            'edges',
+            'nodes',
+            'trivy_vuln_count',
+            'unique_cves',
+        ]);
+    });
+
+    it('JSON output ends with a newline (POSIX-friendly)', () => {
+        const json = metricsToJSON(baseMetrics, {}, baseSettings, baseDataSource, fixedNow);
+        expect(json.endsWith('\n')).toBe(true);
+    });
+});
+
+describe('buildDataSourceSnapshot', () => {
+    it('returns mock-source for empty scan list', () => {
+        const ds = buildDataSourceSnapshot([]);
+        expect(ds.type).toBe('mock');
+        expect(ds.scans_uploaded_total).toBe(0);
+        expect(ds.scans_in_current_graph).toEqual([]);
+    });
+
+    it('returns trivy-source with mapped scan refs when scans exist', () => {
+        const ds = buildDataSourceSnapshot([
+            { id: 'a', name: 'nginx', filename: 'a.json', uploaded_at: 't', vuln_count: 5 },
+            { id: 'b', name: 'redis', filename: 'b.json', uploaded_at: 't', vuln_count: 12 },
+        ]);
+        expect(ds.type).toBe('trivy');
+        expect(ds.scans_uploaded_total).toBe(2);
+        expect(ds.scans_in_current_graph).toEqual([
+            { id: 'a', name: 'nginx', vuln_count: 5 },
+            { id: 'b', name: 'redis', vuln_count: 12 },
+        ]);
     });
 });

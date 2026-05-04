@@ -92,7 +92,7 @@ Plus two non-aesthetic counts useful for paper context:
 | Unique CVEs (graph) | same value as in the Clean Attack Graph table — repeated here so the Drawing Quality table is self-contained for the CSV export |
 | Trivy vulnerabilities (scans) | sum of `vuln_count` across all uploaded scans, fetched from `/api/data/scans` when the modal opens |
 
-The right column also has **two action buttons**: 🔍 **Show debug overlay** and 📥 **Export CSV**.
+The right column also has **three action buttons**: 🔍 **Show debug overlay**, 📥 **Export CSV**, and 📄 **Export JSON**.
 
 ---
 
@@ -131,6 +131,83 @@ Workflow for the ESORICS paper:
 4. Each click is one row; concatenate them in a spreadsheet, add a "step" column manually, and you have your evaluation table
 
 The CSV is intentionally label-free — keeps the frontend stateless and lets the user drive the workflow.
+
+---
+
+## JSON export (schema v1)
+
+Click 📄 **Export JSON** and a `pagdrawer-metrics-YYYY-MM-DD-HH-mm.json` file downloads. Same metric values as the CSV, but bundled with a settings snapshot and build provenance so the file is self-describing and reproducible.
+
+### Schema
+
+```jsonc
+{
+  "schema_version": 1,
+  "exported_at": "2026-05-04T12:00:00.000Z",   // ISO 8601 UTC
+  "app_version": "1.0.0",                       // from frontend/package.json
+  "git_sha": "fa9e45dc8a3b1e2f0c4d5a7b9e6f8a2c4b1d3e5f",  // build-time HEAD
+
+  "data_source": {
+    "type": "trivy",                             // "trivy" | "mock" | "unknown"
+    "scans_uploaded_total": 3,
+    "scans_in_current_graph": [
+      { "id": "scan-uuid-1", "name": "nginx:stable-trixie-perl", "vuln_count": 189 }
+    ]
+  },
+
+  "settings": {
+    "granularity": {
+      "HOST": "ATTACKER",
+      "CPE":  "HOST",
+      "CVE":  "CPE",
+      "CWE":  "CVE",
+      "TI":   "CWE",
+      "VC":   "TI"
+    },
+    "skip_layer_2": false,
+    "visibility_hidden": ["CWE", "TI"],          // sorted, deterministic
+    "cve_merge_mode": "outcomes",                // "none" | "prereqs" | "outcomes"
+    "environment_filter": { "ui": "N", "ac": "L" },
+    "exploit_paths_active": false,
+    "force_refresh_on_last_rebuild": false,
+    "layout": "dagre"
+  },
+
+  "metrics": {
+    "nodes": 67,
+    "edges": 88,
+    "unique_cves": 32,
+    "trivy_vuln_count": 189,
+    "crossings_raw": 32,
+    "crossings_normalized": 0.9909,
+    "crossings_per_edge": 0.3636,
+    "drawing_area": 1523400.50,
+    "area_per_node": 22737.32,
+    "edge_length_cv": 0.7748
+  }
+}
+```
+
+### Versioning
+
+`schema_version` only bumps on **breaking** changes (renamed or removed keys). Adding new metric fields under `metrics` is non-breaking — schema stays at v1.
+
+### Reproducibility
+
+- `git_sha` is injected at build time from `git rev-parse HEAD` (Vite `define`). In dev mode it reflects HEAD even with uncommitted changes — clean tree recommended for paper figures.
+- `settings` is captured at the same moment metrics are computed (when the modal opens or refreshes), so the file's settings always match its numbers.
+- **Exploit paths gap:** `exploit_paths_active: true` does not capture the seed selection that triggered the hiding. Reproducing an exploit-paths state requires manually re-triggering the same seed in the new session.
+
+### Why JSON in addition to CSV
+
+| Concern | CSV | JSON |
+|---------|-----|------|
+| Spreadsheet-native | ✅ | ❌ |
+| Nested structures (settings tree) | ❌ | ✅ |
+| Type fidelity (numbers vs strings, nulls) | ❌ | ✅ |
+| Reproducibility (settings recoverable from the export) | ❌ | ✅ |
+
+CSV stays the default for paper-table workflows; JSON is for archival, programmatic post-processing, and reviewer reproducibility.
 
 ---
 
@@ -178,10 +255,14 @@ The Settings modal kept the per-type counts that show up next to each slider (th
 
 | File | Role |
 |------|------|
-| `frontend/index.html` | Modal markup, toolbar button |
+| `frontend/index.html` | Modal markup, toolbar button, three Drawing Quality action buttons |
 | `frontend/css/styles.css` | Modal styles (cards, tables, notes, two-column responsive) |
-| `frontend/js/ui/statistics.ts` | `openStatistics`, `closeStatistics`, `refreshStatistics`, the section populators, debug overlay control |
+| `frontend/js/ui/statistics.ts` | `openStatistics`, `closeStatistics`, `refreshStatistics`, section populators, debug overlay control, CSV / JSON export wiring |
 | `frontend/js/ui/sidebar.ts` | `updateLiveStats` simplified — only refreshes per-type slider counts now (totals moved here) |
 | `frontend/js/main.ts` | Wires globals (`window.openStatistics`, `window.closeStatistics`) |
+| `frontend/js/features/metrics.ts` | Computation + CSV serializer + JSON serializer (`metricsToJSON`, `buildMetricsJsonSnapshot`, `downloadMetricsJSON`) |
+| `frontend/js/features/settingsSnapshot.ts` | `gatherCurrentSettings()` — async snapshot of granularity, visibility, merge mode, environment filter, exploit paths, layout |
+| `frontend/js/config/buildInfo.ts` | Reads build-time `VITE_GIT_SHA` and `VITE_APP_VERSION` injected by `vite.config.ts` |
+| `frontend/vite.config.ts` | Build-time `define` of `VITE_GIT_SHA` (from `git rev-parse HEAD`) and `VITE_APP_VERSION` (from `package.json`) |
 
 The modal refreshes all sections every time it opens (`openStatistics → refreshStatistics`). No automatic re-refresh on graph changes — the user closes and reopens to see updated values. Intentional: refreshing a hidden modal would waste cycles, and the Live counts are only meaningful relative to a specific view.

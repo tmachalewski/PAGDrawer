@@ -8,14 +8,18 @@ import { fetchStats, getScans } from '../services/api';
 import {
     computeMetrics,
     downloadMetricsCSV,
+    downloadMetricsJSON,
+    buildDataSourceSnapshot,
     findCrossings,
     getVisibleEdgeEndpoints,
     getVisibleNodePoints,
     computeBoundingBox,
     computeMeanEdgeLength,
     computeEdgeLengthStd,
-    type DrawingMetrics
+    type DrawingMetrics,
+    type DataSourceSnapshot,
 } from '../features/metrics';
+import { gatherCurrentSettings, type SettingsSnapshot } from '../features/settingsSnapshot';
 
 // Most recently computed metrics — used by Export CSV button
 let lastMetrics: DrawingMetrics | null = null;
@@ -23,6 +27,12 @@ let lastMetrics: DrawingMetrics | null = null;
 // Sum of Trivy-reported vulnerabilities across all uploaded scans. Populated
 // when the Statistics modal opens; included in CSV export.
 let lastTrivyVulnCount: number | null = null;
+
+// Settings + data-source snapshots taken at the moment metrics were computed.
+// Used by the JSON export to ensure the downloaded file's settings match its
+// metrics (Risk #5 in JSON_Export_With_Settings.md).
+let lastSettings: SettingsSnapshot | null = null;
+let lastDataSource: DataSourceSnapshot | null = null;
 
 // Tracks IDs of every debug element we add so we can clean them up.
 let debugElementIds: string[] = [];
@@ -62,6 +72,7 @@ export async function refreshStatistics(): Promise<void> {
     await populateTrivyVulnCount();
     populateCleanMetrics();
     populateDrawingMetrics();
+    await captureSettingsSnapshot();
     wireExportButton();
 }
 
@@ -75,9 +86,28 @@ async function populateTrivyVulnCount(): Promise<void> {
     try {
         const { scans } = await getScans();
         lastTrivyVulnCount = scans.reduce((sum, s) => sum + (s.vuln_count || 0), 0);
+        // Capture data-source snapshot from the same scan list — keeps the
+        // JSON export's data_source consistent with the displayed Trivy count.
+        lastDataSource = buildDataSourceSnapshot(scans);
     } catch (err) {
         console.error('Failed to fetch scan list for Trivy vuln count:', err);
         lastTrivyVulnCount = null;
+        lastDataSource = null;
+    }
+}
+
+/**
+ * Capture a settings snapshot at the moment of metrics computation. Async
+ * because /api/config is fetched once per call. Failures fall back to a
+ * sensible default snapshot rather than disabling the JSON export, since
+ * the metrics themselves are still valid.
+ */
+async function captureSettingsSnapshot(): Promise<void> {
+    try {
+        lastSettings = await gatherCurrentSettings();
+    } catch (err) {
+        console.error('Failed to gather settings snapshot:', err);
+        lastSettings = null;
     }
 }
 
@@ -270,20 +300,35 @@ function populateDrawingMetrics(): void {
  * Wire the Export CSV button to download the most recently computed metrics.
  */
 function wireExportButton(): void {
-    const btn = document.getElementById('stats-export-csv') as HTMLButtonElement | null;
-    if (!btn) return;
+    const csvBtn = document.getElementById('stats-export-csv') as HTMLButtonElement | null;
+    if (csvBtn) {
+        csvBtn.disabled = !lastMetrics;
+        // Replace handler (avoids stacking listeners on repeated opens)
+        csvBtn.onclick = () => {
+            if (lastMetrics) {
+                downloadMetricsCSV(lastMetrics, {
+                    trivyVulnCount: lastTrivyVulnCount ?? undefined,
+                });
+            }
+        };
+    }
 
-    // Disable when no metrics available
-    btn.disabled = !lastMetrics;
-
-    // Replace handler (avoids stacking listeners on repeated opens)
-    btn.onclick = () => {
-        if (lastMetrics) {
-            downloadMetricsCSV(lastMetrics, {
-                trivyVulnCount: lastTrivyVulnCount ?? undefined,
-            });
-        }
-    };
+    const jsonBtn = document.getElementById('stats-export-json') as HTMLButtonElement | null;
+    if (jsonBtn) {
+        // JSON export needs the settings + data-source snapshots in addition to
+        // the metrics themselves; require all three before enabling.
+        jsonBtn.disabled = !lastMetrics || !lastSettings || !lastDataSource;
+        jsonBtn.onclick = () => {
+            if (lastMetrics && lastSettings && lastDataSource) {
+                downloadMetricsJSON(
+                    lastMetrics,
+                    { trivyVulnCount: lastTrivyVulnCount ?? undefined },
+                    lastSettings,
+                    lastDataSource,
+                );
+            }
+        };
+    }
 
     wireCrossingsToggle();
 }

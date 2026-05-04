@@ -12,6 +12,9 @@
  */
 
 import { getCy } from '../graph/core';
+import { getGitSha, getAppVersion } from '../config/buildInfo';
+import type { SettingsSnapshot } from './settingsSnapshot';
+import type { ScanInfo } from '../types';
 
 export interface DrawingMetrics {
     nodes: number;
@@ -425,4 +428,143 @@ export function downloadMetricsCSV(m: DrawingMetrics, context: MetricsCsvContext
 function formatTimestamp(d: Date): string {
     const pad = (n: number) => String(n).padStart(2, '0');
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}-${pad(d.getHours())}-${pad(d.getMinutes())}`;
+}
+
+// =============================================================================
+// JSON export — schema v1
+// =============================================================================
+//
+// Mirrors the CSV export but adds two things the CSV can't carry:
+//   - A settings snapshot (granularity sliders, visibility, merge mode, ...)
+//     so a downloaded JSON describes the graph state that produced its numbers.
+//   - Build provenance (git SHA, app version) so the JSON traces back to the
+//     exact code revision that ran.
+//
+// Schema versioning policy: bump `schema_version` only on breaking changes
+// (renamed or removed keys). Adding new metric fields under `metrics` is
+// non-breaking and stays at v1.
+//
+// =============================================================================
+
+export interface DataSourceScanRef {
+    id: string;
+    name: string;
+    vuln_count: number;
+}
+
+export interface DataSourceSnapshot {
+    type: 'trivy' | 'mock' | 'unknown';
+    scans_uploaded_total: number;
+    scans_in_current_graph: DataSourceScanRef[];
+}
+
+export interface MetricsJsonSnapshot {
+    schema_version: 1;
+    exported_at: string;       // ISO 8601 timestamp (UTC)
+    app_version: string;
+    git_sha: string;
+    data_source: DataSourceSnapshot;
+    settings: SettingsSnapshot;
+    metrics: Record<string, unknown>;
+}
+
+/**
+ * Build a DataSourceSnapshot from the list of scans currently uploaded.
+ * For now `type` is heuristically Trivy if any scans exist; a future plan
+ * may add explicit data-source typing.
+ */
+export function buildDataSourceSnapshot(scans: ScanInfo[]): DataSourceSnapshot {
+    return {
+        type: scans.length > 0 ? 'trivy' : 'mock',
+        scans_uploaded_total: scans.length,
+        scans_in_current_graph: scans.map(s => ({
+            id: s.id,
+            name: s.name,
+            vuln_count: s.vuln_count,
+        })),
+    };
+}
+
+/**
+ * Convert DrawingMetrics + caller context into the `metrics` sub-object of
+ * the JSON export. Field names mirror the CSV columns for grep-friendliness;
+ * types stay as native numbers (CSV stringifies; JSON should not).
+ */
+export function metricsToJsonObject(
+    m: DrawingMetrics,
+    context: MetricsCsvContext = {},
+): Record<string, unknown> {
+    return {
+        nodes: m.nodes,
+        edges: m.edges,
+        unique_cves: m.uniqueCves,
+        trivy_vuln_count: context.trivyVulnCount ?? null,
+        crossings_raw: m.crossingsRaw,
+        crossings_normalized: m.crossingsNormalized,
+        crossings_per_edge: m.crossingsPerEdge,
+        drawing_area: m.drawingArea,
+        area_per_node: m.areaPerNode,
+        edge_length_cv: m.edgeLengthCV,
+    };
+}
+
+/**
+ * Compose the full JSON metrics snapshot. Caller supplies the live settings
+ * and data-source state so this function stays pure (testable without DOM).
+ */
+export function buildMetricsJsonSnapshot(
+    m: DrawingMetrics,
+    context: MetricsCsvContext,
+    settings: SettingsSnapshot,
+    dataSource: DataSourceSnapshot,
+    now: Date = new Date(),
+): MetricsJsonSnapshot {
+    return {
+        schema_version: 1,
+        exported_at: now.toISOString(),
+        app_version: getAppVersion(),
+        git_sha: getGitSha(),
+        data_source: dataSource,
+        settings,
+        metrics: metricsToJsonObject(m, context),
+    };
+}
+
+/**
+ * Stringify the snapshot with stable 2-space indentation (matches the
+ * "diffable export" convention used elsewhere in the project).
+ */
+export function metricsToJSON(
+    m: DrawingMetrics,
+    context: MetricsCsvContext,
+    settings: SettingsSnapshot,
+    dataSource: DataSourceSnapshot,
+    now: Date = new Date(),
+): string {
+    return JSON.stringify(buildMetricsJsonSnapshot(m, context, settings, dataSource, now), null, 2) + '\n';
+}
+
+/**
+ * Trigger a JSON download in the browser. Filename mirrors the CSV
+ * convention with a `.json` suffix.
+ */
+export function downloadMetricsJSON(
+    m: DrawingMetrics,
+    context: MetricsCsvContext,
+    settings: SettingsSnapshot,
+    dataSource: DataSourceSnapshot,
+): void {
+    const now = new Date();
+    const json = metricsToJSON(m, context, settings, dataSource, now);
+    const filename = `pagdrawer-metrics-${formatTimestamp(now)}.json`;
+
+    const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
 }

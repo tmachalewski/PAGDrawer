@@ -1,7 +1,7 @@
 # JSON Export with Settings Snapshot — Implementation Plan
 
 **Created:** 2026-05-03-21-42
-**Branch (proposed):** `feature/metrics-roadmap/json-export` (sub-branch of the umbrella `feature/metrics-roadmap`; see Master roadmap)
+**Branch (proposed):** `feature/metrics-roadmap-json-export` (sub-branch of the umbrella `feature/metrics-roadmap`; see Master roadmap)
 **Sister plans:** `Debug_Overlay_Visualizations.md`, `Paper_Evaluation_Metrics.md`
 
 ---
