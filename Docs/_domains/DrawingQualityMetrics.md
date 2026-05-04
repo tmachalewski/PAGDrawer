@@ -191,6 +191,9 @@ computeEdgeLengthCV(edges) → number
 computeAspectRatio(bb) → number                                  // M9
 computeCompoundCardinality() → CompoundCardinality               // M21 — live cy
 computeCompoundCardinalityFromCounts(counts) → CompoundCardinality  // M21 — pure helper
+computeCrossingAngle(a, b) → number                              // M2  — acute angle ∈ [0, π/2]
+computeCrossingAngleStats(crossings, tolRad?)                    // M2  — {meanRad, minRad, rightAngleRatio}
+computeTypePairCrossingStats(crossings)                          // M25 — {distribution, topPairLabel, topPairShare}
 metricsToCSV(m, context?) → string
 downloadMetricsCSV(m, context?) → void
 metricsToJSON(m, context, settings, dataSource, now?) → string   // schema v1
@@ -202,6 +205,37 @@ getVisibleEdgeEndpoints() → EdgeEndpoints[]
 ```
 
 All pure functions except `computeMetrics`, `computeCompoundCardinality`, `getVisibleNodePoints`, `getVisibleEdgeEndpoints` (live Cytoscape graph) and `downloadMetricsCSV` / `downloadMetricsJSON` (browser download).
+
+### M2 — Crossing-Angle Metrics
+
+`findCrossings(edges)` now attaches three fields to every `CrossingInfo`:
+
+- `angle: number` — acute angle in radians, `arctan2(|cross|, |dot|)` of the two edge direction vectors. Folds into `[0, π/2]` regardless of source/target orientation.
+- `edgeAType, edgeBType: string` — the two edges' Cytoscape `data('type')` values, **sorted lexicographically**, so `(HAS_VULN, LEADS_TO)` and `(LEADS_TO, HAS_VULN)` collapse into one bucket.
+
+`computeCrossingAngleStats(crossings, tolRad = π/12)` returns `{ meanRad, minRad, rightAngleRatio }`. The right-angle window is **±15°** by default per Huang, Eades and Hong 2014.
+
+CSV columns (degrees for human readability): `crossings_mean_angle_deg`, `crossings_min_angle_deg`, `crossings_right_angle_ratio`. JSON exports the same numeric values plus the dist below.
+
+### M25 — Type-Pair Crossing Decomposition
+
+`computeTypePairCrossingStats(crossings)` returns:
+
+- `distribution: Record<string, number>` — `"typeA×typeB"` → count, with the pair sorted lex
+- `topPairLabel: string` — most-frequent key (or `""` for empty input). Tie-break: lex-first key (deterministic for CSV stability).
+- `topPairShare: number` — top-pair count / total crossings, ∈ `[0, 1]`
+
+CSV columns: `crossings_top_pair_share`, `crossings_top_pair_label`. The label is RFC 4180-quoted when it contains a comma or double quote. The full per-pair distribution is **JSON-only** (variable cardinality) under `metrics.crossings_type_pair_distribution`.
+
+### Crossings overlay coloring (M2 + M25 share the dot)
+
+The Debug Overlay Settings modal exposes a radio group `Crossings — color dots by`:
+
+- `none` — keep the stylesheet's default red (#ff2d55), back-compat with v0
+- `angle` (M2) — interpolate `hsl(hue, 75%, 50%)` with hue ∈ `[0°, 120°]` mapped from angle ∈ `[0, π/2]` (red = acute → yellow ≈ 45° → green ≈ 90°)
+- `typePair` (M25) — categorical 10-color palette assigned to each `typeA×typeB` bucket in descending count order (most-common pair = red, second = orange, …)
+
+Implementation: `pickCrossingColor(c, mode, palette)` and `buildTypePairPalette(crossings)` in `frontend/js/ui/debugOverlay.ts`.
 
 ### M9 — Aspect Ratio
 

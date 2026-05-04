@@ -37,6 +37,21 @@ export interface DrawingMetrics {
      * not flattened into CSV (variable column set would break diffs).
      */
     compoundSizeDistribution: Record<number, number>;
+
+    // M2 — Crossing angle metrics. Reported in degrees for human readability.
+    crossingsMeanAngleDeg: number;     // mean across all crossings, 0 when no crossings
+    crossingsMinAngleDeg: number;      // worst (most acute) angle, 0 when no crossings
+    crossingsRightAngleRatio: number;  // share within ±15° of 90°, 0 when no crossings
+
+    // M25 — Type-pair crossing decomposition.
+    crossingsTopPairShare: number;     // largest type-pair's fraction of all crossings
+    crossingsTopPairLabel: string;     // e.g. "HAS_VULN×LEADS_TO" or "" when no crossings
+    /**
+     * M25: full type-pair → count distribution. Keys are "typeA×typeB" strings
+     * with the pair sorted lexicographically. JSON-only (variable cardinality
+     * would break stable CSV headers).
+     */
+    crossingsTypePairDistribution: Record<string, number>;
 }
 
 export interface CompoundCardinality {
@@ -59,12 +74,23 @@ export interface EdgeEndpoints {
     target: Point;
     sourceId: string;
     targetId: string;
+    /**
+     * Edge `data('type')` from Cytoscape (e.g. 'HAS_VULN', 'IS_INSTANCE_OF').
+     * Empty string when the edge has no type set. Carried so M25
+     * (type-pair decomposition) and the overlay can categorise crossings.
+     */
+    type: string;
 }
 
 export interface CrossingInfo {
     point: Point;
     edgeA: EdgeEndpoints;
     edgeB: EdgeEndpoints;
+    /** M2 — acute angle between the crossing edges, radians in [0, π/2]. */
+    angle: number;
+    /** M25 — pair of edge types involved in this crossing, sorted lex. */
+    edgeAType: string;
+    edgeBType: string;
 }
 
 /**
@@ -106,11 +132,13 @@ export function getVisibleEdgeEndpoints(): EdgeEndpoints[] {
         }
         const sPos = src.position();
         const tPos = tgt.position();
+        const edgeType = e.data('type');
         edges.push({
             source: { x: sPos.x, y: sPos.y },
             target: { x: tPos.x, y: tPos.y },
             sourceId: src.id(),
-            targetId: tgt.id()
+            targetId: tgt.id(),
+            type: typeof edgeType === 'string' ? edgeType : '',
         });
     });
     return edges;
@@ -149,10 +177,15 @@ export function computeMetrics(): DrawingMetrics | null {
     // Extract edge endpoints (skips edges whose endpoints are not visible)
     const edges = getVisibleEdgeEndpoints();
 
-    // 1. Edge crossings
-    const crossingsRaw = countCrossings(edges);
+    // 1. Edge crossings — compute once, then derive raw / normalised /
+    //    M2 angle stats / M25 type-pair stats from the same CrossingInfo list.
+    const crossingInfos = findCrossings(edges);
+    const crossingsRaw = crossingInfos.length;
     const crossingsNormalized = normalizeCrossings(crossingsRaw, edges);
     const crossingsPerEdge = edges.length > 0 ? crossingsRaw / edges.length : 0;
+    const angleStats = computeCrossingAngleStats(crossingInfos);
+    const typePairStats = computeTypePairCrossingStats(crossingInfos);
+    const RAD_TO_DEG = 180 / Math.PI;
 
     // 2. Drawing area (center-point bounding box) + M9 aspect ratio
     const bbox = computeBoundingBox(points);
@@ -191,6 +224,12 @@ export function computeMetrics(): DrawingMetrics | null {
         compoundSingletonFraction: compound.singletonFraction,
         compoundGroupsCount: compound.groupsCount,
         compoundSizeDistribution: compound.sizeDistribution,
+        crossingsMeanAngleDeg: angleStats.meanRad * RAD_TO_DEG,
+        crossingsMinAngleDeg: angleStats.minRad * RAD_TO_DEG,
+        crossingsRightAngleRatio: angleStats.rightAngleRatio,
+        crossingsTopPairShare: typePairStats.topPairShare,
+        crossingsTopPairLabel: typePairStats.topPairLabel,
+        crossingsTypePairDistribution: typePairStats.distribution,
     };
 }
 
@@ -217,11 +256,38 @@ export function findCrossings(edges: EdgeEndpoints[]): CrossingInfo[] {
             }
             const point = segmentIntersectionPoint(a.source, a.target, b.source, b.target);
             if (point !== null) {
-                result.push({ point, edgeA: a, edgeB: b });
+                const angle = computeCrossingAngle(a, b);
+                // Sort the type pair lexicographically so {(t1, t2), (t2, t1)}
+                // collapse to one bucket in the M25 distribution.
+                const [edgeAType, edgeBType] = a.type <= b.type
+                    ? [a.type, b.type]
+                    : [b.type, a.type];
+                result.push({ point, edgeA: a, edgeB: b, angle, edgeAType, edgeBType });
             }
         }
     }
     return result;
+}
+
+/**
+ * M2 — acute angle between two crossing edges, in radians ∈ [0, π/2].
+ *
+ * Uses `arctan2(|cross|, |dot|)` of edge direction vectors per Huang, Eades
+ * and Hong 2014. Absolute values fold the result into the acute range
+ * regardless of edge orientation (source→target vs target→source produce
+ * the same angle).
+ *
+ * Returns 0 when either edge is degenerate (zero-length).
+ */
+export function computeCrossingAngle(a: EdgeEndpoints, b: EdgeEndpoints): number {
+    const ax = a.target.x - a.source.x;
+    const ay = a.target.y - a.source.y;
+    const bx = b.target.x - b.source.x;
+    const by = b.target.y - b.source.y;
+    const cross = Math.abs(ax * by - ay * bx);
+    const dot = Math.abs(ax * bx + ay * by);
+    if (cross === 0 && dot === 0) return 0; // degenerate
+    return Math.atan2(cross, dot); // in [0, π/2]
 }
 
 /**
@@ -230,6 +296,79 @@ export function findCrossings(edges: EdgeEndpoints[]): CrossingInfo[] {
  */
 export function countCrossings(edges: EdgeEndpoints[]): number {
     return findCrossings(edges).length;
+}
+
+/**
+ * M2 — aggregate crossing-angle scalars from a CrossingInfo[] (all in radians).
+ *
+ * @param rightAngleToleranceRad Tolerance window around π/2. Default 15° per
+ *                               Huang, Eades and Hong 2014.
+ *
+ * Returns angles in **radians**; a UI helper converts to degrees for display.
+ * Empty input → all zeros (the modal renders this as "—" via the table layer).
+ */
+export function computeCrossingAngleStats(
+    crossings: CrossingInfo[],
+    rightAngleToleranceRad: number = Math.PI / 12,
+): { meanRad: number; minRad: number; rightAngleRatio: number } {
+    if (crossings.length === 0) {
+        return { meanRad: 0, minRad: 0, rightAngleRatio: 0 };
+    }
+    let sum = 0;
+    let min = Infinity;
+    let nearRight = 0;
+    const target = Math.PI / 2;
+    for (const c of crossings) {
+        sum += c.angle;
+        if (c.angle < min) min = c.angle;
+        if (Math.abs(c.angle - target) <= rightAngleToleranceRad) nearRight++;
+    }
+    return {
+        meanRad: sum / crossings.length,
+        minRad: min === Infinity ? 0 : min,
+        rightAngleRatio: nearRight / crossings.length,
+    };
+}
+
+/**
+ * M25 — type-pair decomposition of a crossing list.
+ *
+ * Returns:
+ *   - distribution: `"typeA×typeB"` → count map (pair sorted lex)
+ *   - topPairLabel: highest-count key, or `""` for empty input
+ *   - topPairShare: highest-count count / total, or 0 for empty input
+ *
+ * Tie-breaking on top: lexicographic on the label key (deterministic across
+ * runs, important for CSV stability).
+ */
+export function computeTypePairCrossingStats(
+    crossings: CrossingInfo[],
+): {
+    distribution: Record<string, number>;
+    topPairLabel: string;
+    topPairShare: number;
+} {
+    if (crossings.length === 0) {
+        return { distribution: {}, topPairLabel: '', topPairShare: 0 };
+    }
+    const distribution: Record<string, number> = {};
+    for (const c of crossings) {
+        const key = `${c.edgeAType}×${c.edgeBType}`;
+        distribution[key] = (distribution[key] || 0) + 1;
+    }
+    let topLabel = '';
+    let topCount = -1;
+    for (const [key, count] of Object.entries(distribution)) {
+        if (count > topCount || (count === topCount && key < topLabel)) {
+            topCount = count;
+            topLabel = key;
+        }
+    }
+    return {
+        distribution,
+        topPairLabel: topLabel,
+        topPairShare: topCount / crossings.length,
+    };
 }
 
 /**
@@ -520,6 +659,11 @@ export function metricsToCSV(m: DrawingMetrics, context: MetricsCsvContext = {})
         'compound_groups_count',
         'compound_largest_group_size',
         'compound_singleton_fraction',
+        'crossings_mean_angle_deg',
+        'crossings_min_angle_deg',
+        'crossings_right_angle_ratio',
+        'crossings_top_pair_share',
+        'crossings_top_pair_label',
     ].join(',');
     const row = [
         m.nodes,
@@ -536,6 +680,11 @@ export function metricsToCSV(m: DrawingMetrics, context: MetricsCsvContext = {})
         m.compoundGroupsCount,
         m.compoundLargestGroupSize,
         m.compoundSingletonFraction.toFixed(4),
+        m.crossingsMeanAngleDeg.toFixed(2),
+        m.crossingsMinAngleDeg.toFixed(2),
+        m.crossingsRightAngleRatio.toFixed(4),
+        m.crossingsTopPairShare.toFixed(4),
+        csvEscape(m.crossingsTopPairLabel),
     ].join(',');
     return header + '\n' + row + '\n';
 }
@@ -557,6 +706,19 @@ export function downloadMetricsCSV(m: DrawingMetrics, context: MetricsCsvContext
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+}
+
+/**
+ * RFC 4180 CSV field escape: wraps in double quotes when the value contains
+ * a comma, double quote, or newline; doubles any embedded double quote.
+ * Empty string → empty (not `""`) so absent fields don't add visual noise.
+ */
+function csvEscape(s: string): string {
+    if (s === '') return '';
+    if (/[",\n\r]/.test(s)) {
+        return `"${s.replace(/"/g, '""')}"`;
+    }
+    return s;
 }
 
 function formatTimestamp(d: Date): string {
@@ -674,6 +836,12 @@ export function metricsToJsonObject(
         compound_largest_group_size: m.compoundLargestGroupSize,
         compound_singleton_fraction: m.compoundSingletonFraction,
         compound_size_distribution: m.compoundSizeDistribution,
+        crossings_mean_angle_deg: m.crossingsMeanAngleDeg,
+        crossings_min_angle_deg: m.crossingsMinAngleDeg,
+        crossings_right_angle_ratio: m.crossingsRightAngleRatio,
+        crossings_top_pair_share: m.crossingsTopPairShare,
+        crossings_top_pair_label: m.crossingsTopPairLabel,
+        crossings_type_pair_distribution: m.crossingsTypePairDistribution,
     };
 }
 
