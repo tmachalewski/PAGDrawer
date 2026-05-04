@@ -134,14 +134,33 @@ If a future scan ever pushes stress compute above ~1 second consistently, the ri
 
 ---
 
-## Visualisation (planned)
+## Visualisation
 
-Stress is a scalar, but its components are per-pair and easy to make visible:
+Stress is a scalar, but its components are per-pair and easy to make visible. Two modes available in the **Debug Overlay Settings** modal under "Stress visualisation (M1)":
 
-- **Click a node.** Colour every reachable node by its symmetrised graph distance to the clicked node (red=close, green=far). The user can eyeball whether geometrically-close nodes are also topologically close — exactly what stress measures.
-- **Click two nodes in sequence.** Show both directed distances numerically and the Euclidean distance for that pair. Useful for explaining the metric to readers.
+### Mode 1 — Color nodes by graph distance from clicked source
 
-Not yet implemented; tracked as a follow-up. The pure helpers (`computeAPSP`, `symmetrizedDistance`) are already in place, so the visualisation is a thin overlay layer on top of existing data.
+When the toggle is on, **clicking any node** sets it as the source and recolours every other visible node by symmetrised graph distance:
+
+- **Source node** — black fill with a yellow border, can't be missed
+- **Reachable, distance d (1 ≤ d ≤ d_max)** — `hsl((d/d_max)·120°, 75%, 55%)` interpolating red (closest) → yellow → green (farthest)
+- **Unreachable** — translucent grey
+
+If the layout is faithful, geometrically-close nodes will also be coloured red. A node that's coloured red but visually far from the source — or coloured green but visually close — is a layout fidelity issue this mode lets you spot at a glance. Background-clicking dismisses the colouring; clicking a different node moves the source.
+
+### Mode 2 — Show pair distances on click
+
+When the toggle is on, **clicking two nodes in sequence** pops a floating panel in the upper-right of the viewport showing:
+
+- **From / To** — the two clicked node IDs
+- **d(from → to)** — directed distance, or "unreachable"
+- **d(to → from)** — reverse directed distance, or "unreachable"
+- **symmetrised** — the value the metric uses (= `min` of the two)
+- **Euclidean** — `‖p_from − p_to‖_layout`
+
+A third click resets to "first selected"; the panel can also be dismissed via its `×` button or by clicking the graph background.
+
+Both modes can be enabled simultaneously — a single click triggers both behaviors. The pure helpers `computeDistanceColoringStyles(sourceId, nodes, apsp)` and `computeStressPairDisplay(firstId, secondId, nodes, apsp)` live in `frontend/js/ui/debugOverlay.ts` and are unit-tested independently of Cytoscape.
 
 ---
 

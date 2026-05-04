@@ -22,12 +22,16 @@ import {
     findCrossings,
     getVisibleEdgeEndpoints,
     getVisibleNodePoints,
+    getVisibleNodesWithIds,
     computeBoundingBox,
     computeMeanEdgeLength,
     computeEdgeLengthStd,
     computeAspectRatio,
     computeCompoundCardinality,
+    computeAPSP,
+    symmetrizedDistance,
     type CrossingInfo,
+    type NodeWithPosition,
 } from '../features/metrics';
 
 // =============================================================================
@@ -51,6 +55,20 @@ export interface OverlayState {
      *   - 'typePair': M25 — categorical palette per (typeA × typeB) bucket
      */
     crossingsColorBy: CrossingsColorMode;
+    /**
+     * M1 visualisation — colour every reachable node by symmetrised graph
+     * distance from the most-recently-clicked node. Red = close (distance 1),
+     * green = far (max distance), grey = unreachable. The clicked node
+     * itself is rendered with a yellow outline. See StressMetric.md.
+     */
+    stressDistanceColoring: boolean;
+    /**
+     * M1 visualisation — clicking two nodes in sequence pops a small
+     * floating panel showing the directed distances in both directions,
+     * the symmetrised distance, and the Euclidean (layout) distance.
+     * Useful for explaining the metric or sanity-checking individual pairs.
+     */
+    stressPairDistance: boolean;
 }
 
 export const DEFAULT_OVERLAY_STATE: OverlayState = {
@@ -61,6 +79,8 @@ export const DEFAULT_OVERLAY_STATE: OverlayState = {
     aspectRatio: false,
     groupCardinality: false,
     crossingsColorBy: 'none',
+    stressDistanceColoring: false,
+    stressPairDistance: false,
 };
 
 const STORAGE_KEY = 'debugOverlayState_v1';
@@ -81,6 +101,8 @@ export const PRESETS: Record<PresetName, OverlayState> = {
         aspectRatio: true,
         groupCardinality: false,
         crossingsColorBy: 'typePair',  // M25 — per the Debug-Overlay plan
+        stressDistanceColoring: false,
+        stressPairDistance: false,
     },
     layout: {
         crossings: false,
@@ -90,6 +112,8 @@ export const PRESETS: Record<PresetName, OverlayState> = {
         aspectRatio: true,
         groupCardinality: false,
         crossingsColorBy: 'none',
+        stressDistanceColoring: false,
+        stressPairDistance: false,
     },
     reductions: {
         crossings: false,
@@ -99,6 +123,8 @@ export const PRESETS: Record<PresetName, OverlayState> = {
         aspectRatio: false,
         groupCardinality: true,
         crossingsColorBy: 'none',
+        stressDistanceColoring: false,
+        stressPairDistance: false,
     },
     defaults: { ...DEFAULT_OVERLAY_STATE },
     clear: {
@@ -109,6 +135,8 @@ export const PRESETS: Record<PresetName, OverlayState> = {
         aspectRatio: false,
         groupCardinality: false,
         crossingsColorBy: 'none',
+        stressDistanceColoring: false,
+        stressPairDistance: false,
     },
 };
 
@@ -163,6 +191,8 @@ export function countEnabledOverlays(state: OverlayState = currentState): number
         state.stdDevLine,
         state.aspectRatio,
         state.groupCardinality,
+        state.stressDistanceColoring,
+        state.stressPairDistance,
     ];
     return flags.filter(Boolean).length;
 }
@@ -293,6 +323,13 @@ function drawAll(): void {
     // 5. M21 — compound-parent cardinality badges.
     if (currentState.groupCardinality) {
         applyGroupCardinalityBadges();
+    }
+
+    // 6. M1 stress visualisation — bind click handler if either mode is on.
+    if (currentState.stressDistanceColoring || currentState.stressPairDistance) {
+        wireStressVisualizationHandlers();
+    } else {
+        unwireStressVisualizationHandlers();
     }
 }
 
@@ -445,6 +482,226 @@ function clearGroupCardinalityBadges(): void {
     originalParentLabels = null;
 }
 
+// =============================================================================
+// M1 stress visualisation — distance-from-source colouring + pair panel
+// =============================================================================
+
+/** Set of node ids currently overridden by the distance-coloring overlay. */
+const stressColoredIds = new Set<string>();
+
+/** First node clicked in pair-distance mode; null when no pair in progress. */
+let stressPairFirst: string | null = null;
+
+/**
+ * Pure helper: given a clicked source id, the visible-node list, and a
+ * directed APSP map, return the inline styles to apply to each node.
+ *
+ * Output is a Map<nodeId, partial-style-object>. The Cytoscape-side
+ * applier just iterates and calls `node.style(...)`. Tests verify the
+ * mapping without needing a real cy graph.
+ *
+ * Color scheme:
+ *   - source              : black fill + yellow border (clearly stands out)
+ *   - reachable, distance d (1 ≤ d ≤ maxDist):
+ *                           hsl(120·d/maxDist, 75%, 55%) — red→yellow→green
+ *   - unreachable          : translucent grey, no border change
+ */
+export function computeDistanceColoringStyles(
+    sourceId: string,
+    nodes: NodeWithPosition[],
+    apsp: Map<string, Map<string, number>>,
+): Map<string, Record<string, string | number>> {
+    const result = new Map<string, Record<string, string | number>>();
+
+    // Find the maximum reachable symmetrised distance (excluding source).
+    let maxDist = 0;
+    for (const n of nodes) {
+        if (n.id === sourceId) continue;
+        const d = symmetrizedDistance(apsp, sourceId, n.id);
+        if (d !== undefined && d > maxDist) maxDist = d;
+    }
+
+    for (const n of nodes) {
+        if (n.id === sourceId) {
+            result.set(n.id, {
+                'background-color': '#000000',
+                'border-color': '#ffeb3b',
+                'border-width': 4,
+            });
+            continue;
+        }
+        const d = symmetrizedDistance(apsp, sourceId, n.id);
+        if (d === undefined) {
+            result.set(n.id, { 'background-color': 'rgba(128, 128, 128, 0.4)' });
+        } else {
+            const t = maxDist > 0 ? d / maxDist : 0;
+            const hue = (t * 120).toFixed(0); // 0=red, 120=green
+            result.set(n.id, { 'background-color': `hsl(${hue}, 75%, 55%)` });
+        }
+    }
+    return result;
+}
+
+/**
+ * Apply distance-from-source coloring to every visible non-debug node.
+ * Called on every click in stress-coloring mode. Idempotent — clears
+ * any previous coloring before applying the new one.
+ */
+function applyDistanceColoring(sourceId: string): void {
+    clearDistanceColoring();
+    const cy = getCy();
+    if (!cy) return;
+
+    const nodes = getVisibleNodesWithIds();
+    if (nodes.length === 0) return;
+    const edges = getVisibleEdgeEndpoints();
+    const apsp = computeAPSP(nodes.map(n => n.id), edges);
+
+    const styles = computeDistanceColoringStyles(sourceId, nodes, apsp);
+    styles.forEach((style, id) => {
+        const node = cy.getElementById(id);
+        if (node.length === 0) return;
+        node.style(style);
+        stressColoredIds.add(id);
+    });
+}
+
+/**
+ * Remove inline colour overrides from every node we touched, restoring
+ * the stylesheet's default appearance.
+ */
+function clearDistanceColoring(): void {
+    const cy = getCy();
+    if (!cy) {
+        stressColoredIds.clear();
+        return;
+    }
+    const STYLE_KEYS = ['background-color', 'border-color', 'border-width'];
+    stressColoredIds.forEach(id => {
+        const node = cy.getElementById(id);
+        if (node.length === 0) return;
+        STYLE_KEYS.forEach(k => node.removeStyle(k));
+    });
+    stressColoredIds.clear();
+}
+
+/**
+ * Pure helper: compute the four numbers shown in the pair-distance panel
+ * given the two ids, their positions, and a directed APSP.
+ *
+ * Returns the displayable strings so the panel doesn't need to format
+ * unreachable / number cases itself.
+ */
+export function computeStressPairDisplay(
+    firstId: string,
+    secondId: string,
+    nodes: NodeWithPosition[],
+    apsp: Map<string, Map<string, number>>,
+): {
+    forwardDistance: string;
+    backwardDistance: string;
+    symmetrizedDistance: string;
+    euclideanDistance: string;
+} {
+    const dab = apsp.get(firstId)?.get(secondId);
+    const dba = apsp.get(secondId)?.get(firstId);
+    const sym = symmetrizedDistance(apsp, firstId, secondId);
+    const a = nodes.find(n => n.id === firstId);
+    const b = nodes.find(n => n.id === secondId);
+    let euc = '—';
+    if (a && b) {
+        const dx = a.x - b.x;
+        const dy = a.y - b.y;
+        euc = Math.sqrt(dx * dx + dy * dy).toFixed(1);
+    }
+    const fmt = (d: number | undefined) => d === undefined ? 'unreachable' : String(d);
+    return {
+        forwardDistance: fmt(dab),
+        backwardDistance: fmt(dba),
+        symmetrizedDistance: fmt(sym),
+        euclideanDistance: euc,
+    };
+}
+
+/**
+ * Show the floating pair-distance panel with the four numbers for the
+ * given pair. Called when the user clicks the second node in pair mode.
+ */
+function showStressPairPanel(firstId: string, secondId: string): void {
+    const cy = getCy();
+    if (!cy) return;
+    const nodes = getVisibleNodesWithIds();
+    const edges = getVisibleEdgeEndpoints();
+    const apsp = computeAPSP(nodes.map(n => n.id), edges);
+    const display = computeStressPairDisplay(firstId, secondId, nodes, apsp);
+
+    setPanelText('stress-pair-from', firstId);
+    setPanelText('stress-pair-to', secondId);
+    setPanelText('stress-pair-fwd', display.forwardDistance);
+    setPanelText('stress-pair-bwd', display.backwardDistance);
+    setPanelText('stress-pair-sym', display.symmetrizedDistance);
+    setPanelText('stress-pair-euc', display.euclideanDistance);
+
+    const panel = document.getElementById('stress-pair-panel');
+    if (panel) panel.style.display = 'block';
+}
+
+function setPanelText(id: string, value: string): void {
+    const el = document.getElementById(id);
+    if (el) el.textContent = value;
+}
+
+function hideStressPairPanel(): void {
+    const panel = document.getElementById('stress-pair-panel');
+    if (panel) panel.style.display = 'none';
+    stressPairFirst = null;
+}
+
+/**
+ * Bind a delegated tap listener on cy that drives both stress
+ * visualisations. Idempotent — the namespaced handle is replaced on
+ * each call. Synthetic debug nodes are filtered at fire-time.
+ */
+function wireStressVisualizationHandlers(): void {
+    const cy = getCy();
+    if (!cy) return;
+    cy.off('tap.stress-vis');
+
+    cy.on('tap.stress-vis', 'node', (e) => {
+        const node = e.target;
+        const t = node.data('type');
+        // Skip synthetic overlay nodes — they're handled elsewhere.
+        if (t === 'CROSSING_DEBUG' || t === 'AREA_DEBUG' || t === 'UNIT_EDGE_NODE') return;
+        const id = node.id();
+
+        if (currentState.stressDistanceColoring) {
+            applyDistanceColoring(id);
+        }
+        if (currentState.stressPairDistance) {
+            if (stressPairFirst === null) {
+                stressPairFirst = id;
+            } else if (stressPairFirst !== id) {
+                showStressPairPanel(stressPairFirst, id);
+                stressPairFirst = null; // ready for next pair
+            }
+        }
+    });
+
+    cy.on('tap.stress-vis', (e) => {
+        if (e.target !== cy) return;
+        // Background tap clears any pending stress-vis state.
+        if (currentState.stressDistanceColoring) clearDistanceColoring();
+        if (currentState.stressPairDistance) hideStressPairPanel();
+    });
+}
+
+function unwireStressVisualizationHandlers(): void {
+    const cy = getCy();
+    if (cy) cy.off('tap.stress-vis');
+    clearDistanceColoring();
+    hideStressPairPanel();
+}
+
 function clearAll(): void {
     const cy = getCy();
     if (cy) {
@@ -455,6 +712,7 @@ function clearAll(): void {
     }
     elementIds = [];
     clearGroupCardinalityBadges();
+    unwireStressVisualizationHandlers();
 }
 
 // =============================================================================
@@ -503,6 +761,8 @@ export function validateState(raw: unknown): OverlayState {
         aspectRatio: typeof r.aspectRatio === 'boolean' ? r.aspectRatio : DEFAULT_OVERLAY_STATE.aspectRatio,
         groupCardinality: typeof r.groupCardinality === 'boolean' ? r.groupCardinality : DEFAULT_OVERLAY_STATE.groupCardinality,
         crossingsColorBy: colorBy,
+        stressDistanceColoring: typeof r.stressDistanceColoring === 'boolean' ? r.stressDistanceColoring : DEFAULT_OVERLAY_STATE.stressDistanceColoring,
+        stressPairDistance: typeof r.stressPairDistance === 'boolean' ? r.stressPairDistance : DEFAULT_OVERLAY_STATE.stressPairDistance,
     };
 }
 
@@ -529,6 +789,8 @@ const OVERLAY_KEYS: Array<keyof OverlayState> = [
     'stdDevLine',
     'aspectRatio',
     'groupCardinality',
+    'stressDistanceColoring',
+    'stressPairDistance',
 ];
 
 /**
@@ -626,4 +888,5 @@ export function closeDebugOverlayModal(): void {
 if (typeof window !== 'undefined') {
     (window as unknown as Record<string, unknown>).openDebugOverlayModal = openDebugOverlayModal;
     (window as unknown as Record<string, unknown>).closeDebugOverlayModal = closeDebugOverlayModal;
+    (window as unknown as Record<string, unknown>).closeStressPairPanel = hideStressPairPanel;
 }
