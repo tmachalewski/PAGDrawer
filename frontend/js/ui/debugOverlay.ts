@@ -165,6 +165,10 @@ export function getOverlayState(): OverlayState {
 export function setOverlayState(partial: Partial<OverlayState>): void {
     currentState = { ...currentState, ...partial };
     persistState(currentState);
+    // Stress visualisations are click-driven, not render-driven — they
+    // need their listener bound regardless of whether the rest of the
+    // overlay (crossings dots, bbox, etc.) is currently shown.
+    syncStressVisualizationState();
     if (isActive) redraw();
 }
 
@@ -205,6 +209,10 @@ export function showDebugOverlay(): void {
     if (isActive) clearAll();
     drawAll();
     isActive = true;
+    // Make sure the stress vis listener is bound on the current cy
+    // instance — a graph rebuild between toggles would otherwise leave
+    // the listener orphaned on the old (destroyed) instance.
+    syncStressVisualizationState();
 }
 
 /**
@@ -325,7 +333,18 @@ function drawAll(): void {
         applyGroupCardinalityBadges();
     }
 
-    // 6. M1 stress visualisation — bind click handler if either mode is on.
+    // M1 stress visualisations are bound separately (see
+    // syncStressVisualizationState). They survive show/hide of the
+    // rest of the overlay because they're click-driven, not render-driven.
+}
+
+/**
+ * Bind/unbind the M1 stress visualisation listener based on whether either
+ * mode is currently enabled. Idempotent. Called from `setOverlayState`
+ * (whenever a checkbox toggles) and on first import via `loadState` →
+ * the module-level `currentState` initialisation.
+ */
+function syncStressVisualizationState(): void {
     if (currentState.stressDistanceColoring || currentState.stressPairDistance) {
         wireStressVisualizationHandlers();
     } else {
@@ -667,12 +686,23 @@ function wireStressVisualizationHandlers(): void {
     if (!cy) return;
     cy.off('tap.stress-vis');
 
-    cy.on('tap.stress-vis', 'node', (e) => {
-        const node = e.target;
-        const t = node.data('type');
-        // Skip synthetic overlay nodes — they're handled elsewhere.
+    // Single delegated listener with runtime filtering — avoids
+    // selector-delegation paths in Cytoscape that have been intermittent
+    // for synthetic / dynamically-added nodes elsewhere.
+    cy.on('tap.stress-vis', (e) => {
+        const target = e.target;
+        if (target === cy) {
+            // Background tap clears any pending stress-vis state.
+            if (currentState.stressDistanceColoring) clearDistanceColoring();
+            if (currentState.stressPairDistance) hideStressPairPanel();
+            return;
+        }
+        // Only nodes participate (not edges).
+        if (typeof target?.isNode !== 'function' || !target.isNode()) return;
+
+        const t = target.data?.('type');
         if (t === 'CROSSING_DEBUG' || t === 'AREA_DEBUG' || t === 'UNIT_EDGE_NODE') return;
-        const id = node.id();
+        const id = target.id();
 
         if (currentState.stressDistanceColoring) {
             applyDistanceColoring(id);
@@ -685,13 +715,6 @@ function wireStressVisualizationHandlers(): void {
                 stressPairFirst = null; // ready for next pair
             }
         }
-    });
-
-    cy.on('tap.stress-vis', (e) => {
-        if (e.target !== cy) return;
-        // Background tap clears any pending stress-vis state.
-        if (currentState.stressDistanceColoring) clearDistanceColoring();
-        if (currentState.stressPairDistance) hideStressPairPanel();
     });
 }
 
@@ -876,6 +899,10 @@ export function openDebugOverlayModal(): void {
     if (!modal) return;
     wireModalControls();
     syncModalCheckboxes();
+    // Re-sync stress vis listener — cy may have been recreated since
+    // last bind (graph rebuild), and the prior listener was bound on
+    // a destroyed instance.
+    syncStressVisualizationState();
     modal.style.display = 'flex';
 }
 
@@ -890,3 +917,9 @@ if (typeof window !== 'undefined') {
     (window as unknown as Record<string, unknown>).closeDebugOverlayModal = closeDebugOverlayModal;
     (window as unknown as Record<string, unknown>).closeStressPairPanel = hideStressPairPanel;
 }
+
+// On first import, wire stress vis handlers if either mode is already on
+// (e.g. persisted from a previous session via localStorage). The cy
+// instance may not exist yet — `wireStressVisualizationHandlers` no-ops
+// gracefully in that case; the next `setOverlayState` call will retry.
+syncStressVisualizationState();
