@@ -92,12 +92,24 @@ function createArrowsContainer(): void {
 }
 
 /**
+ * Debug-overlay synthetic nodes (red crossing dots, blue bbox, green/orange
+ * unit edges) are real Cytoscape nodes but should not surface the regular
+ * draggable node tooltip. The crossing dots get their own lightweight
+ * hover label via `debugOverlay.ts` instead.
+ */
+function isDebugOverlayNode(node: NodeSingular): boolean {
+    const t = node.data('type');
+    return t === 'CROSSING_DEBUG' || t === 'AREA_DEBUG' || t === 'UNIT_EDGE_NODE';
+}
+
+/**
  * Handle mouse over node
  */
 function handleNodeMouseOver(evt: EventObject): void {
     if (isFilterActive) return;
 
     const node = evt.target as NodeSingular;
+    if (isDebugOverlayNode(node)) return; // own hover handler in debugOverlay.ts
     hoveredNode = node;
     updateAllTooltips();
 }
@@ -127,6 +139,7 @@ function handleNodeClick(evt: EventObject): void {
     if (isFilterActive) return;
 
     const node = evt.target as NodeSingular;
+    if (isDebugOverlayNode(node)) return; // synthetic — never selectable
     const originalEvent = evt.originalEvent as MouseEvent;
     const isCtrlPressed = originalEvent?.ctrlKey || originalEvent?.metaKey;
     const cy = getCy();

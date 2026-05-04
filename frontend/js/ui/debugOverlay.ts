@@ -210,6 +210,8 @@ function drawAll(): void {
         crossings.forEach((c, idx) => {
             const id = `__crossing_debug_${idx}`;
             const color = pickCrossingColor(c, currentState.crossingsColorBy, typePairPalette);
+            const angleDeg = (c.angle * 180) / Math.PI;
+            const typePair = `${c.edgeAType}×${c.edgeBType}`;
             cy.add({
                 group: 'nodes',
                 data: {
@@ -217,8 +219,15 @@ function drawAll(): void {
                     type: 'CROSSING_DEBUG',
                     edgeA: `${c.edgeA.sourceId} → ${c.edgeA.targetId}`,
                     edgeB: `${c.edgeB.sourceId} → ${c.edgeB.targetId}`,
-                    angleDeg: ((c.angle * 180) / Math.PI).toFixed(1),
-                    typePair: `${c.edgeAType}×${c.edgeBType}`,
+                    angleDeg: angleDeg.toFixed(1),
+                    typePair,
+                    // Pre-formatted hover hint shown via the `.hovered` class
+                    // on the [type="CROSSING_DEBUG"] selector in constants.ts.
+                    // Empty type-pair (no data('type') on the underlying edges)
+                    // renders as just the angle so the label stays readable.
+                    hoverLabel: typePair === '×'
+                        ? `${angleDeg.toFixed(1)}°`
+                        : `${angleDeg.toFixed(1)}°  ${typePair}`,
                 },
                 position: { x: c.point.x, y: c.point.y },
                 style: color ? { 'background-color': color } : undefined,
@@ -227,6 +236,7 @@ function drawAll(): void {
             });
             elementIds.push(id);
         });
+        wireCrossingHoverHandlers();
     }
 
     // 2. Drawing area bbox — optional M9 aspect ratio appended to label.
@@ -433,6 +443,27 @@ function clearGroupCardinalityBadges(): void {
         parent.data('label', original);
     }
     originalParentLabels = null;
+}
+
+/**
+ * Bind mouseover / mouseout handlers on the crossing dots so the `.hovered`
+ * class flips, which the stylesheet uses to reveal the M2/M25 hint label.
+ *
+ * Idempotent: each call removes any previously bound handler in the
+ * `crossing-hover` namespace before re-binding. This way redraw() stays
+ * clean and no listeners stack across overlay toggles.
+ */
+function wireCrossingHoverHandlers(): void {
+    const cy = getCy();
+    if (!cy) return;
+    cy.off('mouseover.crossing-hover', 'node[type="CROSSING_DEBUG"]');
+    cy.off('mouseout.crossing-hover', 'node[type="CROSSING_DEBUG"]');
+    cy.on('mouseover.crossing-hover', 'node[type="CROSSING_DEBUG"]', (e) => {
+        e.target.addClass('hovered');
+    });
+    cy.on('mouseout.crossing-hover', 'node[type="CROSSING_DEBUG"]', (e) => {
+        e.target.removeClass('hovered');
+    });
 }
 
 function clearAll(): void {

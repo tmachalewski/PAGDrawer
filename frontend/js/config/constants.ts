@@ -195,7 +195,29 @@ export function getCytoscapeStyles(): any[] {
                 'shape': 'ellipse',
                 'label': '',
                 'z-index': 9999,
-                'events': 'no'
+                // 'events: yes' enables pointer events so the M2/M25 hover
+                // hint (configured via the .hovered class below) fires.
+                'events': 'yes'
+            }
+        },
+        {
+            // M2 + M25 — show angle and type-pair hint when the user hovers
+            // a crossing dot. The label sits to the upper-right of the dot
+            // with a thick text outline so it remains readable against any
+            // background colour.
+            selector: '[type="CROSSING_DEBUG"].hovered',
+            style: {
+                'label': 'data(hoverLabel)',
+                'font-size': '11px',
+                'font-weight': 'bold',
+                'color': '#ffffff',
+                'text-outline-color': '#000000',
+                'text-outline-width': 2,
+                'text-valign': 'top',
+                'text-halign': 'right',
+                'text-margin-x': 6,
+                'text-margin-y': -6,
+                'z-index': 10000
             }
         },
         {
