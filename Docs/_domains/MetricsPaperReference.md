@@ -118,6 +118,27 @@ Original (non-bridge) edges count as 0. Algorithm in §4 below.
 
 **Visualisation.** Toggle adds `k=N` labels at the midpoint of each bridge edge.
 
+**Anchor-type property — the chain-length distribution is multimodal.**
+
+`chain_length` accumulates only across **runs of consecutively-hidden types**, not the total number of hidden layers. PAGDrawer's schema is
+
+```
+ATTACKER → HOST → CPE → CVE → CWE → TI → VC
+```
+
+so any **surviving** type acts as an anchor that splits a multi-type hide into independent runs. Hiding CPE+CWE+TI with CVE surviving produces two distinct bridge populations:
+
+```
+HOST → CPE → CVE → CWE → TI → VC
+       └─┘   ✓    └─────┘
+       run=1 anchor run=2
+       (HOST→CVE)   (CVE→VC)
+```
+
+Empirically (nginx Step 3, scenario 2): `bridge_chain_length_distribution = { 1: 102, 2: 151 }`, mean depth ≈ 1.6. Zero bridges of length 3 are **structurally impossible** without also hiding CVE.
+
+This is a paper-worthy observation: the chain-length distribution mirrors the surviving-anchor structure of the schema. A reader looking at `bridge_chain_length_distribution` after a multi-layer hide should expect a multimodal histogram with peaks at the lengths of each independent run, not a single peak at the total layer count.
+
 ### M20 — Edge consolidation ratio (per compound parent)
 
 For each compound parent $p$ produced by `merge by outcomes`:

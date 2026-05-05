@@ -286,6 +286,8 @@ CSV columns: `bridge_edge_proportion`, `mean_contraction_depth`, `bridge_edge_co
 
 Overlay: a per-bridge `k=N` label (font 11px, white with black outline) at the midpoint of every bridge whose chain_length > 0. Toggleable in the Debug Overlay Settings modal under "Reductions (M19 + M20)".
 
+**Distribution shape — anchor-type property.** `chain_length` accumulates only across **consecutive** hidden types. Surviving types in the schema (`ATTACKER → HOST → CPE → CVE → CWE → TI → VC`) act as anchors that split a multi-type hide into independent runs. Hiding CPE+CWE+TI with CVE surviving yields a bimodal distribution: depth=1 bridges (HOST→CVE, CPE skipped) and depth=2 bridges (CVE→VC, CWE+TI skipped together). Length-3 bridges are structurally impossible in this case without also hiding CVE. The `bridge_chain_length_distribution` dict reflects this — expect multimodal histograms whenever a multi-layer hide straddles a surviving anchor type. See `MetricsPaperReference.md` § M19 for the worked nginx example.
+
 ### M20 — Edge Consolidation Ratio
 
 For each compound parent (e.g. CVE_GROUP from outcomes-merge): how much edge consolidation did the merge achieve? `ECR = raw_edges / synthetic_edges` per parent, where:

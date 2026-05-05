@@ -70,15 +70,29 @@ This is also a strong illustration of one of your main paper points: *orthogonal
 
 You currently write *Step 3 - Hide internal types (hide CWE, hide TI - bridges materialise).* Change it to **hide CPE, CWE, TI** for the maximum-reduction variant, and keep *(alternative: hide CWE+TI to preserve infrastructure column)* as a parenthetical note. You have concrete data confirming the larger effect.
 
-### 2. Investigate why `mean_chain_depth` = 1.6 in scenario 2
+### 2. ~~Investigate why `mean_chain_depth` = 1.6 in scenario 2~~ — RESOLVED, not a bug
 
-The logic suggests that hiding CPE+CWE+TI (three layers) should give an average chain depth of ~3. You measured 1.6. Possible explanations:
+The original suspicion was that hiding CPE+CWE+TI (three layers) should give an average chain depth of ~3. The actual distribution from Step 3 of scenario 2:
 
-- Some hosts have no CPE edge (or `RUNS` goes directly to a CVE in some cases), so CPE → CVE bridges have depth = 1.
-- Dynamic dispatch: some paths take HOST → CVE → VC, others take HOST → CPE → CVE → CWE → TI → VC, so contractions have different lengths.
-- A bug in `chain_length` accumulation (caveat 4.11.1 mentions atomic multi-type hide).
+```
+bridge_chain_length_distribution = { 1: 102, 2: 151 }
+mean = (102·1 + 151·2) / 253 = 404/253 = 1.597 ✓
+```
 
-Pull the full `bridge_chain_length_distribution` from Step 3 of scenario 2 and check the histogram. If the distribution is `{1: X, 2: Y, 3: Z}`, those are paths of varying length. If everything sits under `{2: Y}`, accumulation is losing at least one layer. Worth investigating before the paper.
+**This is correct behaviour, not a bug.** The reasoning in the original suspicion was wrong: chain_length accumulates only across **runs of consecutively-hidden types**, not the total count of hidden layers. PAGDrawer's schema `ATTACKER → HOST → CPE → CVE → CWE → TI → VC` has **CVE as a surviving anchor** between CPE and CWE+TI:
+
+```
+HOST → CPE → CVE → CWE → TI → VC
+       └─┘   ✓    └─────┘
+       hide  anchor  hide
+       len=1         len=2
+```
+
+So the longest possible chain when hiding CPE+CWE+TI is **2** (the longer of the two runs split by the anchor). The distribution `{1: 102, 2: 151}` confirms this: 102 are HOST→CVE (CPE skipped), 151 are CVE→VC (CWE+TI skipped together). Zero of length 3 is **structurally impossible** without also hiding CVE.
+
+**Paper-worthy insight.** This is actually an interesting M19 story unique to PAGDrawer's typed schema. Worth surfacing in the methodology section: "the chain-length distribution mirrors the position of the surviving anchor types in the schema; max chain ≤ longest hidden run." A reader looking at `bridge_chain_length_distribution` shouldn't expect a single peak — it'll be multimodal whenever multiple non-adjacent layers are hidden.
+
+Updated (2026-05-05): MetricsPaperReference.md §2 (M19 spec) and DrawingQualityMetrics.md M19 sections document the anchor-type property.
 
 ### 3. Stress paradox after merge: add an alternative stress
 
