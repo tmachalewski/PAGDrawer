@@ -183,7 +183,13 @@ Click 📄 **Export JSON** and a `pagdrawer-metrics-YYYY-MM-DD-HH-mm.json` file 
         "id": "scan-uuid-1",
         "name": "nginx:stable-trixie-perl",
         "vuln_count": 189,
-        "uploaded_at": "2026-05-04T10:00:00Z"     // ISO 8601, when uploaded to PAGDrawer
+        "uploaded_at": "2026-05-04T10:00:00Z",    // when uploaded to PAGDrawer
+        // Trivy-side reproducibility metadata (null if scan JSON omits the field)
+        "trivy_created_at": "2025-10-29T14:23:11Z",          // when Trivy actually scanned
+        "trivy_repo_digest": "nginx@sha256:deadbeef...",     // pinned, byte-exact image
+        "trivy_artifact_id": "sha256:cafef00d...",           // content hash
+        "trivy_report_id":  "11111111-2222-3333-4444-555555555555",
+        "trivy_version":    "0.58.1"                         // scanner version
       }
     ],
     "selection_was_implicit": false              // true ⇒ user picked "all" and the
