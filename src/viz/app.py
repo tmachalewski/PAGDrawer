@@ -48,6 +48,12 @@ class TrivyScan:
     uploaded_at: datetime
     vuln_count: int
     data: Dict[str, Any]
+    # Trivy-side reproducibility metadata (extracted from the scan JSON)
+    created_at: Optional[str] = None       # Trivy's CreatedAt — actual scan time
+    repo_digest: Optional[str] = None      # Metadata.RepoDigests[0] — pinned image ref
+    artifact_id: Optional[str] = None      # Trivy's ArtifactID — content hash
+    report_id: Optional[str] = None        # Trivy's ReportID — UUID per scan run
+    trivy_version: Optional[str] = None    # Trivy.Version — scanner version
 
 
 # Global state
@@ -71,6 +77,28 @@ async def startup_event():
         print("MongoDB connection verified.")
     graph_builder = build_knowledge_graph(current_config)
     print(f"Graph loaded: {graph_builder.get_stats()}")
+
+
+def _extract_trivy_metadata(data: Dict[str, Any]) -> Dict[str, Optional[str]]:
+    """Pull reproducibility-relevant top-level fields from a Trivy report.
+
+    All fields are optional — Trivy versions and scan modes vary in which
+    keys they emit. Returns a dict with string values or None.
+    """
+    metadata = data.get("Metadata") or {}
+    repo_digests = metadata.get("RepoDigests") or []
+    repo_digest = repo_digests[0] if repo_digests else None
+
+    trivy_block = data.get("Trivy") or {}
+    trivy_version = trivy_block.get("Version")
+
+    return {
+        "created_at": data.get("CreatedAt"),
+        "repo_digest": repo_digest,
+        "artifact_id": data.get("ArtifactID"),
+        "report_id": data.get("ReportID"),
+        "trivy_version": trivy_version,
+    }
 
 
 def _generate_label(node: dict) -> str:
@@ -211,6 +239,7 @@ async def upload_trivy_json(file: UploadFile = File(...)):
             for result in results
         )
 
+        meta = _extract_trivy_metadata(data)
         scan = TrivyScan(
             id=str(uuid.uuid4()),
             name=artifact_name,
@@ -218,6 +247,7 @@ async def upload_trivy_json(file: UploadFile = File(...)):
             uploaded_at=datetime.now(),
             vuln_count=vuln_count,
             data=data,
+            **meta,
         )
         uploaded_trivy_scans.append(scan)
 
@@ -258,6 +288,7 @@ async def upload_trivy_json_direct(trivy_data: Dict[str, Any]):
             for result in results
         )
 
+        meta = _extract_trivy_metadata(trivy_data)
         scan = TrivyScan(
             id=str(uuid.uuid4()),
             name=artifact_name,
@@ -265,6 +296,7 @@ async def upload_trivy_json_direct(trivy_data: Dict[str, Any]):
             uploaded_at=datetime.now(),
             vuln_count=vuln_count,
             data=trivy_data,
+            **meta,
         )
         uploaded_trivy_scans.append(scan)
 
@@ -359,6 +391,12 @@ async def list_scans():
                 "filename": scan.filename,
                 "uploaded_at": scan.uploaded_at.isoformat(),
                 "vuln_count": scan.vuln_count,
+                # Trivy-side reproducibility metadata (may be None for older scans)
+                "trivy_created_at": scan.created_at,
+                "trivy_repo_digest": scan.repo_digest,
+                "trivy_artifact_id": scan.artifact_id,
+                "trivy_report_id": scan.report_id,
+                "trivy_version": scan.trivy_version,
             }
             for scan in uploaded_trivy_scans
         ]

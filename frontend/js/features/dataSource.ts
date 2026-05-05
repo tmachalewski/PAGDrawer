@@ -70,9 +70,12 @@ async function handleFileSelect(event: Event): Promise<void> {
 }
 
 /**
- * Get selected scan IDs for rebuild
+ * Get selected scan IDs for rebuild. `undefined` means "all scans" (the
+ * `<select>` value is `"all"` or the element is missing). Exported so
+ * `statistics.ts` can filter the JSON-export data-source to only the scans
+ * that contributed to the current graph.
  */
-function getSelectedScanIds(): string[] | undefined {
+export function getSelectedScanIds(): string[] | undefined {
     const selector = document.getElementById('scan-selector') as HTMLSelectElement;
     if (!selector || selector.value === 'all') {
         return undefined;  // Use all scans

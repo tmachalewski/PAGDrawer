@@ -1,7 +1,7 @@
 # Paper Evaluation Metrics — Implementation Plan
 
 **Created:** 2026-05-03-19-42
-**Branches (proposed):** stage sub-branches under the umbrella `feature/metrics-roadmap` — Paper-plan work spans `feature/metrics-roadmap/stress`, `.../bridges-and-merges`, `.../paper-appendix`, `.../layout-diagnostics`, `.../topology-preservation`. See Master roadmap for the full sequencing.
+**Branches (proposed):** stage sub-branches under the umbrella `feature/metrics-roadmap` — Paper-plan work spans `feature/metrics-roadmap-stress`, `.../bridges-and-merges`, `.../paper-appendix`, `.../layout-diagnostics`, `.../topology-preservation`. See Master roadmap for the full sequencing.
 **Source plan:** `Docs/Plans/metric_proposals.md` § "How I would prioritise"
 **Sister plans:**
 - `Docs/Plans/Debug_Overlay_Visualizations.md` — visualization-priority ordering

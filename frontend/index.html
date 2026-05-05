@@ -274,25 +274,38 @@
                 </div>
             </div>
 
-            <!-- Two-column: clean metrics and drawing quality side-by-side -->
+            <!-- Two-column: clean metrics + drawing quality (split across both
+                 columns to balance the layout — left column carries the
+                 paper-headline groups, right column carries geometry + the
+                 mechanism-evaluating reduction groups + the action buttons). -->
             <div class="stats-two-column">
-                <div class="stats-section">
-                    <div class="stats-section-title">Clean Attack Graph Metrics</div>
-                    <table class="stats-table" id="stats-clean-table">
-                        <tbody></tbody>
-                    </table>
-                    <div class="stats-card-hint" style="margin-top: 8px;">
-                        Excludes ATTACKER, COMPOUND, BRIDGE, CVE_GROUP, and synthetic merge edges.
+                <div class="stats-column-stack">
+                    <div class="stats-section">
+                        <div class="stats-section-title">Clean Attack Graph Metrics</div>
+                        <table class="stats-table" id="stats-clean-table">
+                            <tbody></tbody>
+                        </table>
+                        <div class="stats-card-hint" style="margin-top: 8px;">
+                            Excludes ATTACKER, COMPOUND, BRIDGE, CVE_GROUP, and synthetic merge edges.
+                        </div>
+                    </div>
+                    <div class="stats-section" style="margin-top: 16px;">
+                        <div class="stats-section-title">Drawing Quality — primary aesthetic</div>
+                        <table class="stats-table" id="stats-drawing-table-left">
+                            <tbody></tbody>
+                        </table>
                     </div>
                 </div>
                 <div class="stats-section">
-                    <div class="stats-section-title">Drawing Quality Metrics</div>
-                    <table class="stats-table" id="stats-drawing-table">
+                    <div class="stats-section-title">Drawing Quality — geometry &amp; reductions</div>
+                    <table class="stats-table" id="stats-drawing-table-right">
                         <tbody></tbody>
                     </table>
                     <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px;">
                         <button class="control-btn" id="stats-toggle-crossings" style="background: #ff2d55; font-size: 12px; padding: 6px 12px;">🔍 Show debug overlay</button>
+                        <button class="control-btn" id="stats-debug-overlay-settings" title="Configure which overlays are shown" style="background: #6b7280; font-size: 12px; padding: 6px 10px;">⚙️</button>
                         <button class="control-btn" id="stats-export-csv" style="background: #22c55e; font-size: 12px; padding: 6px 12px;">📥 Export CSV</button>
+                        <button class="control-btn" id="stats-export-json" style="background: #3b82f6; font-size: 12px; padding: 6px 12px;">📄 Export JSON</button>
                     </div>
                     <div class="stats-card-hint" style="margin-top: 6px;">
                         Per Purchase (2002). Logical coordinates — invariant under zoom/pan.
@@ -314,6 +327,84 @@
                     <li><b>Drawing quality metrics</b> — Purchase (2002). Crossings excludes edge pairs sharing a node. Area uses center-point method in logical coordinates (zoom-invariant). Edge length CV uses population std dev.</li>
                 </ul>
             </details>
+        </div>
+    </div>
+
+    <!-- M1 Stress: pair-distance floating panel.
+         Driven by frontend/js/ui/debugOverlay.ts — shown when user clicks
+         two nodes with the stressPairDistance overlay enabled. -->
+    <div id="stress-pair-panel" class="stress-pair-panel" style="display: none;">
+        <div class="stress-pair-header">
+            <span class="stress-pair-title">M1 — Pair distances</span>
+            <button class="stress-pair-close" onclick="closeStressPairPanel()">×</button>
+        </div>
+        <div class="stress-pair-row"><span class="stress-pair-key">From:</span> <span id="stress-pair-from"></span></div>
+        <div class="stress-pair-row"><span class="stress-pair-key">To:</span> <span id="stress-pair-to"></span></div>
+        <div class="stress-pair-row"><span class="stress-pair-key">d(from → to):</span> <span id="stress-pair-fwd"></span></div>
+        <div class="stress-pair-row"><span class="stress-pair-key">d(to → from):</span> <span id="stress-pair-bwd"></span></div>
+        <div class="stress-pair-row"><span class="stress-pair-key">symmetrised:</span> <span id="stress-pair-sym"></span></div>
+        <div class="stress-pair-row"><span class="stress-pair-key">Euclidean:</span> <span id="stress-pair-euc"></span></div>
+    </div>
+
+    <!-- Debug Overlay Settings Modal -->
+    <div id="debug-overlay-modal" class="modal-overlay"
+         onclick="if(event.target===this)closeDebugOverlayModal()"
+         style="display: none;">
+        <div class="modal-content" style="max-width: 540px;">
+            <div class="modal-header">
+                <h2>🔍 Debug Overlay Settings</h2>
+                <button class="close-btn" onclick="closeDebugOverlayModal()">×</button>
+            </div>
+
+            <div class="modal-body">
+                <div class="debug-overlay-section">
+                    <div class="debug-overlay-section-title">Presets</div>
+                    <div class="debug-overlay-presets">
+                        <button class="control-btn" data-debug-preset="crossings" title="Highlight crossings + aspect ratio">🎯 Crossings analysis</button>
+                        <button class="control-btn" data-debug-preset="layout" title="Bbox + edge length stats + aspect ratio">📐 Layout diagnostics</button>
+                        <button class="control-btn" data-debug-preset="reductions" title="Compound group cardinality">🔗 Reduction transparency</button>
+                        <button class="control-btn" data-debug-preset="defaults" title="Restore the original 4 overlays">◌ Defaults</button>
+                        <button class="control-btn" data-debug-preset="clear" title="Turn everything off">⊘ Clear all</button>
+                    </div>
+                </div>
+
+                <div class="debug-overlay-section">
+                    <div class="debug-overlay-section-title">Existing overlays</div>
+                    <label class="debug-overlay-toggle"><input type="checkbox" data-overlay-key="crossings"> Edge crossings (red dots)</label>
+                    <label class="debug-overlay-toggle"><input type="checkbox" data-overlay-key="drawingArea"> Drawing area (blue rectangle)</label>
+                    <label class="debug-overlay-toggle"><input type="checkbox" data-overlay-key="meanEdgeLine"> Mean edge length (green line)</label>
+                    <label class="debug-overlay-toggle"><input type="checkbox" data-overlay-key="stdDevLine"> Std-dev (orange line)</label>
+                </div>
+
+                <div class="debug-overlay-section">
+                    <div class="debug-overlay-section-title">Crossings — color dots by</div>
+                    <label class="debug-overlay-toggle"><input type="radio" name="crossingsColorBy" data-overlay-radio="crossingsColorBy" value="none"> none (default red)</label>
+                    <label class="debug-overlay-toggle"><input type="radio" name="crossingsColorBy" data-overlay-radio="crossingsColorBy" value="angle"> angle (M2) — red acute → green ≈ 90°</label>
+                    <label class="debug-overlay-toggle"><input type="radio" name="crossingsColorBy" data-overlay-radio="crossingsColorBy" value="typePair"> type pair (M25) — categorical palette</label>
+                </div>
+
+                <div class="debug-overlay-section">
+                    <div class="debug-overlay-section-title">New overlays</div>
+                    <label class="debug-overlay-toggle"><input type="checkbox" data-overlay-key="aspectRatio"> Aspect ratio in bbox label (M9)</label>
+                    <label class="debug-overlay-toggle"><input type="checkbox" data-overlay-key="groupCardinality"> Compound group size ×N (M21)</label>
+                </div>
+
+                <div class="debug-overlay-section">
+                    <div class="debug-overlay-section-title">Stress visualisation (M1)</div>
+                    <label class="debug-overlay-toggle"><input type="checkbox" data-overlay-key="stressDistanceColoring"> Color nodes by graph distance from clicked source</label>
+                    <label class="debug-overlay-toggle"><input type="checkbox" data-overlay-key="stressPairDistance"> Show pair distances on click (click two nodes)</label>
+                </div>
+
+                <div class="debug-overlay-section">
+                    <div class="debug-overlay-section-title">Reductions (M19 + M20)</div>
+                    <label class="debug-overlay-toggle"><input type="checkbox" data-overlay-key="bridgeChainDepth"> Bridge chain-depth labels k=N (M19)</label>
+                    <label class="debug-overlay-toggle"><input type="checkbox" data-overlay-key="edgeConsolidationRatio"> ECR×N suffix on compound labels (M20)</label>
+                </div>
+
+                <div class="stats-card-hint" style="margin-top: 4px;">
+                    Settings persist across sessions in <code>localStorage</code> (<code>debugOverlayState_v1</code>).
+                </div>
+            </div>
         </div>
     </div>
 

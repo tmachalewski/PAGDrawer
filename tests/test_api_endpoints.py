@@ -316,6 +316,38 @@ class TestScanSelectionEndpoints:
         assert "vuln_count" in scan
         assert scan["vuln_count"] == 1  # One vuln in sample
 
+    def test_list_scans_exposes_trivy_metadata(self, client):
+        """Trivy reproducibility fields (CreatedAt, RepoDigests, etc.) flow
+        through into the /api/data/scans response."""
+        report = {
+            **SAMPLE_TRIVY_REPORT,
+            "ArtifactName": "nginx:stable-trixie-perl",
+            "ArtifactID": "sha256:cafef00d",
+            "CreatedAt": "2025-10-29T14:23:11Z",
+            "ReportID": "11111111-2222-3333-4444-555555555555",
+            "Trivy": {"Version": "0.58.1"},
+            "Metadata": {"RepoDigests": ["nginx@sha256:deadbeef"]},
+        }
+        client.post("/api/upload/trivy/json", json=report)
+
+        scan = client.get("/api/data/scans").json()["scans"][0]
+        assert scan["trivy_created_at"] == "2025-10-29T14:23:11Z"
+        assert scan["trivy_repo_digest"] == "nginx@sha256:deadbeef"
+        assert scan["trivy_artifact_id"] == "sha256:cafef00d"
+        assert scan["trivy_report_id"] == "11111111-2222-3333-4444-555555555555"
+        assert scan["trivy_version"] == "0.58.1"
+
+    def test_list_scans_trivy_metadata_optional(self, client):
+        """When Trivy fields are absent, the API exposes them as null
+        rather than omitting the keys (stable schema)."""
+        client.post("/api/upload/trivy/json", json=SAMPLE_TRIVY_REPORT)
+        scan = client.get("/api/data/scans").json()["scans"][0]
+        assert scan["trivy_created_at"] is None
+        assert scan["trivy_repo_digest"] is None
+        assert scan["trivy_artifact_id"] is None
+        assert scan["trivy_report_id"] is None
+        assert scan["trivy_version"] is None
+
     def test_list_scans_multiple_uploads(self, client):
         """Test listing multiple uploaded scans."""
         # Upload two scans

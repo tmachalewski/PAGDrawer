@@ -195,7 +195,10 @@ export function getCytoscapeStyles(): any[] {
                 'shape': 'ellipse',
                 'label': '',
                 'z-index': 9999,
-                'events': 'no'
+                // Pointer events enabled so the standard tooltip system
+                // (frontend/js/ui/tooltip.ts) surfaces each crossing dot's
+                // angle / type-pair on hover and click, just like real nodes.
+                'events': 'yes'
             }
         },
         {

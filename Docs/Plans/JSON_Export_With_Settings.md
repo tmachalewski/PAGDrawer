@@ -1,7 +1,7 @@
 # JSON Export with Settings Snapshot — Implementation Plan
 
 **Created:** 2026-05-03-21-42
-**Branch (proposed):** `feature/metrics-roadmap/json-export` (sub-branch of the umbrella `feature/metrics-roadmap`; see Master roadmap)
+**Branch (proposed):** `feature/metrics-roadmap-json-export` (sub-branch of the umbrella `feature/metrics-roadmap`; see Master roadmap)
 **Sister plans:** `Debug_Overlay_Visualizations.md`, `Paper_Evaluation_Metrics.md`
 
 ---
@@ -66,7 +66,7 @@ The two formats coexist; the user picks per export.
     "visibility_hidden": ["CWE", "TI"],
     "cve_merge_mode": "outcomes",
     "environment_filter": { "ui": "N", "ac": "L" },
-    "exploit_paths_active": true,
+    "exploit_paths_only_active": true,
     "force_refresh_on_last_rebuild": false
   },
 

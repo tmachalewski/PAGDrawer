@@ -1,0 +1,92 @@
+{
+  "schema_version": 1,
+  "exported_at": "2026-05-05T11:57:17.726Z",
+  "app_version": "1.0.0",
+  "git_sha": "00f46fca6ed9a5d514e4cc68ddbc290725910801",
+  "data_source": {
+    "type": "trivy",
+    "scans_uploaded_total": 2,
+    "scans_in_current_graph": [
+      {
+        "id": "ac96d6f2-7862-476c-a3ed-915563cef21e",
+        "name": "nginx:stable-trixie-perl",
+        "vuln_count": 189
+      }
+    ],
+    "selection_was_implicit": false
+  },
+  "settings": {
+    "granularity": {
+      "HOST": "universal",
+      "CPE": "HOST",
+      "CVE": "CPE",
+      "CWE": "CVE",
+      "TI": "CWE",
+      "VC": "HOST"
+    },
+    "skip_layer_2": true,
+    "visibility_hidden": [
+      "CWE",
+      "TI"
+    ],
+    "cve_merge_mode": "none",
+    "environment_filter": {
+      "ui": "N",
+      "ac": "L"
+    },
+    "exploit_paths_only_active": false,
+    "force_refresh_on_last_rebuild": false,
+    "layout": "dagre"
+  },
+  "metrics": {
+    "nodes": 170,
+    "edges": 405,
+    "unique_cves": 102,
+    "trivy_vuln_count": 189,
+    "crossings_raw": 6107,
+    "crossings_normalized": 0.9158606817117192,
+    "crossings_per_edge": 15.079012345679013,
+    "drawing_area": 14060164.5,
+    "bbox_width": 1179,
+    "bbox_height": 11925.5,
+    "area_per_node": 82706.85,
+    "edge_length_cv": 0.8749425058157154,
+    "aspect_ratio": 0.09886377929646556,
+    "compound_groups_count": 1,
+    "compound_largest_group_size": 5,
+    "compound_singleton_fraction": 0,
+    "compound_size_distribution": {
+      "5": 1
+    },
+    "crossings_mean_angle_deg": 14.548744674987375,
+    "crossings_min_angle_deg": 0.14077305419361513,
+    "crossings_right_angle_ratio": 0.023252005894874733,
+    "crossings_top_pair_share": 0.30735221876535124,
+    "crossings_top_pair_label": "BRIDGE×BRIDGE",
+    "crossings_type_pair_distribution": {
+      "BRIDGE×BRIDGE": 1877,
+      "BRIDGE×HAS_VULN": 897,
+      "BRIDGE×RUNS": 225,
+      "BRIDGE×ENABLES": 437,
+      "ENABLES×HAS_VULN": 1233,
+      "ENABLES×ENABLES": 979,
+      "HAS_VULN×HAS_VULN": 348,
+      "HAS_VULN×RUNS": 111
+    },
+    "stress_per_pair": 20289148.47520141,
+    "stress_per_pair_normalized_edge": 2.0248473790018435,
+    "stress_per_pair_normalized_diagonal": 5.267542766130124,
+    "stress_per_pair_normalized_area": 2.9161248438018004,
+    "stress_unreachable_pairs": 10187,
+    "stress_reachable_pairs": 4178,
+    "bridge_edge_proportion": 0.3728395061728395,
+    "mean_contraction_depth": 2,
+    "bridge_edge_count": 151,
+    "bridge_chain_length_distribution": {
+      "2": 151
+    },
+    "mean_ecr_weighted": 0,
+    "ecr_compounds_count": 0,
+    "ecr_per_compound": []
+  }
+}

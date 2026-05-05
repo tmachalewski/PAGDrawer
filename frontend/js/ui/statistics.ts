@@ -8,14 +8,22 @@ import { fetchStats, getScans } from '../services/api';
 import {
     computeMetrics,
     downloadMetricsCSV,
-    findCrossings,
-    getVisibleEdgeEndpoints,
-    getVisibleNodePoints,
-    computeBoundingBox,
-    computeMeanEdgeLength,
-    computeEdgeLengthStd,
-    type DrawingMetrics
+    downloadMetricsJSON,
+    buildDataSourceSnapshot,
+    type DrawingMetrics,
+    type DataSourceSnapshot,
 } from '../features/metrics';
+import { gatherCurrentSettings, type SettingsSnapshot } from '../features/settingsSnapshot';
+import { getSelectedScanIds } from '../features/dataSource';
+import {
+    showDebugOverlay,
+    hideDebugOverlay,
+    isDebugOverlayActive,
+    countEnabledOverlays,
+    getOverlayState,
+    openDebugOverlayModal,
+    syncStressVisualizationState,
+} from './debugOverlay';
 
 // Most recently computed metrics — used by Export CSV button
 let lastMetrics: DrawingMetrics | null = null;
@@ -24,8 +32,11 @@ let lastMetrics: DrawingMetrics | null = null;
 // when the Statistics modal opens; included in CSV export.
 let lastTrivyVulnCount: number | null = null;
 
-// Tracks IDs of every debug element we add so we can clean them up.
-let debugElementIds: string[] = [];
+// Settings + data-source snapshots taken at the moment metrics were computed.
+// Used by the JSON export to ensure the downloaded file's settings match its
+// metrics (Risk #5 in JSON_Export_With_Settings.md).
+let lastSettings: SettingsSnapshot | null = null;
+let lastDataSource: DataSourceSnapshot | null = null;
 
 // Node types considered "structural artifacts" (not attack-graph steps)
 const ARTIFACT_NODE_TYPES = new Set(['ATTACKER', 'COMPOUND', 'BRIDGE', 'CVE_GROUP']);
@@ -62,7 +73,15 @@ export async function refreshStatistics(): Promise<void> {
     await populateTrivyVulnCount();
     populateCleanMetrics();
     populateDrawingMetrics();
+    await captureSettingsSnapshot();
     wireExportButton();
+    // Re-bind the M1 stress-vis tap listener on the current cy.
+    // Modal-open is the most reliable rebind point: cy exists by now
+    // (a Statistics modal without a graph is meaningless), and a graph
+    // rebuild between modal opens would have left the prior listener
+    // orphaned on a destroyed cy instance. No-op if both stress modes
+    // are off.
+    syncStressVisualizationState();
 }
 
 /**
@@ -74,10 +93,34 @@ export async function refreshStatistics(): Promise<void> {
 async function populateTrivyVulnCount(): Promise<void> {
     try {
         const { scans } = await getScans();
-        lastTrivyVulnCount = scans.reduce((sum, s) => sum + (s.vuln_count || 0), 0);
+        // Filter the displayed Trivy total to the user's scan-selector choice
+        // — when one scan is selected, only that scan's vuln_count contributes.
+        // The JSON export's data_source uses the same selection so the file
+        // and the modal agree.
+        const selectedIds = getSelectedScanIds();
+        const selectedSet = selectedIds && selectedIds.length > 0 ? new Set(selectedIds) : null;
+        const contributing = selectedSet ? scans.filter(s => selectedSet.has(s.id)) : scans;
+        lastTrivyVulnCount = contributing.reduce((sum, s) => sum + (s.vuln_count || 0), 0);
+        lastDataSource = buildDataSourceSnapshot(scans, selectedIds);
     } catch (err) {
         console.error('Failed to fetch scan list for Trivy vuln count:', err);
         lastTrivyVulnCount = null;
+        lastDataSource = null;
+    }
+}
+
+/**
+ * Capture a settings snapshot at the moment of metrics computation. Async
+ * because /api/config is fetched once per call. Failures fall back to a
+ * sensible default snapshot rather than disabling the JSON export, since
+ * the metrics themselves are still valid.
+ */
+async function captureSettingsSnapshot(): Promise<void> {
+    try {
+        lastSettings = await gatherCurrentSettings();
+    } catch (err) {
+        console.error('Failed to gather settings snapshot:', err);
+        lastSettings = null;
     }
 }
 
@@ -220,6 +263,20 @@ function renderTypeTable(tableId: string, counts: Record<string, number>): void 
     });
 }
 
+/**
+ * Render the M21 compound-size distribution as a compact `size:count`
+ * histogram string for the modal table. Sorted by size ascending.
+ *
+ * Example: `{2: 5, 3: 8, 4: 2}` → `"2×5  3×8  4×2"` (12 px-wide, scannable).
+ */
+function formatSizeDistribution(dist: Record<number, number>): string {
+    const entries = Object.entries(dist)
+        .map(([size, count]) => [Number(size), count] as const)
+        .sort((a, b) => a[0] - b[0]);
+    if (entries.length === 0) return '—';
+    return entries.map(([size, count]) => `${size}×${count}`).join('  ');
+}
+
 function setText(id: string, value: string): void {
     const el = document.getElementById(id);
     if (el) el.textContent = value;
@@ -230,231 +287,187 @@ function setText(id: string, value: string): void {
  */
 function populateDrawingMetrics(): void {
     lastMetrics = computeMetrics();
-    const tableBody = document.querySelector('#stats-drawing-table tbody');
-    if (!tableBody) return;
-    tableBody.innerHTML = '';
+    // The Drawing Quality Metrics section is split across two tables to
+    // balance the modal layout — left for paper-headline aesthetic
+    // metrics (Counts / Crossings / Stress), right for geometry +
+    // reduction-evaluating groups.
+    const leftBody = document.querySelector('#stats-drawing-table-left tbody');
+    const rightBody = document.querySelector('#stats-drawing-table-right tbody');
+    if (!leftBody || !rightBody) return;
+    leftBody.innerHTML = '';
+    rightBody.innerHTML = '';
 
     if (!lastMetrics) {
-        tableBody.innerHTML = '<tr><td colspan="2">No graph loaded</td></tr>';
+        rightBody.innerHTML = '<tr><td colspan="2">No graph loaded</td></tr>';
         return;
     }
 
     const m = lastMetrics;
+    const scansContributing = lastDataSource?.scans_in_current_graph.length ?? 0;
+    const totalUploaded = lastDataSource?.scans_uploaded_total ?? 0;
+    const scansLabel = lastDataSource?.selection_was_implicit
+        ? `all ${totalUploaded} uploaded scan${totalUploaded === 1 ? '' : 's'}`
+        : `${scansContributing} of ${totalUploaded} uploaded scan${totalUploaded === 1 ? '' : 's'}`;
     const trivyLabel = lastTrivyVulnCount !== null
-        ? `${lastTrivyVulnCount}   (all uploaded scans)`
+        ? `${lastTrivyVulnCount}   (${scansLabel})`
         : '—';
-    const rows: Array<[string, string]> = [
-        ['Unique CVEs (graph)', String(m.uniqueCves)],
-        ['Trivy vulnerabilities (scans)', trivyLabel],
-        ['Edge crossings (raw)', String(m.crossingsRaw)],
-        ['Edge crossings (normalized, Purchase)', m.crossingsNormalized.toFixed(4) + '   (1 = no crossings)'],
-        ['Edge crossings per edge', m.crossingsPerEdge.toFixed(4) + '   (lower = cleaner)'],
-        ['Drawing area (logical units²)', m.drawingArea.toFixed(2)],
-        ['Area per node (logical units²)', m.areaPerNode.toFixed(2) + '   (lower = denser)'],
-        ['Edge length CV', m.edgeLengthCV.toFixed(4) + '   (0 = uniform)']
+    const noCrossings = m.crossingsRaw === 0;
+    const noStress = m.stressReachablePairs === 0;
+
+    // Grouped row structure. A "group" header gives the visual separator;
+    // each "row" is the same [label, value] pair as before. Order within
+    // groups is deliberate — the most-cited / paper-headline metric in
+    // each section comes first.
+    type Row = { kind: 'group'; label: string } | { kind: 'row'; label: string; value: string };
+    const leftRows: Row[] = [
+        { kind: 'group', label: 'Counts' },
+        { kind: 'row', label: 'Unique CVEs (graph)', value: String(m.uniqueCves) },
+        { kind: 'row', label: 'Trivy vulnerabilities (scans)', value: trivyLabel },
+
+        { kind: 'group', label: 'Edge crossings (M2 + M25)' },
+        { kind: 'row', label: 'Edge crossings (raw)', value: String(m.crossingsRaw) },
+        { kind: 'row', label: 'Edge crossings (normalized, Purchase)', value: m.crossingsNormalized.toFixed(4) + '   (1 = no crossings)' },
+        { kind: 'row', label: 'Edge crossings per edge', value: m.crossingsPerEdge.toFixed(4) + '   (lower = cleaner)' },
+        { kind: 'row', label: 'Mean crossing angle (M2)', value: noCrossings ? '—' : m.crossingsMeanAngleDeg.toFixed(1) + '°   (90° = ideal)' },
+        { kind: 'row', label: 'Minimum crossing angle (M2)', value: noCrossings ? '—' : m.crossingsMinAngleDeg.toFixed(1) + '°   (worst case)' },
+        { kind: 'row', label: 'Right-angle ratio (M2)', value: noCrossings ? '—' : m.crossingsRightAngleRatio.toFixed(4) + '   (within ±15° of 90°)' },
+        { kind: 'row', label: 'Top crossing type pair (M25)', value: noCrossings ? '—' : `${m.crossingsTopPairLabel}   (${(m.crossingsTopPairShare * 100).toFixed(1)}%)` },
+
+        { kind: 'group', label: 'Layout fidelity — Stress (M1)' },
+        { kind: 'row', label: 'Stress per pair (raw)', value: noStress ? '—' : `${m.stressPerPair.toFixed(2)}   (${m.stressReachablePairs} pairs${m.stressUnreachablePairs > 0 ? `, ${m.stressUnreachablePairs} unreachable` : ''})` },
+        { kind: 'row', label: 'Stress / mean edge length', value: noStress ? '—' : `${m.stressPerPairNormalizedEdge.toFixed(4)}   (Kamada-Kawai, dimensionless)` },
+        { kind: 'row', label: 'Stress / bbox diagonal', value: noStress ? '—' : `${m.stressPerPairNormalizedDiagonal.toFixed(4)}   (dimensionless)` },
+        { kind: 'row', label: 'Stress / √area', value: noStress ? '—' : `${m.stressPerPairNormalizedArea.toFixed(4)}   (dimensionless)` },
     ];
 
-    rows.forEach(([label, value]) => {
-        const tr = document.createElement('tr');
-        const td1 = document.createElement('td');
-        td1.textContent = label;
-        const td2 = document.createElement('td');
-        td2.textContent = value;
-        tr.appendChild(td1);
-        tr.appendChild(td2);
-        tableBody.appendChild(tr);
-    });
+    const rightRows: Row[] = [
+        { kind: 'group', label: 'Layout geometry' },
+        { kind: 'row', label: 'Drawing area (logical units²)', value: m.drawingArea.toFixed(2) },
+        { kind: 'row', label: 'Bounding box (W × H)', value: `${m.bboxWidth.toFixed(2)} × ${m.bboxHeight.toFixed(2)}` },
+        { kind: 'row', label: 'Area per node (logical units²)', value: m.areaPerNode.toFixed(2) + '   (lower = denser)' },
+        { kind: 'row', label: 'Aspect ratio (M9)', value: m.aspectRatio.toFixed(4) + '   (1 = square)' },
+        { kind: 'row', label: 'Edge length μ, σ', value: m.edgeLengthMean > 0 ? `μ = ${m.edgeLengthMean.toFixed(2)},   σ = ${m.edgeLengthStd.toFixed(2)}` : '—' },
+        { kind: 'row', label: 'Edge length CV (σ/μ)', value: m.edgeLengthCV.toFixed(4) + '   (0 = uniform)' },
+
+        { kind: 'group', label: 'Reductions: bridges + merges (M19 + M20 + M21)' },
+        { kind: 'row', label: 'Bridge edge proportion (M19)', value: m.bridgeEdgeCount === 0 ? '—   (no visibility-toggle bridges)' : `${m.bridgeEdgeProportion.toFixed(4)}   (${m.bridgeEdgeCount} bridges)` },
+        { kind: 'row', label: 'Mean contraction depth (M19)', value: m.bridgeEdgeCount === 0 ? '—' : `${m.meanContractionDepth.toFixed(2)}   (hidden hops per bridge)` },
+        { kind: 'row', label: 'Bridge chain-length distribution (M19)', value: m.bridgeEdgeCount === 0 ? '—' : formatSizeDistribution(m.bridgeChainLengthDistribution) },
+        { kind: 'row', label: 'Edge consolidation ratio (M20, weighted)', value: m.ecrCompoundsCount === 0 ? '—   (no synthetic-edge compounds)' : `${m.meanEcrWeighted.toFixed(2)}×   (over ${m.ecrCompoundsCount} compounds)` },
+        { kind: 'row', label: 'Compound groups (M21)', value: String(m.compoundGroupsCount) },
+        { kind: 'row', label: 'Largest compound group (M21)', value: String(m.compoundLargestGroupSize) },
+        { kind: 'row', label: 'Compound singleton fraction (M21)', value: m.compoundSingletonFraction.toFixed(4) },
+        { kind: 'row', label: 'Compound size distribution (M21)', value: formatSizeDistribution(m.compoundSizeDistribution) },
+
+        { kind: 'group', label: 'Reduction potential (M22)' },
+        { kind: 'row', label: 'Attribute compression ratio (M22)', value: m.acrCveNodeCount === 0 ? '—   (no visible CVEs)' : `prereqs ${m.acrCvePrereqs.toFixed(4)}  /  outcomes ${m.acrCveOutcomes.toFixed(4)}   (${m.acrCveNodeCount} CVEs)` },
+    ];
+
+    const renderInto = (body: Element, items: Row[]) => {
+        items.forEach(item => {
+            if (item.kind === 'group') {
+                const tr = document.createElement('tr');
+                tr.className = 'stats-group-header';
+                const td = document.createElement('td');
+                td.colSpan = 2;
+                td.textContent = item.label;
+                tr.appendChild(td);
+                body.appendChild(tr);
+                return;
+            }
+            const tr = document.createElement('tr');
+            const td1 = document.createElement('td');
+            td1.textContent = item.label;
+            const td2 = document.createElement('td');
+            td2.textContent = item.value;
+            tr.appendChild(td1);
+            tr.appendChild(td2);
+            body.appendChild(tr);
+        });
+    };
+    renderInto(leftBody, leftRows);
+    renderInto(rightBody, rightRows);
 }
 
 /**
  * Wire the Export CSV button to download the most recently computed metrics.
  */
 function wireExportButton(): void {
-    const btn = document.getElementById('stats-export-csv') as HTMLButtonElement | null;
-    if (!btn) return;
+    const csvBtn = document.getElementById('stats-export-csv') as HTMLButtonElement | null;
+    if (csvBtn) {
+        csvBtn.disabled = !lastMetrics;
+        // Replace handler (avoids stacking listeners on repeated opens)
+        csvBtn.onclick = () => {
+            if (lastMetrics) {
+                downloadMetricsCSV(lastMetrics, {
+                    trivyVulnCount: lastTrivyVulnCount ?? undefined,
+                });
+            }
+        };
+    }
 
-    // Disable when no metrics available
-    btn.disabled = !lastMetrics;
+    const jsonBtn = document.getElementById('stats-export-json') as HTMLButtonElement | null;
+    if (jsonBtn) {
+        // JSON export needs the settings + data-source snapshots in addition to
+        // the metrics themselves; require all three before enabling.
+        jsonBtn.disabled = !lastMetrics || !lastSettings || !lastDataSource;
+        jsonBtn.onclick = () => {
+            if (lastMetrics && lastSettings && lastDataSource) {
+                downloadMetricsJSON(
+                    lastMetrics,
+                    { trivyVulnCount: lastTrivyVulnCount ?? undefined },
+                    lastSettings,
+                    lastDataSource,
+                );
+            }
+        };
+    }
 
-    // Replace handler (avoids stacking listeners on repeated opens)
-    btn.onclick = () => {
-        if (lastMetrics) {
-            downloadMetricsCSV(lastMetrics, {
-                trivyVulnCount: lastTrivyVulnCount ?? undefined,
-            });
-        }
-    };
-
-    wireCrossingsToggle();
+    wireDebugOverlayToggle();
 }
 
 /**
- * Wire the "Show debug overlay" toggle: overlays crossings (red dots),
- * drawing-area bounding box (blue dashed rectangle), and a unit edge
- * (green line showing mean edge length).
+ * Wire the "🔍 Show debug overlay" button to the new debugOverlay module.
+ *
+ * Single click toggles overlays on/off using the user's last-saved
+ * `OverlayState` (default on first use: the 4 existing overlays). The
+ * `⚙️ Debug overlay settings` button next to it opens the new modal where
+ * each overlay can be toggled individually.
  */
-function wireCrossingsToggle(): void {
-    const btn = document.getElementById('stats-toggle-crossings') as HTMLButtonElement | null;
-    if (!btn) return;
+function wireDebugOverlayToggle(): void {
+    const toggleBtn = document.getElementById('stats-toggle-crossings') as HTMLButtonElement | null;
+    if (toggleBtn) {
+        updateOverlayToggleLabel(toggleBtn);
+        toggleBtn.onclick = () => {
+            if (isDebugOverlayActive()) {
+                hideDebugOverlay();
+            } else {
+                showDebugOverlay();
+            }
+            updateOverlayToggleLabel(toggleBtn);
+        };
+    }
 
-    updateCrossingsToggleLabel(btn);
-
-    btn.onclick = () => {
-        if (debugElementIds.length > 0) {
-            clearDebugOverlay();
-        } else {
-            drawDebugOverlay();
-        }
-        updateCrossingsToggleLabel(btn);
-    };
+    const settingsBtn = document.getElementById('stats-debug-overlay-settings') as HTMLButtonElement | null;
+    if (settingsBtn) {
+        settingsBtn.onclick = () => openDebugOverlayModal();
+    }
 }
 
-function updateCrossingsToggleLabel(btn: HTMLButtonElement): void {
-    if (debugElementIds.length > 0) {
-        btn.textContent = `❌ Hide debug overlay`;
+/**
+ * Reflect the active overlay state in the toggle button label so the user
+ * knows whether clicking will turn overlays on or off, and how many will
+ * appear when on.
+ */
+function updateOverlayToggleLabel(btn: HTMLButtonElement): void {
+    if (isDebugOverlayActive()) {
+        btn.textContent = '❌ Hide debug overlay';
     } else {
-        btn.textContent = '🔍 Show debug overlay';
+        const n = countEnabledOverlays(getOverlayState());
+        btn.textContent = n === 0
+            ? '🔍 Show debug overlay (none active)'
+            : `🔍 Show debug overlay (${n})`;
     }
-}
-
-/**
- * Draw all three debug overlays:
- *   1. Red dots at each counted edge crossing
- *   2. Blue dashed rectangle around the bounding box, labeled with W×H
- *   3. Green line outside the graph with length = mean edge length
- */
-function drawDebugOverlay(): void {
-    const cy = getCy();
-    if (!cy) return;
-
-    clearDebugOverlay();
-
-    // --- 1. Crossing dots ---
-    const edges = getVisibleEdgeEndpoints();
-    const crossings = findCrossings(edges);
-
-    crossings.forEach((c, idx) => {
-        const id = `__crossing_debug_${idx}`;
-        cy.add({
-            group: 'nodes',
-            data: {
-                id,
-                type: 'CROSSING_DEBUG',
-                edgeA: `${c.edgeA.sourceId} → ${c.edgeA.targetId}`,
-                edgeB: `${c.edgeB.sourceId} → ${c.edgeB.targetId}`
-            },
-            position: { x: c.point.x, y: c.point.y },
-            selectable: false,
-            grabbable: false
-        });
-        debugElementIds.push(id);
-    });
-
-    // --- 2. Drawing-area bounding box ---
-    const points = getVisibleNodePoints();
-    const bb = computeBoundingBox(points);
-    if (bb) {
-        const w = bb.maxX - bb.minX;
-        const h = bb.maxY - bb.minY;
-        if (w > 0 && h > 0) {
-            const cx = (bb.minX + bb.maxX) / 2;
-            const cy2 = (bb.minY + bb.maxY) / 2;
-            const id = '__area_debug';
-            cy.add({
-                group: 'nodes',
-                data: {
-                    id,
-                    type: 'AREA_DEBUG',
-                    label: `Drawing area  ${w.toFixed(0)} × ${h.toFixed(0)}`
-                },
-                position: { x: cx, y: cy2 },
-                style: {
-                    width: w,
-                    height: h
-                },
-                selectable: false,
-                grabbable: false
-            });
-            debugElementIds.push(id);
-        }
-    }
-
-    // --- 3. Unit edges: mean length + std-dev length ---
-    const meanLen = computeMeanEdgeLength(edges);
-    const stdLen = computeEdgeLengthStd(edges);
-    if (bb && meanLen > 0) {
-        const yPad = Math.max(30, (bb.maxY - bb.minY) * 0.04);
-        const yMean = bb.minY - yPad;
-        const yStd = yMean - Math.max(20, (bb.maxY - bb.minY) * 0.025);
-
-        addUnitEdge(cy, '__unit_mean', bb.minX, yMean, meanLen,
-            `mean edge length: ${meanLen.toFixed(1)}`, 'UNIT_EDGE');
-
-        if (stdLen > 0) {
-            addUnitEdge(cy, '__unit_std', bb.minX, yStd, stdLen,
-                `std dev: ${stdLen.toFixed(1)}`, 'UNIT_EDGE_STD');
-        }
-    }
-}
-
-/**
- * Helper: add a horizontal reference edge of a given length at (x, y)
- * going right. Tracks created element IDs in debugElementIds.
- */
-function addUnitEdge(
-    cy: any,
-    idPrefix: string,
-    x: number,
-    y: number,
-    length: number,
-    label: string,
-    edgeType: string
-): void {
-    const startId = `${idPrefix}_start`;
-    const endId = `${idPrefix}_end`;
-    const edgeId = `${idPrefix}_line`;
-
-    cy.add({
-        group: 'nodes',
-        data: { id: startId, type: 'UNIT_EDGE_NODE' },
-        position: { x, y },
-        selectable: false,
-        grabbable: false
-    });
-    cy.add({
-        group: 'nodes',
-        data: { id: endId, type: 'UNIT_EDGE_NODE' },
-        position: { x: x + length, y },
-        selectable: false,
-        grabbable: false
-    });
-    cy.add({
-        group: 'edges',
-        data: {
-            id: edgeId,
-            source: startId,
-            target: endId,
-            type: edgeType,
-            label
-        }
-    });
-    debugElementIds.push(startId, endId, edgeId);
-}
-
-/**
- * Remove all debug overlay elements from the graph.
- */
-function clearDebugOverlay(): void {
-    const cy = getCy();
-    if (!cy) {
-        debugElementIds = [];
-        return;
-    }
-    debugElementIds.forEach(id => {
-        const el = cy.getElementById(id);
-        if (el.length) el.remove();
-    });
-    debugElementIds = [];
 }
 
 // Expose globals for onclick handlers in index.html
