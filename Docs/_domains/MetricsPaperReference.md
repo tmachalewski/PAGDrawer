@@ -400,6 +400,8 @@ M19's `chain_length` accumulates correctly only when bridges are created in sequ
 
    The semantically-correct value would be 2. The implementation reports 1 because the merge-step erased the bridge lineage. **The recommended paper pipeline (visibility before merge) avoids this**, so it isn't a paper-blocker.
 
+   **Regression sentinels** (`frontend/js/features/metrics.test.ts` → `chain_length invariants (caveat 4.11.2 sentinel)` and `cveMerge does not touch chain_length`): two trip-wire tests lock in the recurrence formula and assert that `cveMerge.ts` source contains no `chain_length` references. If a future refactor either changes the additive recurrence or starts mutating `chain_length` inside merge, those tests fail before paper numbers can drift silently. They do *not* enforce a runtime hide-then-merge ordering — the rebuild pipeline already runs them in the correct order, and a structural ordering check would require Cytoscape headless scaffolding that isn't worth the cost for the May 13 deadline.
+
 ### 4.14 Stress visible-edge filter (resolved compound-noise issue)
 
 As of 2026-05-05 (commit at the time of the metrics-roadmap merge), `computeStress()` operates on **`getStressEligibleNodes()`**, which is `getVisibleNodesWithIds()` further restricted to nodes that have at least one **visible** incident edge. This automatically resolves the merge-noise issue documented in [`StressMetric.md`](StressMetric.md) § "Behaviour with compound nodes":

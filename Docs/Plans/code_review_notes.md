@@ -128,9 +128,18 @@ In Step 3 you report `compound_groups_count` = 1, largest = 5. That is ATTACKER_
 
 Caveat 4.13 correctly warns that `bridge_edge_proportion` has *an unstable denominator* after merge. An alternative: `bridges_share` = bridges / (bridges + retained_originals), where retained_originals counts only non-`display:none` non-synthetic edges. More stable across steps. Or keep the current value but split it into components: `bridges_count`, `originals_visible_count`, `synthetics_count`. The reader can then compute any share they want.
 
-### 8. Validate `chain_length` against caveat 4.11.2
+### 8. Validate `chain_length` against caveat 4.11.2 — **RESOLVED (test sentinels)**
 
 The caveat warns that if someone runs *merge before hide*, chain_length is lost. In your recommended order (visibility before merge) this is not an issue. But add an **assertion to the test suite** that enforces this order (or an explicit warning in the UI when the user breaks the order). Otherwise, six months from now someone on the team will run *merge then hide* and the metrics will become unreliable.
+
+**Resolution.** Two regression sentinels added to `frontend/js/features/metrics.test.ts`:
+
+1. `chain_length invariants (caveat 4.11.2 sentinel)` — locks in the additive recurrence (`incoming + 1 + outgoing`) and the canonical mean range (≈ 1.0–2.5) for a known mixed distribution. Catches any future change that breaks the formula.
+2. `cveMerge does not touch chain_length` — reads `cveMerge.ts` source at test time and asserts no `chain_length` / `chainLength` references appear in live code (comments stripped). Catches the moment a refactor starts mutating chain_length inside merge.
+
+A runtime UI warning was considered but rejected: PAGDrawer's rebuild pipeline applies hide and merge atomically per rebuild — there is no user-visible "step 1 / step 2" ordering to check against. The trip-wire tests guard the *code-level* invariant that future refactors might break; a UI warning would have nothing to fire on under the current architecture.
+
+See [`MetricsPaperReference.md` § 4.11](../_domains/MetricsPaperReference.md) for the updated caveat with sentinel cross-references.
 
 ### 9. Singleton fraction: drop from body, keep in JSON
 
