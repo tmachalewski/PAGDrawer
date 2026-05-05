@@ -658,10 +658,12 @@ export function computeCompoundCardinality(): CompoundCardinality {
         if (isDebugOverlayType(n.data('type'))) return;
         // n.parent() returns a (possibly empty) Cytoscape collection
         const parents = n.parent();
-        if (parents && parents.length > 0) {
-            const pid = parents[0].id();
-            counts.set(pid, (counts.get(pid) || 0) + 1);
-        }
+        if (!parents || parents.length === 0) return;
+        const parent = parents[0];
+        // Skip if the parent itself is exploit-hidden (rare: visible
+        // child whose parent the user hid via exploit paths).
+        if (parent.hasClass('exploit-hidden') || parent.style('display') === 'none') return;
+        counts.set(parent.id(), (counts.get(parent.id()) || 0) + 1);
     });
     return computeCompoundCardinalityFromCounts(counts);
 }
@@ -980,15 +982,23 @@ export function computeEcrFromList(
 }
 
 /**
- * M20 — live wrapper. For every visible compound parent, count the raw
- * edges incident on its (potentially hidden) children versus the
+ * M20 — live wrapper. For every **visible** compound parent (i.e. not
+ * `display: none` via exploit-paths or other class-driven filters),
+ * count the raw edges incident on its visible children versus the
  * synthetic edges incident on the parent itself.
  *
  * "Synthetic" edges are tagged via `data('synthetic') === true` by the
  * outcomes-merge implementation in `cveMerge.ts`. "Raw" edges include
- * every non-synthetic, non-debug edge connected to any child of the
- * parent — counted regardless of `display: none`, since outcomes mode
- * hides those originals.
+ * every non-synthetic, non-debug edge connected to any **visible**
+ * child of the parent — outcomes-merge hides originals via
+ * `display: none`, so those still count (they're the "before" side
+ * of the consolidation). What we exclude here is exploit-hidden
+ * children: the user told the UI to hide them, and the metric should
+ * report on what the user is actually seeing.
+ *
+ * Compound parents that are themselves exploit-hidden are skipped
+ * entirely (otherwise the JSON download would surface compounds the
+ * user can't see on screen).
  *
  * Compound parents with zero synthetic edges (e.g. prereqs-mode merge,
  * ATTACKER_BOX, no merge active) are excluded from the mean.
@@ -997,7 +1007,6 @@ export function computeEcr(): ReturnType<typeof computeEcrFromList> {
     const cy = getCy();
     if (!cy) return computeEcrFromList([]);
 
-    // Find every visible compound parent (a node with at least one child).
     const perParent: Array<{
         parentId: string;
         rawEdges: number;
@@ -1008,22 +1017,34 @@ export function computeEcr(): ReturnType<typeof computeEcrFromList> {
     cy.nodes(':parent').forEach(parent => {
         const t = parent.data('type');
         if (t === 'CROSSING_DEBUG' || t === 'AREA_DEBUG' || t === 'UNIT_EDGE_NODE') return;
+        // Skip compound parents that aren't visible to the user (e.g.
+        // exploit-paths classed them with display:none). The metric
+        // should match what the user sees.
+        if (parent.hasClass('exploit-hidden') || parent.style('display') === 'none') return;
 
-        const children = parent.children();
-        if (children.length === 0) return;
+        // Only count visible children — exploit-paths can hide a subset
+        // of a compound's children even when the parent itself is shown.
+        const visibleChildren = parent.children().filter(
+            (c: { hasClass: (k: string) => boolean; style: (k: string) => string }) =>
+                !c.hasClass('exploit-hidden') && c.style('display') !== 'none'
+        );
+        if (visibleChildren.length === 0) return;
 
-        // Synthetic edges: incident on the parent itself, tagged synthetic.
+        // Synthetic edges: incident on the parent itself, tagged synthetic
+        // and visible (a hidden synthetic edge wouldn't be drawn).
         let syntheticEdges = 0;
         parent.connectedEdges().forEach(e => {
-            if (e.data('synthetic')) syntheticEdges++;
+            if (!e.data('synthetic')) return;
+            if (e.hasClass('exploit-hidden') || e.style('display') === 'none') return;
+            syntheticEdges++;
         });
 
-        // Raw edges: every original (non-synthetic, non-debug) edge connected
-        // to any child. Includes edges that are display:none (the originals
-        // hidden by outcomes-merge) — that's the whole point of the metric.
+        // Raw edges: every original (non-synthetic, non-debug) edge
+        // connected to any visible child. Originals hidden by
+        // outcomes-merge are kept — they're the metric's denominator.
         const seenEdgeIds = new Set<string>();
         let rawEdges = 0;
-        children.forEach(child => {
+        visibleChildren.forEach(child => {
             child.connectedEdges().forEach(e => {
                 if (e.data('synthetic')) return;
                 const et = e.data('type');
@@ -1039,7 +1060,7 @@ export function computeEcr(): ReturnType<typeof computeEcrFromList> {
             parentId: parent.id(),
             rawEdges,
             syntheticEdges,
-            childCount: children.length,
+            childCount: visibleChildren.length,
         });
     });
 
