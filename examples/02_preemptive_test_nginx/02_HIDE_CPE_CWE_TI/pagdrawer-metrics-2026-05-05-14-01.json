@@ -1,0 +1,95 @@
+{
+  "schema_version": 1,
+  "exported_at": "2026-05-05T12:01:21.504Z",
+  "app_version": "1.0.0",
+  "git_sha": "00f46fca6ed9a5d514e4cc68ddbc290725910801",
+  "data_source": {
+    "type": "trivy",
+    "scans_uploaded_total": 2,
+    "scans_in_current_graph": [
+      {
+        "id": "ac96d6f2-7862-476c-a3ed-915563cef21e",
+        "name": "nginx:stable-trixie-perl",
+        "vuln_count": 189
+      }
+    ],
+    "selection_was_implicit": false
+  },
+  "settings": {
+    "granularity": {
+      "HOST": "universal",
+      "CPE": "HOST",
+      "CVE": "CPE",
+      "CWE": "CVE",
+      "TI": "CWE",
+      "VC": "TI"
+    },
+    "skip_layer_2": true,
+    "visibility_hidden": [],
+    "cve_merge_mode": "none",
+    "environment_filter": {
+      "ui": "N",
+      "ac": "L"
+    },
+    "exploit_paths_only_active": false,
+    "force_refresh_on_last_rebuild": false,
+    "layout": "dagre"
+  },
+  "metrics": {
+    "nodes": 830,
+    "edges": 5675,
+    "unique_cves": 102,
+    "trivy_vuln_count": 189,
+    "crossings_raw": 5252118,
+    "crossings_normalized": 0.6665444912794011,
+    "crossings_per_edge": 925.4833480176211,
+    "drawing_area": 205853531.25,
+    "bbox_width": 1707,
+    "bbox_height": 120593.75,
+    "area_per_node": 248016.30271084336,
+    "edge_length_cv": 0.6456345812390085,
+    "aspect_ratio": 0.014154962425498834,
+    "compound_groups_count": 1,
+    "compound_largest_group_size": 5,
+    "compound_singleton_fraction": 0,
+    "compound_size_distribution": {
+      "5": 1
+    },
+    "crossings_mean_angle_deg": 1.3746877761212724,
+    "crossings_min_angle_deg": 0.0030278101615785805,
+    "crossings_right_angle_ratio": 0.0005272158774802851,
+    "crossings_top_pair_share": 0.9732978200413623,
+    "crossings_top_pair_label": "ENABLES×ENABLES",
+    "crossings_type_pair_distribution": {
+      "HAS_VULN×RUNS": 128,
+      "HAS_IMPACT×RUNS": 73,
+      "IS_INSTANCE_OF×RUNS": 16,
+      "LEADS_TO×RUNS": 110,
+      "HAS_VULN×HAS_VULN": 845,
+      "ENABLES×HAS_VULN": 80029,
+      "HAS_IMPACT×HAS_VULN": 128,
+      "HAS_VULN×IS_INSTANCE_OF": 55,
+      "HAS_VULN×LEADS_TO": 461,
+      "LEADS_TO×LEADS_TO": 8788,
+      "ENABLES×LEADS_TO": 46446,
+      "HAS_IMPACT×LEADS_TO": 581,
+      "IS_INSTANCE_OF×LEADS_TO": 153,
+      "ENABLES×ENABLES": 5111875,
+      "IS_INSTANCE_OF×IS_INSTANCE_OF": 114,
+      "HAS_IMPACT×HAS_IMPACT": 2316
+    },
+    "stress_per_pair": 1018277141.3195646,
+    "stress_per_pair_normalized_edge": 14.285919802143418,
+    "stress_per_pair_normalized_diagonal": 18.782275708387207,
+    "stress_per_pair_normalized_area": 11.049751556413957,
+    "stress_unreachable_pairs": 241682,
+    "stress_reachable_pairs": 102353,
+    "bridge_edge_proportion": 0,
+    "mean_contraction_depth": 0,
+    "bridge_edge_count": 0,
+    "bridge_chain_length_distribution": {},
+    "mean_ecr_weighted": 0,
+    "ecr_compounds_count": 0,
+    "ecr_per_compound": []
+  }
+}
