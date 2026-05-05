@@ -413,9 +413,26 @@ Net effect: `stress_unreachable_pairs` no longer inflates structurally after mer
 
 The unfiltered `getVisibleNodesWithIds()` is kept as a separate export for any caller that wants the broader set (e.g. layout-bbox computation, which should include compound parents).
 
-### 4.13 Bridge proportion denominator after outcomes-merge
+### 4.13 ⚠ Bridge proportion has an unstable denominator across the merge step
 
-`bridge_edge_proportion = |bridges| / |visible edges|`. After `merge by outcomes`, originals are `display: none` → excluded from `cy.edges(':visible')` → the denominator drops. The proportion can rise sharply not because more bridges exist, but because fewer non-bridge originals are visible. **Don't read this as "more contraction"** — read the absolute `bridge_edge_count` and `mean_contraction_depth` for the contraction story; the proportion only makes sense when comparing across reductions that don't change the visible-edge denominator.
+> **Critical for paper readers and table-makers.** Read this before plotting `bridge_edge_proportion` over the 5-step pipeline.
+
+`bridge_edge_proportion = |bridges| / |visible edges|`. The denominator counts every visible edge:
+
+| Edge type | In the denominator? |
+|-----------|---------------------|
+| Original non-bridge edges | ✓ visible |
+| Bridge edges (visibility-toggle) | ✓ visible |
+| **Synthetic edges (outcomes-merge)** | ✓ visible |
+| Originals hidden by outcomes-merge (`display: none`) | ✗ excluded |
+
+**The problem.** After `merge by outcomes`, originals connecting merged CVEs are `display: none` and synthetic edges are added. Even with `|bridges|` unchanged, the proportion can swing dramatically. In the nginx scenario 2 test session: visible edges drop 920 → 27 across the merge step; bridges stay at ~250; **`bridge_edge_proportion` jumps from ~0.27 to ~0.93** — purely a denominator artifact.
+
+**Don't read a higher proportion as "more contraction" across the merge step.** The bridge structure didn't change; only what counts as a "visible edge" did.
+
+**For the paper.** When comparing across reduction steps, prefer the absolute counts (`bridge_edge_count` + `mean_contraction_depth`) — they tell the contraction story without the denominator instability. The proportion is meaningful only when comparing reductions that keep the visible-edge denominator stable (e.g. baseline vs. granularity, or hide-only steps without merge).
+
+If a future iteration wants a stable proportion, the cleanest formulation is `bridges / (bridges + non-synthetic visible originals)` — excludes synthetic edges from the comparison so the merge step doesn't move the denominator. Not implemented in this iteration; considered low-priority since the absolute counts already give the right story.
 
 ### 4.12 Stress visualisation: APSP per click
 
@@ -767,6 +784,8 @@ Same five rows, additional columns for completeness:
 4. **Be honest about M20 vs ATTACKER_BOX.** The implementation excludes ATTACKER_BOX (no synthetic edges) — `ecr_compounds_count` reports the actual denominator. **Add this to the table caption explicitly**: e.g. *"compound_groups_count in Steps 1–3 includes ATTACKER_BOX (5 attacker nodes); the merge step adds CVE_GROUP compound parents on top."* Without this note a reader sees `compound_groups_count: 1` in the baseline and is confused about what that "1" means.
 5. **Be honest about stress on merged graphs.** §4.3 caveat — `stress_unreachable_pairs` historically inflated after merge. Resolved as of the 2026-05-05 visible-edge filter for stress (caveat 4.14): reachable-pair stress is now stable across the merge step.
 6. **Don't report `compound_singleton_fraction` in the paper body.** It's structurally 0 in normal operation (`cveMerge.ts:176` skips groups with size < 2). A reviewer reads "100% of groups have >1 element" and asks "well, how could it be otherwise?" Keep it in the JSON / regression test as a sentinel; in the paper's headline and appendix tables use only `compound_groups_count` and `compound_largest_group_size`.
+
+7. **Don't plot `bridge_edge_proportion` across the merge step.** Its denominator drops sharply when outcomes-merge hides originals (caveat 4.13 — *required reading before making the table*). The proportion can swing 0.27 → 0.93 across one merge step without the bridge structure changing at all. **Use `bridge_edge_count` and `mean_contraction_depth` for the contraction story across reductions**; reserve `bridge_edge_proportion` for hide-only comparisons (baseline vs. visibility steps without merge).
 
 ### Recommended paper structure for the evaluation section
 
