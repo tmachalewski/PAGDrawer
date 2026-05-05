@@ -1521,12 +1521,29 @@ export interface DataSourceScanRef {
     vuln_count: number;
     /**
      * ISO 8601 timestamp recording when the user uploaded this scan to
-     * PAGDrawer (the closest proxy to "when Trivy data is from" we
-     * currently have on the frontend). Useful for paper-replication
-     * provenance — Trivy results change as NVD updates, so the same
-     * `image:tag` can report a different vuln count tomorrow.
+     * PAGDrawer. Distinct from `trivy_created_at` (when Trivy actually
+     * ran the scan) — useful for distinguishing "ingested today" from
+     * "scanned six months ago".
      */
     uploaded_at: string;
+    /**
+     * Trivy-side reproducibility metadata, extracted from the scan JSON's
+     * top-level fields. All optional — older Trivy versions and certain
+     * scan modes omit some of these.
+     *
+     * - `trivy_created_at`  — Trivy's `CreatedAt` (actual scan time, pairs
+     *                        with NVD/EPSS DB snapshots for replication).
+     * - `trivy_repo_digest` — `Metadata.RepoDigests[0]`, e.g.
+     *                        `nginx@sha256:…` — pinned, byte-exact image.
+     * - `trivy_artifact_id` — `ArtifactID`, content hash of the artefact.
+     * - `trivy_report_id`   — `ReportID`, UUID per scan run.
+     * - `trivy_version`     — Trivy scanner version string.
+     */
+    trivy_created_at?: string | null;
+    trivy_repo_digest?: string | null;
+    trivy_artifact_id?: string | null;
+    trivy_report_id?: string | null;
+    trivy_version?: string | null;
 }
 
 export interface DataSourceSnapshot {
@@ -1588,6 +1605,11 @@ export function buildDataSourceSnapshot(
             name: s.name,
             vuln_count: s.vuln_count,
             uploaded_at: s.uploaded_at,
+            trivy_created_at: s.trivy_created_at ?? null,
+            trivy_repo_digest: s.trivy_repo_digest ?? null,
+            trivy_artifact_id: s.trivy_artifact_id ?? null,
+            trivy_report_id: s.trivy_report_id ?? null,
+            trivy_version: s.trivy_version ?? null,
         })),
         selection_was_implicit: !explicit,
     };

@@ -1342,8 +1342,18 @@ describe('buildDataSourceSnapshot', () => {
         expect(ds.scans_uploaded_total).toBe(2);
         expect(ds.selection_was_implicit).toBe(true);
         expect(ds.scans_in_current_graph).toEqual([
-            { id: 'a', name: 'nginx', vuln_count: 5, uploaded_at: 't' },
-            { id: 'b', name: 'redis', vuln_count: 12, uploaded_at: 't' },
+            {
+                id: 'a', name: 'nginx', vuln_count: 5, uploaded_at: 't',
+                trivy_created_at: null, trivy_repo_digest: null,
+                trivy_artifact_id: null, trivy_report_id: null,
+                trivy_version: null,
+            },
+            {
+                id: 'b', name: 'redis', vuln_count: 12, uploaded_at: 't',
+                trivy_created_at: null, trivy_repo_digest: null,
+                trivy_artifact_id: null, trivy_report_id: null,
+                trivy_version: null,
+            },
         ]);
     });
 
@@ -1366,5 +1376,25 @@ describe('buildDataSourceSnapshot', () => {
         const ds = buildDataSourceSnapshot(scans, ['nonexistent']);
         expect(ds.scans_in_current_graph).toEqual([]);
         expect(ds.selection_was_implicit).toBe(false);
+    });
+
+    it('passes Trivy reproducibility metadata through into scan refs', () => {
+        const enriched = [{
+            id: 'x', name: 'nginx:stable-trixie-perl',
+            filename: 'nginx.json', uploaded_at: 'u', vuln_count: 189,
+            trivy_created_at: '2025-10-29T14:23:11Z',
+            trivy_repo_digest: 'nginx@sha256:deadbeef',
+            trivy_artifact_id: 'sha256:cafef00d',
+            trivy_report_id: '11111111-2222-3333-4444-555555555555',
+            trivy_version: '0.58.1',
+        }];
+        const ds = buildDataSourceSnapshot(enriched);
+        expect(ds.scans_in_current_graph[0]).toMatchObject({
+            trivy_created_at: '2025-10-29T14:23:11Z',
+            trivy_repo_digest: 'nginx@sha256:deadbeef',
+            trivy_artifact_id: 'sha256:cafef00d',
+            trivy_report_id: '11111111-2222-3333-4444-555555555555',
+            trivy_version: '0.58.1',
+        });
     });
 });

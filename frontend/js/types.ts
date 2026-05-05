@@ -79,6 +79,13 @@ export interface ScanInfo {
     filename: string;
     uploaded_at: string;
     vuln_count: number;
+    // Trivy-side reproducibility metadata (optional — may be absent for
+    // older scans or Trivy versions that didn't emit these fields).
+    trivy_created_at?: string | null;
+    trivy_repo_digest?: string | null;
+    trivy_artifact_id?: string | null;
+    trivy_report_id?: string | null;
+    trivy_version?: string | null;
 }
 
 // Scans list response
