@@ -55,6 +55,32 @@ export interface DrawingMetrics {
      */
     crossingsTypePairDistribution: Record<string, number>;
 
+    // M19 — Bridge-edge contraction depth (visibility-toggle bridges).
+    bridgeEdgeProportion: number;      // |bridges| / |edges|, 0 when |edges|=0 or no bridges
+    meanContractionDepth: number;      // mean chain_length over bridge edges; 0 when no bridges
+    bridgeEdgeCount: number;           // raw count, useful as denominator
+    /**
+     * Full chain_length → count distribution for the bridges. JSON-only
+     * (variable cardinality). Empty when no bridges exist. e.g.
+     * `{ "1": 12, "2": 4 }` means 12 single-hop bridges + 4 double-hop.
+     */
+    bridgeChainLengthDistribution: Record<number, number>;
+
+    // M20 — Edge consolidation ratio (per compound parent).
+    /**
+     * Size-weighted mean ECR across all compound parents. ECR per parent =
+     * raw incoming/outgoing edges from the parent's children / synthetic
+     * edges from the parent. Reports 0 when no compound parents have any
+     * synthetic edges (e.g. prereqs-mode merge or no merge active).
+     */
+    meanEcrWeighted: number;
+    ecrCompoundsCount: number;         // number of compound parents that contributed to the mean
+    /**
+     * Per-parent (parentId, ecr) tuples. JSON-only. Empty when no
+     * compound parent has synthetic edges.
+     */
+    ecrPerCompound: Array<{ parentId: string; ecr: number; childCount: number }>;
+
     // M1 — Stress (Purchase 2002 / Kamada-Kawai-style).
     stressPerPair: number;             // mean (‖p_i − p_j‖_layout − d_ij)² over reachable pairs
     stressUnreachablePairs: number;    // unordered i<j pair count where d_ij is undefined
@@ -254,6 +280,12 @@ export function computeMetrics(): DrawingMetrics | null {
     // 5. M21 — compound-parent cardinality (largest group + singleton fraction)
     const compound = computeCompoundCardinality();
 
+    // M19 — bridge contraction depth
+    const bridgeStats = computeBridgeStats();
+
+    // M20 — edge consolidation ratio (per compound parent, size-weighted)
+    const ecrStats = computeEcr();
+
     // 6. M1 — Stress (Purchase 2002). Reuses the same visible-edge list and
     // a fresh BFS-APSP. The APSP matrix is also the prerequisite for
     // M11/M12 (Stage 7) — a future cache will share it across metrics.
@@ -286,6 +318,13 @@ export function computeMetrics(): DrawingMetrics | null {
         compoundSingletonFraction: compound.singletonFraction,
         compoundGroupsCount: compound.groupsCount,
         compoundSizeDistribution: compound.sizeDistribution,
+        bridgeEdgeProportion: bridgeStats.bridgeEdgeProportion,
+        meanContractionDepth: bridgeStats.meanContractionDepth,
+        bridgeEdgeCount: bridgeStats.bridgeEdgeCount,
+        bridgeChainLengthDistribution: bridgeStats.chainLengthDistribution,
+        meanEcrWeighted: ecrStats.meanEcrWeighted,
+        ecrCompoundsCount: ecrStats.compoundsCount,
+        ecrPerCompound: ecrStats.perCompound,
         crossingsMeanAngleDeg: angleStats.meanRad * RAD_TO_DEG,
         crossingsMinAngleDeg: angleStats.minRad * RAD_TO_DEG,
         crossingsRightAngleRatio: angleStats.rightAngleRatio,
@@ -740,6 +779,11 @@ export function metricsToCSV(m: DrawingMetrics, context: MetricsCsvContext = {})
         'stress_per_pair_normalized_area',
         'stress_unreachable_pairs',
         'stress_reachable_pairs',
+        'bridge_edge_proportion',
+        'mean_contraction_depth',
+        'bridge_edge_count',
+        'mean_ecr_weighted',
+        'ecr_compounds_count',
     ].join(',');
     const row = [
         m.nodes,
@@ -769,6 +813,11 @@ export function metricsToCSV(m: DrawingMetrics, context: MetricsCsvContext = {})
         m.stressPerPairNormalizedArea.toFixed(4),
         m.stressUnreachablePairs,
         m.stressReachablePairs,
+        m.bridgeEdgeProportion.toFixed(4),
+        m.meanContractionDepth.toFixed(4),
+        m.bridgeEdgeCount,
+        m.meanEcrWeighted.toFixed(4),
+        m.ecrCompoundsCount,
     ].join(',');
     return header + '\n' + row + '\n';
 }
@@ -808,6 +857,193 @@ function csvEscape(s: string): string {
 function formatTimestamp(d: Date): string {
     const pad = (n: number) => String(n).padStart(2, '0');
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}-${pad(d.getHours())}-${pad(d.getMinutes())}`;
+}
+
+// =============================================================================
+// M19 — Bridge-edge contraction depth
+//
+// PAGDrawer's visibility toggles (hide CWE / TI / etc.) replace chains of
+// hidden nodes with a single "bridge" edge from the surviving predecessor
+// to the surviving successor. The bridge carries `chain_length`, the
+// number of hidden nodes the bridge spans (1 for single-hop, 2 for
+// chained, etc.). M19 reports:
+//   - bridge_edge_proportion: |bridges| / |edges|
+//   - mean_contraction_depth: average chain_length across bridges
+//   - distribution of chain_lengths (JSON-only)
+// See `frontend/js/features/filter.ts` for where chain_length is computed.
+// =============================================================================
+
+export interface BridgeEdgeInfo {
+    isBridge: boolean;
+    chainLength: number; // 0 for non-bridge edges
+}
+
+/**
+ * Pure helper: aggregate bridge-edge stats from a list of edge-info
+ * objects. Tests pass synthetic inputs directly without needing cy.
+ */
+export function computeBridgeStatsFromList(
+    edgeInfos: BridgeEdgeInfo[],
+): {
+    bridgeEdgeProportion: number;
+    meanContractionDepth: number;
+    bridgeEdgeCount: number;
+    chainLengthDistribution: Record<number, number>;
+} {
+    if (edgeInfos.length === 0) {
+        return {
+            bridgeEdgeProportion: 0,
+            meanContractionDepth: 0,
+            bridgeEdgeCount: 0,
+            chainLengthDistribution: {},
+        };
+    }
+    let bridgeCount = 0;
+    let chainSum = 0;
+    const dist: Record<number, number> = {};
+    for (const e of edgeInfos) {
+        if (!e.isBridge) continue;
+        bridgeCount++;
+        chainSum += e.chainLength;
+        dist[e.chainLength] = (dist[e.chainLength] || 0) + 1;
+    }
+    return {
+        bridgeEdgeProportion: bridgeCount / edgeInfos.length,
+        meanContractionDepth: bridgeCount > 0 ? chainSum / bridgeCount : 0,
+        bridgeEdgeCount: bridgeCount,
+        chainLengthDistribution: dist,
+    };
+}
+
+/**
+ * M19 — bridge stats from the live Cytoscape graph. Reads `isBridge`
+ * and `chain_length` from each visible edge's data.
+ */
+export function computeBridgeStats(): ReturnType<typeof computeBridgeStatsFromList> {
+    const cy = getCy();
+    if (!cy) {
+        return computeBridgeStatsFromList([]);
+    }
+    const infos: BridgeEdgeInfo[] = [];
+    cy.edges(':visible').forEach(e => {
+        // Skip synthetic debug-overlay edges
+        const t = e.data('type');
+        if (t === 'UNIT_EDGE' || t === 'UNIT_EDGE_STD') return;
+        const isBridge = !!e.data('isBridge');
+        const chainRaw = e.data('chain_length');
+        const chainLength = typeof chainRaw === 'number' && Number.isFinite(chainRaw) ? chainRaw : 0;
+        infos.push({ isBridge, chainLength });
+    });
+    return computeBridgeStatsFromList(infos);
+}
+
+// =============================================================================
+// M20 — Edge Consolidation Ratio (per compound parent)
+//
+// Measures how much edge consolidation a compound parent achieved. For
+// each parent: raw_edges = sum of original edges leaving its children
+// (which are now hidden via display:none in outcomes-merge mode) and
+// synthetic_edges = the new edges from the parent. ECR = raw / synthetic.
+//
+// We aggregate as a size-weighted mean (weighted by child count) across
+// all compound parents that have synthetic edges.
+// =============================================================================
+
+/**
+ * Pure helper: per-parent ECR tuples and the size-weighted mean.
+ * Excludes parents with no synthetic edges (ECR is undefined when the
+ * denominator is 0; size-weighting also requires that the parent
+ * actually be in outcomes-mode merge).
+ */
+export function computeEcrFromList(
+    perParent: Array<{ parentId: string; rawEdges: number; syntheticEdges: number; childCount: number }>,
+): {
+    meanEcrWeighted: number;
+    compoundsCount: number;
+    perCompound: Array<{ parentId: string; ecr: number; childCount: number }>;
+} {
+    const perCompound: Array<{ parentId: string; ecr: number; childCount: number }> = [];
+    let totalWeight = 0;
+    let weightedSum = 0;
+    for (const p of perParent) {
+        if (p.syntheticEdges <= 0) continue;
+        const ecr = p.rawEdges / p.syntheticEdges;
+        perCompound.push({ parentId: p.parentId, ecr, childCount: p.childCount });
+        weightedSum += ecr * p.childCount;
+        totalWeight += p.childCount;
+    }
+    return {
+        meanEcrWeighted: totalWeight > 0 ? weightedSum / totalWeight : 0,
+        compoundsCount: perCompound.length,
+        perCompound,
+    };
+}
+
+/**
+ * M20 — live wrapper. For every visible compound parent, count the raw
+ * edges incident on its (potentially hidden) children versus the
+ * synthetic edges incident on the parent itself.
+ *
+ * "Synthetic" edges are tagged via `data('synthetic') === true` by the
+ * outcomes-merge implementation in `cveMerge.ts`. "Raw" edges include
+ * every non-synthetic, non-debug edge connected to any child of the
+ * parent — counted regardless of `display: none`, since outcomes mode
+ * hides those originals.
+ *
+ * Compound parents with zero synthetic edges (e.g. prereqs-mode merge,
+ * ATTACKER_BOX, no merge active) are excluded from the mean.
+ */
+export function computeEcr(): ReturnType<typeof computeEcrFromList> {
+    const cy = getCy();
+    if (!cy) return computeEcrFromList([]);
+
+    // Find every visible compound parent (a node with at least one child).
+    const perParent: Array<{
+        parentId: string;
+        rawEdges: number;
+        syntheticEdges: number;
+        childCount: number;
+    }> = [];
+
+    cy.nodes(':parent').forEach(parent => {
+        const t = parent.data('type');
+        if (t === 'CROSSING_DEBUG' || t === 'AREA_DEBUG' || t === 'UNIT_EDGE_NODE') return;
+
+        const children = parent.children();
+        if (children.length === 0) return;
+
+        // Synthetic edges: incident on the parent itself, tagged synthetic.
+        let syntheticEdges = 0;
+        parent.connectedEdges().forEach(e => {
+            if (e.data('synthetic')) syntheticEdges++;
+        });
+
+        // Raw edges: every original (non-synthetic, non-debug) edge connected
+        // to any child. Includes edges that are display:none (the originals
+        // hidden by outcomes-merge) — that's the whole point of the metric.
+        const seenEdgeIds = new Set<string>();
+        let rawEdges = 0;
+        children.forEach(child => {
+            child.connectedEdges().forEach(e => {
+                if (e.data('synthetic')) return;
+                const et = e.data('type');
+                if (et === 'UNIT_EDGE' || et === 'UNIT_EDGE_STD') return;
+                const eid = e.id();
+                if (seenEdgeIds.has(eid)) return;
+                seenEdgeIds.add(eid);
+                rawEdges++;
+            });
+        });
+
+        perParent.push({
+            parentId: parent.id(),
+            rawEdges,
+            syntheticEdges,
+            childCount: children.length,
+        });
+    });
+
+    return computeEcrFromList(perParent);
 }
 
 // =============================================================================
@@ -1211,6 +1447,13 @@ export function metricsToJsonObject(
         stress_per_pair_normalized_area: m.stressPerPairNormalizedArea,
         stress_unreachable_pairs: m.stressUnreachablePairs,
         stress_reachable_pairs: m.stressReachablePairs,
+        bridge_edge_proportion: m.bridgeEdgeProportion,
+        mean_contraction_depth: m.meanContractionDepth,
+        bridge_edge_count: m.bridgeEdgeCount,
+        bridge_chain_length_distribution: m.bridgeChainLengthDistribution,
+        mean_ecr_weighted: m.meanEcrWeighted,
+        ecr_compounds_count: m.ecrCompoundsCount,
+        ecr_per_compound: m.ecrPerCompound,
     };
 }
 

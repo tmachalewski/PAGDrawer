@@ -21,6 +21,21 @@ const typeBridgeEdges: Map<string, EdgeSingular[]> = new Map();
 const globalHiddenEdges: Map<string, ElementDefinition> = new Map();
 
 /**
+ * Read chain_length from a Cytoscape edge collection, returning 0 if the
+ * collection is empty (no such edge exists), 0 if the edge is an original
+ * (non-bridge) edge, or the stored value when the edge is itself a bridge
+ * from a prior `hideNodeType` call.
+ *
+ * Used by M19 to compute the contraction depth of a newly-created bridge —
+ * the new chain_length accumulates over chained bridges.
+ */
+function readChainLength(edges: { length: number; data: (k: string) => unknown }): number {
+    if (edges.length === 0) return 0;
+    const v = edges.data('chain_length');
+    return typeof v === 'number' && Number.isFinite(v) ? v : 0;
+}
+
+/**
  * Compute a bright averaged color from hidden edge types
  */
 function computeBridgeColor(edgeTypes: string[]): string {
@@ -159,6 +174,17 @@ function hideNodeType(type: string): void {
                     // Compute averaged bright color from hidden edge types
                     const bridgeColor = computeBridgeColor(hiddenEdgeTypes);
 
+                    // M19 — chain_length: number of hidden nodes the bridge spans.
+                    // For pred → succ via the currently-being-hidden `node`, the
+                    // total chain length is:
+                    //   incoming_chain  + 1 (for `node` itself) + outgoing_chain
+                    // where incoming/outgoing are 0 if the connecting edge is an
+                    // original edge, or the existing bridge's chain_length if it
+                    // is itself a bridge from a previous hideNodeType call.
+                    const incomingChain = readChainLength(pred.edgesTo(node));
+                    const outgoingChain = readChainLength(node.edgesTo(succ));
+                    const chainLength = incomingChain + 1 + outgoingChain;
+
                     const bridgeEdge = cy.add({
                         group: 'edges',
                         data: {
@@ -169,7 +195,8 @@ function hideNodeType(type: string): void {
                             isBridge: true,
                             bridgeForType: type,
                             hiddenEdgeTypes: hiddenEdgeTypes,
-                            bridgeColor: bridgeColor
+                            bridgeColor: bridgeColor,
+                            chain_length: chainLength,
                         }
                     }) as EdgeSingular;
                     bridges.push(bridgeEdge);

@@ -30,6 +30,7 @@ import {
     computeCompoundCardinality,
     computeAPSP,
     symmetrizedDistance,
+    computeEcr,
     type CrossingInfo,
     type NodeWithPosition,
 } from '../features/metrics';
@@ -69,6 +70,20 @@ export interface OverlayState {
      * Useful for explaining the metric or sanity-checking individual pairs.
      */
     stressPairDistance: boolean;
+    /**
+     * M19 — render `k=N` labels on every bridge edge, where N is the
+     * `chain_length` recorded on the bridge (number of hidden nodes the
+     * bridge spans). Off by default; turn on when the user wants to see
+     * how synthetic the reduced graph is.
+     */
+    bridgeChainDepth: boolean;
+    /**
+     * M20 — append `ECR×N.M` to every compound parent's label, where
+     * ECR = raw_edges / synthetic_edges for that compound. Composes
+     * with `groupCardinality` (M21): if both are on, the parent label
+     * carries both annotations. Off by default.
+     */
+    edgeConsolidationRatio: boolean;
 }
 
 export const DEFAULT_OVERLAY_STATE: OverlayState = {
@@ -81,6 +96,8 @@ export const DEFAULT_OVERLAY_STATE: OverlayState = {
     crossingsColorBy: 'none',
     stressDistanceColoring: false,
     stressPairDistance: false,
+    bridgeChainDepth: false,
+    edgeConsolidationRatio: false,
 };
 
 const STORAGE_KEY = 'debugOverlayState_v1';
@@ -103,6 +120,8 @@ export const PRESETS: Record<PresetName, OverlayState> = {
         crossingsColorBy: 'typePair',  // M25 — per the Debug-Overlay plan
         stressDistanceColoring: false,
         stressPairDistance: false,
+        bridgeChainDepth: false,
+        edgeConsolidationRatio: false,
     },
     layout: {
         crossings: false,
@@ -114,6 +133,8 @@ export const PRESETS: Record<PresetName, OverlayState> = {
         crossingsColorBy: 'none',
         stressDistanceColoring: false,
         stressPairDistance: false,
+        bridgeChainDepth: false,
+        edgeConsolidationRatio: false,
     },
     reductions: {
         crossings: false,
@@ -125,6 +146,8 @@ export const PRESETS: Record<PresetName, OverlayState> = {
         crossingsColorBy: 'none',
         stressDistanceColoring: false,
         stressPairDistance: false,
+        bridgeChainDepth: true,                 // M19 — show k=N on bridges
+        edgeConsolidationRatio: true,           // M20 — append ECR×N to compounds
     },
     defaults: { ...DEFAULT_OVERLAY_STATE },
     clear: {
@@ -137,6 +160,8 @@ export const PRESETS: Record<PresetName, OverlayState> = {
         crossingsColorBy: 'none',
         stressDistanceColoring: false,
         stressPairDistance: false,
+        bridgeChainDepth: false,
+        edgeConsolidationRatio: false,
     },
 };
 
@@ -210,6 +235,8 @@ export function countEnabledOverlays(state: OverlayState = currentState): number
         state.groupCardinality,
         state.stressDistanceColoring,
         state.stressPairDistance,
+        state.bridgeChainDepth,
+        state.edgeConsolidationRatio,
     ];
     return flags.filter(Boolean).length;
 }
@@ -346,9 +373,15 @@ function drawAll(): void {
         }
     }
 
-    // 5. M21 — compound-parent cardinality badges.
-    if (currentState.groupCardinality) {
-        applyGroupCardinalityBadges();
+    // 5. M21 (group cardinality) + M20 (ECR) — both touch compound-parent
+    //    labels. Apply them together so the originals get saved once.
+    if (currentState.groupCardinality || currentState.edgeConsolidationRatio) {
+        applyCompoundLabelAnnotations();
+    }
+
+    // M19 — chain-depth labels on bridge edges.
+    if (currentState.bridgeChainDepth) {
+        applyBridgeChainDepthLabels();
     }
 
     // M1 stress visualisations are bound separately (see
@@ -479,16 +512,36 @@ function addUnitEdge(
 }
 
 /**
- * M21 — append `(×N)` to every compound parent's label that has children.
- * Saves originals to `originalParentLabels` for restoration.
+ * Apply compound-parent label annotations for M21 (group cardinality)
+ * and M20 (edge consolidation ratio). Both modes target the same labels;
+ * doing them in a single pass keeps `originalParentLabels` consistent
+ * (one save per parent, regardless of which annotations are active).
  *
- * Idempotent: if a label already ends with `(×<digits>)`, leave it alone.
- * This protects (a) parents whose backend label already includes the count
- * (e.g. CVE_GROUP) and (b) repeated calls to `redraw()`.
+ * - M21 idempotency: if a label already ends with `(×<digits>)`, the
+ *   `×N` is skipped (CVE_GROUP backend labels already include their
+ *   count; we don't double-count).
+ * - M20: ECR×N.M is added for any compound parent that has synthetic
+ *   edges (i.e. outcomes-mode merge groups). Always added regardless
+ *   of pre-existing label suffix — it's a different metric.
+ *
+ * When both M20 and M21 are on, annotations compose:
+ *   Plain parent           → "(×4  ECR×2.8)"
+ *   CVE_GROUP "Outcome (×5)" → "Outcome (×5)  (ECR×3.4)"
+ *                              (M21 skipped; M20 appended in its own group)
  */
-function applyGroupCardinalityBadges(): void {
+function applyCompoundLabelAnnotations(): void {
     const cy = getCy();
     if (!cy) return;
+
+    const wantsM21 = currentState.groupCardinality;
+    const wantsM20 = currentState.edgeConsolidationRatio;
+
+    // Build per-parent ECR map only when needed.
+    const ecrPerParent = new Map<string, number>();
+    if (wantsM20) {
+        const ecrStats = computeEcr();
+        for (const p of ecrStats.perCompound) ecrPerParent.set(p.parentId, p.ecr);
+    }
 
     const card = computeCompoundCardinality();
     originalParentLabels = new Map();
@@ -499,16 +552,21 @@ function applyGroupCardinalityBadges(): void {
         const original = String(parent.data('label') ?? '');
         originalParentLabels.set(g.parentId, original);
 
-        if (/\(×\d+\)\s*$/.test(original)) continue;
+        const m21AlreadySuffixed = /\(×\d+\)\s*$/.test(original);
+        const m21Annotation = (wantsM21 && !m21AlreadySuffixed) ? `×${g.size}` : null;
+        const ecr = ecrPerParent.get(g.parentId);
+        const m20Annotation = (wantsM20 && ecr !== undefined) ? `ECR×${ecr.toFixed(1)}` : null;
 
-        const newLabel = original.length > 0
-            ? `${original}  (×${g.size})`
-            : `(×${g.size})`;
+        if (m21Annotation === null && m20Annotation === null) continue;
+
+        const annotations = [m21Annotation, m20Annotation].filter((a): a is string => a !== null);
+        const suffix = `(${annotations.join('  ')})`;
+        const newLabel = original.length > 0 ? `${original}  ${suffix}` : suffix;
         parent.data('label', newLabel);
     }
 }
 
-function clearGroupCardinalityBadges(): void {
+function clearCompoundLabelAnnotations(): void {
     if (!originalParentLabels) return;
     const cy = getCy();
     if (!cy) {
@@ -521,6 +579,57 @@ function clearGroupCardinalityBadges(): void {
         parent.data('label', original);
     }
     originalParentLabels = null;
+}
+
+// =============================================================================
+// M19 — bridge chain-depth labels on bridge edges
+// =============================================================================
+
+/** Edge ids where we set inline `label` style for the M19 overlay. */
+const bridgeLabeledIds = new Set<string>();
+
+const BRIDGE_LABEL_STYLE_KEYS = [
+    'label', 'font-size', 'font-weight', 'color',
+    'text-outline-color', 'text-outline-width', 'text-background-color',
+    'text-background-opacity', 'text-background-padding',
+];
+
+/**
+ * Render `k=N` labels on every visible bridge edge whose chain_length
+ * data attribute is a positive integer. Idempotent — re-rendering
+ * just resets the same inline style.
+ */
+function applyBridgeChainDepthLabels(): void {
+    const cy = getCy();
+    if (!cy) return;
+    cy.edges('[isBridge]').forEach(e => {
+        const chainRaw = e.data('chain_length');
+        const chain = typeof chainRaw === 'number' && Number.isFinite(chainRaw) ? chainRaw : 0;
+        if (chain <= 0) return;
+        e.style({
+            'label': `k=${chain}`,
+            'font-size': '11px',
+            'font-weight': 'bold',
+            'color': '#ffffff',
+            'text-outline-color': '#000000',
+            'text-outline-width': 2,
+        });
+        bridgeLabeledIds.add(e.id());
+    });
+}
+
+function clearBridgeChainDepthLabels(): void {
+    const cy = getCy();
+    if (!cy) {
+        bridgeLabeledIds.clear();
+        return;
+    }
+    bridgeLabeledIds.forEach(id => {
+        const edge = cy.getElementById(id);
+        if (edge.length === 0) return;
+        BRIDGE_LABEL_STYLE_KEYS.forEach(k => edge.removeStyle(k));
+    });
+    bridgeLabeledIds.clear();
 }
 
 // =============================================================================
@@ -790,7 +899,8 @@ function clearAll(): void {
         });
     }
     elementIds = [];
-    clearGroupCardinalityBadges();
+    clearCompoundLabelAnnotations();
+    clearBridgeChainDepthLabels();
 }
 
 // =============================================================================
@@ -841,6 +951,8 @@ export function validateState(raw: unknown): OverlayState {
         crossingsColorBy: colorBy,
         stressDistanceColoring: typeof r.stressDistanceColoring === 'boolean' ? r.stressDistanceColoring : DEFAULT_OVERLAY_STATE.stressDistanceColoring,
         stressPairDistance: typeof r.stressPairDistance === 'boolean' ? r.stressPairDistance : DEFAULT_OVERLAY_STATE.stressPairDistance,
+        bridgeChainDepth: typeof r.bridgeChainDepth === 'boolean' ? r.bridgeChainDepth : DEFAULT_OVERLAY_STATE.bridgeChainDepth,
+        edgeConsolidationRatio: typeof r.edgeConsolidationRatio === 'boolean' ? r.edgeConsolidationRatio : DEFAULT_OVERLAY_STATE.edgeConsolidationRatio,
     };
 }
 
@@ -869,6 +981,8 @@ const OVERLAY_KEYS: Array<keyof OverlayState> = [
     'groupCardinality',
     'stressDistanceColoring',
     'stressPairDistance',
+    'bridgeChainDepth',
+    'edgeConsolidationRatio',
 ];
 
 /**
