@@ -119,6 +119,26 @@ So BFS isn't a "simpler-but-less-correct" choice; it's **the** correct algorithm
 
 ---
 
+## Behaviour with compound nodes (CVE merge, ATTACKER_BOX)
+
+PAGDrawer's `merge by outcomes` and `merge by prerequisites` features create CVE_GROUP compound parents that wrap the merged CVEs. ATTACKER_BOX does the same for the initial-state VCs. Stress computation does **not** specially handle compound nodes — `computeStress()` includes every visible non-debug node returned by `cy.nodes(':visible')`, regardless of whether it's a compound parent, a compound child, or a regular node.
+
+The practical consequences vary by mode:
+
+| Mode | Compound parent | Compound children |
+|------|-----------------|-------------------|
+| **outcomes merge** | Has synthetic edges → contributes correctly to stress | Original edges are `display: none` → children are graph-disconnected from everything; appear as unreachable pairs |
+| **prereqs merge** | No synthetic edges → parent itself disconnected → appears in unreachable pairs | Original edges remain visible → children contribute correctly |
+| **ATTACKER_BOX** (always present) | No edges itself → adds to unreachable pairs | VCs inside have HAS_STATE edges → contribute correctly |
+
+So after `merge by outcomes`, you'll see `stress_unreachable_pairs` rise by roughly `|merged children| · (|V| − |merged children|)` — the children's pairs against everything else. The pairs that *do* count (reachable) compute the metric correctly; the unreachable inflation is noise on the side counter, not on the stress value itself.
+
+**This is documented behaviour, not a bug.** The metric remains internally consistent: every reachable pair has a well-defined symmetrised distance, and the unreachable count is reported transparently so a paper reviewer can disambiguate. If a future iteration wants cleaner numbers, the cleanest fix is to filter `getVisibleNodesWithIds()` to nodes that have at least one visible edge — that automatically excludes whichever of `parent`/`child` is the "ghost" layer in each merge mode. Tracked as a known limitation; intentionally not addressed in this iteration.
+
+When comparing stress across reduction steps in the paper, prefer the **normalised** values (`*_normalized_edge` / `_diagonal` / `_area`) and report `stress_reachable_pairs` alongside so the reader can see the denominator changing.
+
+---
+
 ## Edge cases and the "skip-and-report" convention
 
 Per `metric_proposals.md` the disconnected-graph convention is **skip-and-report**: unreachable pairs do not contribute to the mean (which would otherwise require an arbitrary "infinite distance" choice that distorts the number), but their count is exposed alongside the metric so they can't be silently swallowed.
