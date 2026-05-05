@@ -1324,6 +1324,35 @@ body {
     background: rgba(255, 255, 255, 0.02);
 }
 
+/* Group separator inside the Drawing Quality Metrics table.
+ * Visually breaks the long flat list into thematic sections.
+ * The :nth-child(even) zebra above can land on the header row;
+ * we override with a more specific selector. */
+.stats-table tr.stats-group-header td,
+.stats-table tr.stats-group-header:nth-child(even) td {
+    background: rgba(251, 191, 36, 0.10);  /* amber tint, dark-theme */
+    color: #fbbf24;
+    font-weight: bold;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding-top: 10px;
+    padding-bottom: 4px;
+    border-top: 1px solid rgba(251, 191, 36, 0.25);
+}
+
+/* First group header in the table doesn't need the top border. */
+.stats-table tr.stats-group-header:first-child td {
+    border-top: none;
+}
+
+.light-theme .stats-table tr.stats-group-header td,
+.light-theme .stats-table tr.stats-group-header:nth-child(even) td {
+    background: rgba(180, 83, 9, 0.08);
+    color: #b45309;
+    border-top-color: rgba(180, 83, 9, 0.25);
+}
+
 .stats-notes {
     margin-top: 12px;
     padding: 10px 12px;

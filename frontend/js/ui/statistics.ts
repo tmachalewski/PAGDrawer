@@ -306,113 +306,71 @@ function populateDrawingMetrics(): void {
         ? `${lastTrivyVulnCount}   (${scansLabel})`
         : '—';
     const noCrossings = m.crossingsRaw === 0;
-    const rows: Array<[string, string]> = [
-        ['Unique CVEs (graph)', String(m.uniqueCves)],
-        ['Trivy vulnerabilities (scans)', trivyLabel],
-        ['Edge crossings (raw)', String(m.crossingsRaw)],
-        ['Edge crossings (normalized, Purchase)', m.crossingsNormalized.toFixed(4) + '   (1 = no crossings)'],
-        ['Edge crossings per edge', m.crossingsPerEdge.toFixed(4) + '   (lower = cleaner)'],
-        [
-            'Mean crossing angle (M2)',
-            noCrossings ? '—' : m.crossingsMeanAngleDeg.toFixed(1) + '°   (90° = ideal)',
-        ],
-        [
-            'Minimum crossing angle (M2)',
-            noCrossings ? '—' : m.crossingsMinAngleDeg.toFixed(1) + '°   (worst case)',
-        ],
-        [
-            'Right-angle ratio (M2)',
-            noCrossings ? '—' : m.crossingsRightAngleRatio.toFixed(4) + '   (within ±15° of 90°)',
-        ],
-        [
-            'Top crossing type pair (M25)',
-            noCrossings
-                ? '—'
-                : `${m.crossingsTopPairLabel}   (${(m.crossingsTopPairShare * 100).toFixed(1)}%)`,
-        ],
-        [
-            'Stress per pair (M1)',
-            m.stressReachablePairs > 0
-                ? `${m.stressPerPair.toFixed(2)}   (${m.stressReachablePairs} pairs${m.stressUnreachablePairs > 0 ? `, ${m.stressUnreachablePairs} unreachable` : ''})`
-                : '—',
-        ],
-        [
-            'Stress / mean edge length (M1)',
-            m.stressReachablePairs > 0
-                ? `${m.stressPerPairNormalizedEdge.toFixed(4)}   (Kamada-Kawai, dimensionless)`
-                : '—',
-        ],
-        [
-            'Stress / bbox diagonal (M1)',
-            m.stressReachablePairs > 0
-                ? `${m.stressPerPairNormalizedDiagonal.toFixed(4)}   (dimensionless)`
-                : '—',
-        ],
-        [
-            'Stress / √area (M1)',
-            m.stressReachablePairs > 0
-                ? `${m.stressPerPairNormalizedArea.toFixed(4)}   (dimensionless)`
-                : '—',
-        ],
-        ['Drawing area (logical units²)', m.drawingArea.toFixed(2)],
-        [
-            'Bounding box (W × H)',
-            `${m.bboxWidth.toFixed(2)} × ${m.bboxHeight.toFixed(2)}`,
-        ],
-        ['Area per node (logical units²)', m.areaPerNode.toFixed(2) + '   (lower = denser)'],
-        ['Aspect ratio (M9)', m.aspectRatio.toFixed(4) + '   (1 = square)'],
-        ['Edge length CV', m.edgeLengthCV.toFixed(4) + '   (0 = uniform)'],
-        [
-            'Edge length mean / std',
-            m.edgeLengthMean > 0
-                ? `${m.edgeLengthMean.toFixed(2)}  /  ${m.edgeLengthStd.toFixed(2)}   (CV = ${(m.edgeLengthStd / m.edgeLengthMean).toFixed(4)})`
-                : '—',
-        ],
-        ['Compound groups (M21)', String(m.compoundGroupsCount)],
-        ['Largest compound group (M21)', String(m.compoundLargestGroupSize)],
-        ['Compound singleton fraction (M21)', m.compoundSingletonFraction.toFixed(4)],
-        [
-            'Compound size distribution (M21)',
-            formatSizeDistribution(m.compoundSizeDistribution),
-        ],
-        [
-            'Bridge edge proportion (M19)',
-            m.bridgeEdgeCount === 0
-                ? '—   (no visibility-toggle bridges)'
-                : `${m.bridgeEdgeProportion.toFixed(4)}   (${m.bridgeEdgeCount} bridges)`,
-        ],
-        [
-            'Mean contraction depth (M19)',
-            m.bridgeEdgeCount === 0
-                ? '—'
-                : `${m.meanContractionDepth.toFixed(2)}   (hidden hops per bridge)`,
-        ],
-        [
-            'Bridge chain-length distribution (M19)',
-            m.bridgeEdgeCount === 0
-                ? '—'
-                : formatSizeDistribution(m.bridgeChainLengthDistribution),
-        ],
-        [
-            'Edge consolidation ratio (M20, weighted)',
-            m.ecrCompoundsCount === 0
-                ? '—   (no synthetic-edge compounds)'
-                : `${m.meanEcrWeighted.toFixed(2)}×   (over ${m.ecrCompoundsCount} compounds)`,
-        ],
-        [
-            'Attribute compression ratio (M22)',
-            m.acrCveNodeCount === 0
-                ? '—   (no visible CVEs)'
-                : `prereqs ${m.acrCvePrereqs.toFixed(4)}  /  outcomes ${m.acrCveOutcomes.toFixed(4)}   (${m.acrCveNodeCount} CVEs)`,
-        ],
+    const noStress = m.stressReachablePairs === 0;
+
+    // Grouped row structure. A "group" header gives the visual separator;
+    // each "row" is the same [label, value] pair as before. Order within
+    // groups is deliberate — the most-cited / paper-headline metric in
+    // each section comes first.
+    type Row = { kind: 'group'; label: string } | { kind: 'row'; label: string; value: string };
+    const rows: Row[] = [
+        { kind: 'group', label: 'Counts' },
+        { kind: 'row', label: 'Unique CVEs (graph)', value: String(m.uniqueCves) },
+        { kind: 'row', label: 'Trivy vulnerabilities (scans)', value: trivyLabel },
+
+        { kind: 'group', label: 'Edge crossings (M2 + M25)' },
+        { kind: 'row', label: 'Edge crossings (raw)', value: String(m.crossingsRaw) },
+        { kind: 'row', label: 'Edge crossings (normalized, Purchase)', value: m.crossingsNormalized.toFixed(4) + '   (1 = no crossings)' },
+        { kind: 'row', label: 'Edge crossings per edge', value: m.crossingsPerEdge.toFixed(4) + '   (lower = cleaner)' },
+        { kind: 'row', label: 'Mean crossing angle (M2)', value: noCrossings ? '—' : m.crossingsMeanAngleDeg.toFixed(1) + '°   (90° = ideal)' },
+        { kind: 'row', label: 'Minimum crossing angle (M2)', value: noCrossings ? '—' : m.crossingsMinAngleDeg.toFixed(1) + '°   (worst case)' },
+        { kind: 'row', label: 'Right-angle ratio (M2)', value: noCrossings ? '—' : m.crossingsRightAngleRatio.toFixed(4) + '   (within ±15° of 90°)' },
+        { kind: 'row', label: 'Top crossing type pair (M25)', value: noCrossings ? '—' : `${m.crossingsTopPairLabel}   (${(m.crossingsTopPairShare * 100).toFixed(1)}%)` },
+
+        { kind: 'group', label: 'Layout fidelity — Stress (M1)' },
+        { kind: 'row', label: 'Stress per pair (raw)', value: noStress ? '—' : `${m.stressPerPair.toFixed(2)}   (${m.stressReachablePairs} pairs${m.stressUnreachablePairs > 0 ? `, ${m.stressUnreachablePairs} unreachable` : ''})` },
+        { kind: 'row', label: 'Stress / mean edge length', value: noStress ? '—' : `${m.stressPerPairNormalizedEdge.toFixed(4)}   (Kamada-Kawai, dimensionless)` },
+        { kind: 'row', label: 'Stress / bbox diagonal', value: noStress ? '—' : `${m.stressPerPairNormalizedDiagonal.toFixed(4)}   (dimensionless)` },
+        { kind: 'row', label: 'Stress / √area', value: noStress ? '—' : `${m.stressPerPairNormalizedArea.toFixed(4)}   (dimensionless)` },
+
+        { kind: 'group', label: 'Layout geometry' },
+        { kind: 'row', label: 'Drawing area (logical units²)', value: m.drawingArea.toFixed(2) },
+        { kind: 'row', label: 'Bounding box (W × H)', value: `${m.bboxWidth.toFixed(2)} × ${m.bboxHeight.toFixed(2)}` },
+        { kind: 'row', label: 'Area per node (logical units²)', value: m.areaPerNode.toFixed(2) + '   (lower = denser)' },
+        { kind: 'row', label: 'Aspect ratio (M9)', value: m.aspectRatio.toFixed(4) + '   (1 = square)' },
+        { kind: 'row', label: 'Edge length CV', value: m.edgeLengthCV.toFixed(4) + '   (0 = uniform)' },
+        { kind: 'row', label: 'Edge length mean / std', value: m.edgeLengthMean > 0 ? `${m.edgeLengthMean.toFixed(2)}  /  ${m.edgeLengthStd.toFixed(2)}   (CV = ${(m.edgeLengthStd / m.edgeLengthMean).toFixed(4)})` : '—' },
+
+        { kind: 'group', label: 'Reductions: bridges + merges (M19 + M20 + M21)' },
+        { kind: 'row', label: 'Bridge edge proportion (M19)', value: m.bridgeEdgeCount === 0 ? '—   (no visibility-toggle bridges)' : `${m.bridgeEdgeProportion.toFixed(4)}   (${m.bridgeEdgeCount} bridges)` },
+        { kind: 'row', label: 'Mean contraction depth (M19)', value: m.bridgeEdgeCount === 0 ? '—' : `${m.meanContractionDepth.toFixed(2)}   (hidden hops per bridge)` },
+        { kind: 'row', label: 'Bridge chain-length distribution (M19)', value: m.bridgeEdgeCount === 0 ? '—' : formatSizeDistribution(m.bridgeChainLengthDistribution) },
+        { kind: 'row', label: 'Edge consolidation ratio (M20, weighted)', value: m.ecrCompoundsCount === 0 ? '—   (no synthetic-edge compounds)' : `${m.meanEcrWeighted.toFixed(2)}×   (over ${m.ecrCompoundsCount} compounds)` },
+        { kind: 'row', label: 'Compound groups (M21)', value: String(m.compoundGroupsCount) },
+        { kind: 'row', label: 'Largest compound group (M21)', value: String(m.compoundLargestGroupSize) },
+        { kind: 'row', label: 'Compound singleton fraction (M21)', value: m.compoundSingletonFraction.toFixed(4) },
+        { kind: 'row', label: 'Compound size distribution (M21)', value: formatSizeDistribution(m.compoundSizeDistribution) },
+
+        { kind: 'group', label: 'Reduction potential (M22)' },
+        { kind: 'row', label: 'Attribute compression ratio (M22)', value: m.acrCveNodeCount === 0 ? '—   (no visible CVEs)' : `prereqs ${m.acrCvePrereqs.toFixed(4)}  /  outcomes ${m.acrCveOutcomes.toFixed(4)}   (${m.acrCveNodeCount} CVEs)` },
     ];
 
-    rows.forEach(([label, value]) => {
+    rows.forEach(item => {
+        if (item.kind === 'group') {
+            const tr = document.createElement('tr');
+            tr.className = 'stats-group-header';
+            const td = document.createElement('td');
+            td.colSpan = 2;
+            td.textContent = item.label;
+            tr.appendChild(td);
+            tableBody.appendChild(tr);
+            return;
+        }
         const tr = document.createElement('tr');
         const td1 = document.createElement('td');
-        td1.textContent = label;
+        td1.textContent = item.label;
         const td2 = document.createElement('td');
-        td2.textContent = value;
+        td2.textContent = item.value;
         tr.appendChild(td1);
         tr.appendChild(td2);
         tableBody.appendChild(tr);
