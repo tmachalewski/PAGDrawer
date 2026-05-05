@@ -194,6 +194,8 @@ computeCompoundCardinalityFromCounts(counts) → CompoundCardinality  // M21 —
 computeCrossingAngle(a, b) → number                              // M2  — acute angle ∈ [0, π/2]
 computeCrossingAngleStats(crossings, tolRad?)                    // M2  — {meanRad, minRad, rightAngleRatio}
 computeTypePairCrossingStats(crossings)                          // M25 — {distribution, topPairLabel, topPairShare}
+computeAcr() → {acrPrereqs, acrOutcomes, nodeCount}              // M22 — live cy
+computeAcrFromKeys(cveData) → {acrPrereqs, acrOutcomes, nodeCount}  // M22 — pure helper
 computeAPSP(nodeIds, edges, opts?) → Map<string, Map<string, number>>  // BFS APSP, default directed, unweighted
 symmetrizedDistance(apsp, a, b) → number | undefined              // min of two directed paths
 computeStress() → StressBundle                                   // M1  — raw + 3 normalisations
@@ -298,6 +300,29 @@ Overlay: appends `(ECR×N.M)` to compound parent labels. Composes with M21's `(�
 - M21 alone: `Outcome XYZ  (×5)`
 - M20 alone: `Outcome XYZ  (ECR×3.4)`
 - Both: `Outcome XYZ  (×5  ECR×3.4)` (or `Outcome XYZ (×5)  (ECR×3.4)` when the backend label already includes the count)
+
+### M22 — Attribute Compression Ratio (CVE keys)
+
+For a set of CVE nodes $V_{\mathrm{cve}}$ and a key function $k$:
+
+$$
+\mathrm{ACR}(k) = \frac{|\{ k(v) : v \in V_{\mathrm{cve}} \}|}{|V_{\mathrm{cve}}|} \in (0, 1]
+$$
+
+**ACR = 1** means every CVE has a unique key — no merge could compress them. **ACR → 0** means most CVEs collapse into the same bucket. The metric reports the **structural upper bound** on what the merge mechanism could achieve.
+
+PAGDrawer reports two values, one per merge mode:
+- `acr_cve_prereqs` — distinct prereq-keys / `|CVE|`
+- `acr_cve_outcomes` — distinct outcome-keys / `|CVE|`
+- `acr_cve_node_count` — denominator
+
+The two values let a paper compare how compressible the same data is under each merge convention. A low `acr_cve_outcomes` (e.g. 0.32) and high `acr_cve_prereqs` (e.g. 0.68) on the same scan justifies "outcomes-merge for compression, prereqs-merge for grouping" framing.
+
+**Implementation.** The merge-key functions live in `frontend/js/features/mergeKeys.ts` (extracted from `cveMerge.ts` so the metric and the merge mechanism share the same key contract). The pure helper `computeAcrFromKeys(cveData)` takes plain `CveKeyData` records and returns the two ACRs in a single pass; the live `computeAcr()` walks `cy.nodes(':visible[type="CVE"]')` and delegates.
+
+**Scope.** Computed over **visible** CVE nodes (excluding exploit-hidden), **including** CVEs currently inside a CVE_GROUP — they remain `:visible` (rendered as small dots inside the parent box). The metric measures structural compression potential across the visible set, regardless of merge state.
+
+**Overlay.** ❌ none — ACR has no spatial location. CSV / JSON / modal only.
 
 ### M9 — Aspect Ratio
 

@@ -22,6 +22,7 @@ Twelve metrics across two papers' worth of GD literature, plus three normalised 
 | M19 | Bridge edge proportion + depth      | Mechanism-specific    | 2 scalars + dict      | ✓      |
 | M20 | Edge consolidation ratio (weighted) | Mechanism-specific    | scalar                | ✓      |
 | M21 | Compound group cardinality          | Mechanism-specific    | 3 scalars + dict      | ✓      |
+| M22 | Attribute compression ratio (CVE)   | Mechanism-specific    | 2 scalars + denominator | ✓    |
 | M25 | Type-pair crossing decomposition    | Type-aware            | scalar + label + dict | ✓      |
 
 Plus the existing baseline: **node count**, **edge count**, **edge crossings (raw)**, **crossings normalised** (Purchase 2002), **crossings per edge**, **drawing area**, **bbox width**, **bbox height**, **area per node**, **edge length CV**, **unique CVE count**, **Trivy vulnerability total**.
@@ -160,6 +161,36 @@ For every compound parent $p$ across all types (CVE_GROUP, COMPOUND/ATTACKER_BOX
 
 **Visualisation.** Toggle appends `(×N)` to every compound parent's label. Idempotent — skips parents whose backend label already includes `(×<digits>)` (e.g. CVE_GROUP).
 
+### M22 — Attribute compression ratio (CVE keys)
+
+For a set of CVE nodes $V_{\mathrm{cve}}$ and a key function $k$ (one of `prereqs` / `outcomes`):
+
+$$
+\mathrm{ACR}(k) = \frac{|\{ k(v) : v \in V_{\mathrm{cve}} \}|}{|V_{\mathrm{cve}}|} \in (0, 1]
+$$
+
+ACR = 1 → every CVE has a unique key, no compression possible. ACR → 0 → many CVEs share the same key, the merge would consolidate them.
+
+**Two reported values, one per key function.**
+
+| Field                     | Predicts compression of      |
+|---------------------------|------------------------------|
+| `acr_cve_prereqs`         | `merge by prerequisites`     |
+| `acr_cve_outcomes`        | `merge by outcomes`          |
+| `acr_cve_node_count`      | denominator (visible CVEs)   |
+
+**What it measures.** The structural upper bound on what either merge mode could achieve, computed before any merge has been applied. Predicts per-image reducibility — a paper can cite "outcomes-merge could reduce 87 CVEs to 28 (ACR=0.32) without information loss" as a property of the *data*, independent of whether the user actually performed the merge.
+
+**Why both values matter for the paper.** Reporting both lets the methodology section say:
+
+> Outcomes-merge would compress the visible CVEs to ACR = 0.32; prereqs-merge would compress to ACR = 0.68. Outcomes-merge is therefore the more aggressive consolidation on this data, justifying its choice for the headline reduction in our pipeline. Prereqs-merge remains useful as a grouping-without-compression alternative — see the appendix for that variant.
+
+**Implementation.** Merge-key functions live in `mergeKeys.ts` (extracted from `cveMerge.ts` in Stage 5 so the metric and the merge mechanism share the same key contract). The pure helper `computeAcrFromKeys(cveData)` takes plain `CveKeyData` records and is unit-tested without Cytoscape; the live `computeAcr()` wraps `cy.nodes(':visible[type="CVE"]')` and delegates.
+
+**Scope.** Visible CVE nodes (`:visible` excludes exploit-hidden via `display: none`). Children of CVE_GROUP compounds are included — they remain `:visible` (rendered as small dots inside the parent box). The metric is invariant to merge state.
+
+**Overlay.** ❌ none. ACR has no spatial location. CSV / JSON / modal only.
+
 ### M25 — Type-pair crossing decomposition
 
 Tag every crossing $(e_1, e_2)$ with the lexicographically-sorted pair of edge types:
@@ -200,6 +231,7 @@ Tighter granularity (e.g. CVE per HOST → CVE per CWE → CVE singular) collaps
 | M21 compound_*               | unchanged | granularity doesn't create compounds |
 | M19 bridge_*                 | unchanged | no visibility toggle yet |
 | M20 ECR                      | unchanged | no merge yet |
+| **M22 ACR (both)**           | ⚠ direction varies | tightening granularity collapses duplicate CVEs into one — both numerator (distinct keys) and denominator drop. If duplicates shared a key, denominator drops faster → ACR ↑ (closer to 1). If duplicates had distinct keys (e.g. different chain_depth), numerator and denominator drop equally → ACR ≈ unchanged. |
 | M25 top_pair_label           | may shift | sometimes the dominant pair changes when one type compresses |
 
 ### Visibility toggles (hide CWE, hide TI, etc.)
@@ -218,6 +250,7 @@ Each hide creates bridge edges replacing the path through the hidden type.
 | M19 mean_contraction_depth   | concrete | hiding 1 layer → 1.0; hiding two adjacent layers → 2.0; hiding three chained → up to 3.0. The actual mean is `Σ chain_length / |bridges|`, so it's a true mean only when *all* bridges share the same depth. |
 | M20 ECR                      | ≈         | no compound parents yet |
 | M21 compound_*               | unchanged | for typical hides (CWE/TI/CPE). Hiding **VC** would empty ATTACKER_BOX → M21 numbers would drop. |
+| **M22 ACR (both)**           | unchanged | visibility doesn't change the CVE set or their key data |
 | M25 top_pair_label           | shifts ↑↑ | which edge-type pair dominates changes after each layer hide |
 
 ### CVE merge by outcomes
@@ -236,6 +269,7 @@ Groups CVEs sharing an outcome key into compound parents; original CVE↔outside
 | M20 ECR                      | 0 → > 1   | the headline number for this mechanism |
 | M21 compound_groups_count    | ↑ ↑       | every merge group adds a parent |
 | M21 largest_group_size       | tracks merge concentration | |
+| **M22 ACR (both)**           | unchanged | the metric is structural; merge doesn't change CVE data, only their compound parents. **acr_cve_outcomes ≈ 1 / mean_ecr_weighted** post-merge — the ACR is the structural rate the merge actually achieved. |
 | M25 top_pair_label           | may shift to synthetic types (`SYN_…`) | |
 
 ### Exploit Paths filter
@@ -249,6 +283,7 @@ Hides nodes/edges that aren't on a path from initial state to terminal goals.
 | stress_per_pair_*            | ↓         | smaller surviving graph |
 | stress_unreachable_pairs     | ↓         | many unreachable pairs are now invisible |
 | M19, M20, M21                | unchanged structurally | counts may drop as hidden compounds excluded (visibility filter applied per metric) |
+| **M22 ACR (both)**           | ⚠         | hidden CVEs are excluded; both numerator and denominator drop; net direction depends on whether the hidden subset shared keys |
 | M9 aspect_ratio              | ⚠         | layout may not relayout; bbox of survivors only |
 
 ### Composing mechanisms

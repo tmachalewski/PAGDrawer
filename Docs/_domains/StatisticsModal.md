@@ -122,7 +122,7 @@ Single click → single-row CSV downloads as `pagdrawer-metrics-YYYY-MM-DD-HH-mm
 Columns:
 
 ```
-nodes,edges,unique_cves,trivy_vuln_count,crossings_raw,crossings_normalized,crossings_per_edge,drawing_area,bbox_width,bbox_height,area_per_node,edge_length_cv,aspect_ratio,compound_groups_count,compound_largest_group_size,compound_singleton_fraction,crossings_mean_angle_deg,crossings_min_angle_deg,crossings_right_angle_ratio,crossings_top_pair_share,crossings_top_pair_label,stress_per_pair,stress_per_pair_normalized_edge,stress_per_pair_normalized_diagonal,stress_per_pair_normalized_area,stress_unreachable_pairs,stress_reachable_pairs,bridge_edge_proportion,mean_contraction_depth,bridge_edge_count,mean_ecr_weighted,ecr_compounds_count
+nodes,edges,unique_cves,trivy_vuln_count,crossings_raw,crossings_normalized,crossings_per_edge,drawing_area,bbox_width,bbox_height,area_per_node,edge_length_cv,aspect_ratio,compound_groups_count,compound_largest_group_size,compound_singleton_fraction,crossings_mean_angle_deg,crossings_min_angle_deg,crossings_right_angle_ratio,crossings_top_pair_share,crossings_top_pair_label,stress_per_pair,stress_per_pair_normalized_edge,stress_per_pair_normalized_diagonal,stress_per_pair_normalized_area,stress_unreachable_pairs,stress_reachable_pairs,bridge_edge_proportion,mean_contraction_depth,bridge_edge_count,mean_ecr_weighted,ecr_compounds_count,acr_cve_prereqs,acr_cve_outcomes,acr_cve_node_count
 ```
 
 Two variable-cardinality dictionaries are intentionally **not** flattened into CSV because they would produce non-stable headers across runs:
@@ -227,7 +227,10 @@ Click 📄 **Export JSON** and a `pagdrawer-metrics-YYYY-MM-DD-HH-mm.json` file 
     "ecr_per_compound": [
       { "parentId": "cve_merge_outcomes_outcome_x", "ecr": 3.4, "childCount": 8 },
       { "parentId": "cve_merge_outcomes_outcome_y", "ecr": 2.1, "childCount": 5 }
-    ]
+    ],
+    "acr_cve_prereqs": 0.6800,                    // M22 — distinct prereq keys / |CVE|
+    "acr_cve_outcomes": 0.3200,                    // M22 — distinct outcome keys / |CVE|
+    "acr_cve_node_count": 87                       // denominator
   }
 }
 ```
