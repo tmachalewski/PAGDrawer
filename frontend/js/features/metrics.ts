@@ -28,6 +28,8 @@ export interface DrawingMetrics {
     bboxHeight: number;            // bounding-box height (maxY - minY), 0 if empty
     areaPerNode: number;           // drawing area / |V|, 0 if |V| = 0
     edgeLengthCV: number;          // std / mean, 0 if undefined
+    edgeLengthMean: number;        // mean of edge lengths in logical units; 0 for empty
+    edgeLengthStd: number;         // population std (matches Purchase 2002 / divides by N)
     uniqueCves: number;            // distinct base CVE IDs in the live graph (:dN/@... stripped)
     aspectRatio: number;           // M9: min(w,h)/max(w,h) of bbox, [0, 1] (1 = square)
     compoundLargestGroupSize: number; // M21: max children among compound parents
@@ -329,8 +331,11 @@ export function computeMetrics(): DrawingMetrics | null {
     const areaPerNode = nodeCount > 0 ? drawingArea / nodeCount : 0;
     const aspectRatio = computeAspectRatio(bbox);
 
-    // 3. Edge length CV
+    // 3. Edge length CV — and the components, exposed separately so a paper
+    //    reader can verify CV = std / mean against the same numbers.
     const edgeLengthCV = computeEdgeLengthCV(edges);
+    const edgeLengthMean = computeMeanEdgeLength(edges);
+    const edgeLengthStd = computeEdgeLengthStd(edges);
 
     // 5. M21 — compound-parent cardinality (largest group + singleton fraction)
     const compound = computeCompoundCardinality();
@@ -370,6 +375,8 @@ export function computeMetrics(): DrawingMetrics | null {
         bboxHeight,
         areaPerNode,
         edgeLengthCV,
+        edgeLengthMean,
+        edgeLengthStd,
         uniqueCves,
         aspectRatio,
         compoundLargestGroupSize: compound.largestGroupSize,
@@ -827,6 +834,8 @@ export function metricsToCSV(m: DrawingMetrics, context: MetricsCsvContext = {})
         'bbox_height',
         'area_per_node',
         'edge_length_cv',
+        'edge_length_mean',
+        'edge_length_std',
         'aspect_ratio',
         'compound_groups_count',
         'compound_largest_group_size',
@@ -864,6 +873,8 @@ export function metricsToCSV(m: DrawingMetrics, context: MetricsCsvContext = {})
         m.bboxHeight.toFixed(2),
         m.areaPerNode.toFixed(2),
         m.edgeLengthCV.toFixed(4),
+        m.edgeLengthMean.toFixed(2),
+        m.edgeLengthStd.toFixed(2),
         m.aspectRatio.toFixed(4),
         m.compoundGroupsCount,
         m.compoundLargestGroupSize,
@@ -1604,6 +1615,8 @@ export function metricsToJsonObject(
         bbox_height: m.bboxHeight,
         area_per_node: m.areaPerNode,
         edge_length_cv: m.edgeLengthCV,
+        edge_length_mean: m.edgeLengthMean,
+        edge_length_std: m.edgeLengthStd,
         aspect_ratio: m.aspectRatio,
         compound_groups_count: m.compoundGroupsCount,
         compound_largest_group_size: m.compoundLargestGroupSize,

@@ -362,6 +362,12 @@ function populateDrawingMetrics(): void {
         ['Area per node (logical units²)', m.areaPerNode.toFixed(2) + '   (lower = denser)'],
         ['Aspect ratio (M9)', m.aspectRatio.toFixed(4) + '   (1 = square)'],
         ['Edge length CV', m.edgeLengthCV.toFixed(4) + '   (0 = uniform)'],
+        [
+            'Edge length mean / std',
+            m.edgeLengthMean > 0
+                ? `${m.edgeLengthMean.toFixed(2)}  /  ${m.edgeLengthStd.toFixed(2)}   (CV = ${(m.edgeLengthStd / m.edgeLengthMean).toFixed(4)})`
+                : '—',
+        ],
         ['Compound groups (M21)', String(m.compoundGroupsCount)],
         ['Largest compound group (M21)', String(m.compoundLargestGroupSize)],
         ['Compound singleton fraction (M21)', m.compoundSingletonFraction.toFixed(4)],

@@ -1029,6 +1029,8 @@ describe('metricsToCSV', () => {
         bboxHeight: 61.73,
         areaPerNode: 1234.567,
         edgeLengthCV: 0.42,
+        edgeLengthMean: 100,
+        edgeLengthStd: 42,
         uniqueCves: 7,
         aspectRatio: 0.5,
         compoundLargestGroupSize: 5,
@@ -1066,14 +1068,14 @@ describe('metricsToCSV', () => {
         const csv = metricsToCSV(baseMetrics);
         const lines = csv.trim().split('\n');
         expect(lines.length).toBe(2);
-        expect(lines[0]).toBe('nodes,edges,unique_cves,trivy_vuln_count,crossings_raw,crossings_normalized,crossings_per_edge,drawing_area,bbox_width,bbox_height,area_per_node,edge_length_cv,aspect_ratio,compound_groups_count,compound_largest_group_size,compound_singleton_fraction,crossings_mean_angle_deg,crossings_min_angle_deg,crossings_right_angle_ratio,crossings_top_pair_share,crossings_top_pair_label,stress_per_pair,stress_per_pair_normalized_edge,stress_per_pair_normalized_diagonal,stress_per_pair_normalized_area,stress_unreachable_pairs,stress_reachable_pairs,bridge_edge_proportion,mean_contraction_depth,bridge_edge_count,mean_ecr_weighted,ecr_compounds_count,acr_cve_prereqs,acr_cve_outcomes,acr_cve_node_count');
-        expect(lines[1]).toBe('10,15,7,,3,0.9500,0.2000,12345.67,200.00,61.73,1234.57,0.4200,0.5000,4,5,0.2500,67.50,30.00,0.5000,0.6000,HAS_VULN×LEADS_TO,12.50,0.5000,0.0125,0.0250,4,41,0.2000,1.5000,3,2.4000,2,0.6800,0.3200,87');
+        expect(lines[0]).toBe('nodes,edges,unique_cves,trivy_vuln_count,crossings_raw,crossings_normalized,crossings_per_edge,drawing_area,bbox_width,bbox_height,area_per_node,edge_length_cv,edge_length_mean,edge_length_std,aspect_ratio,compound_groups_count,compound_largest_group_size,compound_singleton_fraction,crossings_mean_angle_deg,crossings_min_angle_deg,crossings_right_angle_ratio,crossings_top_pair_share,crossings_top_pair_label,stress_per_pair,stress_per_pair_normalized_edge,stress_per_pair_normalized_diagonal,stress_per_pair_normalized_area,stress_unreachable_pairs,stress_reachable_pairs,bridge_edge_proportion,mean_contraction_depth,bridge_edge_count,mean_ecr_weighted,ecr_compounds_count,acr_cve_prereqs,acr_cve_outcomes,acr_cve_node_count');
+        expect(lines[1]).toBe('10,15,7,,3,0.9500,0.2000,12345.67,200.00,61.73,1234.57,0.4200,100.00,42.00,0.5000,4,5,0.2500,67.50,30.00,0.5000,0.6000,HAS_VULN×LEADS_TO,12.50,0.5000,0.0125,0.0250,4,41,0.2000,1.5000,3,2.4000,2,0.6800,0.3200,87');
     });
 
     it('populates trivy_vuln_count when provided via context', () => {
         const csv = metricsToCSV(baseMetrics, { trivyVulnCount: 189 });
         const lines = csv.trim().split('\n');
-        expect(lines[1]).toBe('10,15,7,189,3,0.9500,0.2000,12345.67,200.00,61.73,1234.57,0.4200,0.5000,4,5,0.2500,67.50,30.00,0.5000,0.6000,HAS_VULN×LEADS_TO,12.50,0.5000,0.0125,0.0250,4,41,0.2000,1.5000,3,2.4000,2,0.6800,0.3200,87');
+        expect(lines[1]).toBe('10,15,7,189,3,0.9500,0.2000,12345.67,200.00,61.73,1234.57,0.4200,100.00,42.00,0.5000,4,5,0.2500,67.50,30.00,0.5000,0.6000,HAS_VULN×LEADS_TO,12.50,0.5000,0.0125,0.0250,4,41,0.2000,1.5000,3,2.4000,2,0.6800,0.3200,87');
     });
 
     it('CSV-quotes a top-pair label that contains a comma or quote', () => {
@@ -1107,6 +1109,8 @@ describe('JSON metrics export (schema v1)', () => {
         bboxHeight: 61.73,
         areaPerNode: 1234.567,
         edgeLengthCV: 0.42,
+        edgeLengthMean: 100,
+        edgeLengthStd: 42,
         uniqueCves: 7,
         aspectRatio: 0.5,
         compoundLargestGroupSize: 5,
@@ -1200,6 +1204,8 @@ describe('JSON metrics export (schema v1)', () => {
             bbox_height: 61.73,
             area_per_node: 1234.567,
             edge_length_cv: 0.42,
+            edge_length_mean: 100,
+            edge_length_std: 42,
             aspect_ratio: 0.5,
             compound_groups_count: 4,
             compound_largest_group_size: 5,
@@ -1293,6 +1299,8 @@ describe('JSON metrics export (schema v1)', () => {
             'ecr_compounds_count',
             'ecr_per_compound',
             'edge_length_cv',
+            'edge_length_mean',
+            'edge_length_std',
             'edges',
             'mean_contraction_depth',
             'mean_ecr_weighted',
