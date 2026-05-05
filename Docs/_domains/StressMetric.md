@@ -71,7 +71,7 @@ Run **directed** BFS for the APSP matrix. For each unordered pair, use the short
 2. `symmetrizedDistance(apsp, a, b)` returns `min(d(a→b), d(b→a))`, or `undefined` when neither direction is reachable.
 3. `computeStressFromAPSP(nodes, apsp)` iterates the upper triangle of pairs, calls `symmetrizedDistance` for each, and accumulates the squared difference against `‖p_i − p_j‖_2`. Unreachable pairs are excluded from the mean and reported separately.
 
-The exposed `directed` option on `computeAPSP` is `true` by default; passing `{ directed: false }` gives the undirected variant for callers that want it (e.g. a future Option-1 stress sub-metric, or M11/M12 on graphs where directionality isn't load-bearing).
+The exposed `directed` option on `computeAPSP` is `true` by default; passing `{ directed: false }` gives the undirected variant for callers that want it (e.g. a future Option-1 stress sub-metric for comparison purposes). Stage 7's M11 (k-NN preservation) and M12 (trustworthiness) will reuse M1's APSP and therefore inherit the **directed** choice — they don't independently need an undirected variant.
 
 ### Reported scalars
 
@@ -129,7 +129,7 @@ The practical consequences vary by mode:
 |------|-----------------|-------------------|
 | **outcomes merge** | Has synthetic edges → contributes correctly to stress | Original edges are `display: none` → children are graph-disconnected from everything; appear as unreachable pairs |
 | **prereqs merge** | No synthetic edges → parent itself disconnected → appears in unreachable pairs | Original edges remain visible → children contribute correctly |
-| **ATTACKER_BOX** (always present) | No edges itself → adds to unreachable pairs | VCs inside have HAS_STATE edges → contribute correctly |
+| **ATTACKER_BOX** (always present) | No edges itself → contributes a small fixed amount of noise (ATTACKER_BOX vs every other node is one unreachable pair) | VCs inside have HAS_STATE edges → contribute correctly. The ATTACKER node itself (separate from ATTACKER_BOX) is also always visible and connected. |
 
 So after `merge by outcomes`, you'll see `stress_unreachable_pairs` rise by roughly `|merged children| · (|V| − |merged children|)` — the children's pairs against everything else. The pairs that *do* count (reachable) compute the metric correctly; the unreachable inflation is noise on the side counter, not on the stress value itself.
 

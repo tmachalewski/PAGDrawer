@@ -260,7 +260,7 @@ CSV columns: `crossings_top_pair_share`, `crossings_top_pair_label`. The label i
 
 ### Crossings overlay coloring (M2 + M25 share the dot)
 
-The Debug Overlay Settings modal exposes a radio group `Crossings — color dots by`:
+The Debug Overlay Settings modal exposes a **radio group** `Crossings — color dots by` — exactly one of the three modes is active at any time. M2 and M25 cannot both colour the dots simultaneously; they're alternative readings of the same overlay element. The user-facing scalars (M2 mean angle, M25 top pair) are computed and reported regardless of which colouring mode is selected — only the visual rendering depends on the radio:
 
 - `none` — keep the stylesheet's default red (#ff2d55), back-compat with v0
 - `angle` (M2) — interpolate `hsl(hue, 75%, 50%)` with hue ∈ `[0°, 120°]` mapped from angle ∈ `[0, π/2]` (red = acute → yellow ≈ 45° → green ≈ 90°)

@@ -85,7 +85,7 @@ Three derived scalars:
 
 **What it measures.** Path-tracing readability. Larger angles ease visual disambiguation; mean closer to 90° and high RAC indicate easier-to-read crossings.
 
-**Visualisation.** Crossings are already drawn as red dots (Purchase-style debug overlay). M2 toggles colour them by angle: $\mathrm{HSL}(120^\circ \cdot \theta / (\pi/2),\, 75\%, 50\%)$. Red ≈ acute / bad; green ≈ orthogonal / good.
+**Visualisation.** Crossings are already drawn as red dots (Purchase-style debug overlay). M2 and M25 share that dot — they're a **radio group** in the Debug Overlay Settings modal (`none / angle / typePair`), exactly one mode active at a time. With M2 selected: $\mathrm{HSL}(120^\circ \cdot \theta / (\pi/2),\, 75\%, 50\%)$. Red ≈ acute / bad; green ≈ orthogonal / good. The M2 and M25 *scalars* are always computed; only the colouring is mutually exclusive.
 
 ### M9 — Aspect ratio
 
@@ -177,7 +177,7 @@ Tie-breaking on top: lexicographic on the label key (deterministic, important fo
 
 **What it measures.** Pure-novelty exploiting PAGDrawer's typed schema. Identifies which pair of edge types is causing the bulk of visual cost. Useful for selecting *which* layer to hide first.
 
-**Visualisation.** Crossing dots coloured by type pair (10-colour categorical palette ordered by frequency, most-common pair = red).
+**Visualisation.** Crossing dots coloured by type pair (10-colour categorical palette ordered by frequency, most-common pair = red). Mutually exclusive with M2 angle colouring — see M2 above.
 
 ---
 
@@ -209,15 +209,15 @@ Each hide creates bridge edges replacing the path through the hidden type.
 | Metric                       | Direction | Why |
 |------------------------------|-----------|-----|
 | $|V|$                        | ↓ ↓       | whole layer removed |
-| $|E|$                        | ⚠         | originals removed but bridges added; net depends on chain branching |
+| $|E|$                        | ↓ typically | bridges (one per pred-succ pair) usually replace more originals than they add. Edge count rises only when a hidden node has very high in/out branching. |
 | crossings_raw                | ↓ ↓ ↓     | typically the largest single-step drop |
 | crossings_per_edge           | ↓         | layout simplifies |
 | stress_per_pair_*            | ↓         | shorter chains → easier to lay out faithfully |
 | M2 mean_angle_deg            | ↑         | survivors are usually structural (orthogonal) |
 | M19 bridge_edge_proportion   | 0 → > 0   | by construction |
-| M19 mean_contraction_depth   | = 1, then accumulates | hide CWE → 1, hide CWE+TI → 2 (chained bridges) |
+| M19 mean_contraction_depth   | concrete | hiding 1 layer → 1.0; hiding two adjacent layers → 2.0; hiding three chained → up to 3.0. The actual mean is `Σ chain_length / |bridges|`, so it's a true mean only when *all* bridges share the same depth. |
 | M20 ECR                      | ≈         | no compound parents yet |
-| M21 compound_*               | unchanged ⚠ | unless ATTACKER_BOX changes |
+| M21 compound_*               | unchanged | for typical hides (CWE/TI/CPE). Hiding **VC** would empty ATTACKER_BOX → M21 numbers would drop. |
 | M25 top_pair_label           | shifts ↑↑ | which edge-type pair dominates changes after each layer hide |
 
 ### CVE merge by outcomes
@@ -230,8 +230,8 @@ Groups CVEs sharing an outcome key into compound parents; original CVE↔outside
 | $|E|$                        | ↓ ↓       | many originals replaced with fewer synthetics |
 | crossings_raw                | ↓         | edges deduplicated through synthetic compound edges |
 | crossings_per_edge           | ↓         | usually significant |
-| stress_per_pair_*            | ⚠         | may rise — children become disconnected from outside; see §4 |
-| stress_unreachable_pairs     | ↑ ↑       | by construction; expect $|\mathrm{children}| \cdot (|V| - |\mathrm{children}|)$ |
+| stress_per_pair_* (reachable) | ≈         | reachable-pair stress computes correctly on the surviving connections; the metric value itself doesn't shift just because of merge. |
+| stress_unreachable_pairs     | ↑ ↑       | by construction — children become graph-disconnected (their edges are `display: none`); expect inflation by $\sim |\mathrm{children}| \cdot (|V| - |\mathrm{children}|)$. See §4.3. |
 | M19 bridge_*                 | unchanged | merge doesn't affect bridges |
 | M20 ECR                      | 0 → > 1   | the headline number for this mechanism |
 | M21 compound_groups_count    | ↑ ↑       | every merge group adds a parent |
@@ -279,12 +279,12 @@ The reachable-pair stress is correct; the unreachable count is just noise on the
 
 Four metrics produce per-bucket distributions whose key set varies by graph:
 
-- `compound_size_distribution` (M21)
-- `bridge_chain_length_distribution` (M19)
-- `crossings_type_pair_distribution` (M25)
-- `ecr_per_compound` (M20, an array)
+- `compound_size_distribution` — dict, M21
+- `bridge_chain_length_distribution` — dict, M19
+- `crossings_type_pair_distribution` — dict, M25
+- `ecr_per_compound` — array of `{ parentId, ecr, childCount }` records, M20
 
-These are **JSON-only**. Flat-columning them in CSV would produce unstable headers across runs (different graphs have different keys), breaking diff/concat workflows. CSV instead carries summary scalars: `_largest_group_size`, `_top_pair_label`, etc.
+These are **JSON-only**. Flat-columning them in CSV would produce unstable headers across runs (different graphs have different keys / different parent IDs), breaking diff/concat workflows. CSV instead carries summary scalars: `_largest_group_size`, `_top_pair_label`, `bridge_edge_count`, `mean_ecr_weighted` etc.
 
 ### 4.5 M20 excludes empty-synthetic compounds
 
@@ -292,7 +292,9 @@ M20's denominator is undefined when a compound has no synthetic edges. We exclud
 
 ### 4.6 Layout invariance
 
-All metrics use **logical Cytoscape coordinates** (`cy.position()`), not screen pixels. Zoom and pan don't affect the numbers — same graph zoomed in vs. zoomed out produces identical stress, identical crossings, identical bbox. Verified by every "should be invariant under zoom" assertion in the test suite.
+**Geometrically-evaluated metrics** (stress, crossings + crossing angles, drawing area, bbox dimensions, edge length CV, M9 aspect ratio) use **logical Cytoscape coordinates** (`cy.position()`), not screen pixels. Zoom and pan don't affect them — same graph zoomed in vs. zoomed out produces identical stress, identical crossings, identical bbox. Verified by every "should be invariant under zoom" assertion in the test suite.
+
+The **combinatorial metrics** (M19 bridge counts, M20 ECR, M21 compound cardinality, baseline node/edge counts) don't use coordinates at all — they're invariant by construction.
 
 ### 4.7 Build-time provenance
 
@@ -325,9 +327,26 @@ If a future scan pushes $|E|$ above ~5,000, this would be the first thing to opt
 
 For M25, every crossing's pair is sorted lexicographically before being keyed: `(B_TYPE, A_TYPE)` and `(A_TYPE, B_TYPE)` collapse into one bucket `"A_TYPE×B_TYPE"`. Tie-breaking on the top pair is also lex-first. Both choices keep CSV exports deterministic across repeated runs of the same input.
 
-### 4.11 chain_length accumulation depends on hide order
+### 4.11 chain_length accumulation has order dependencies
 
-M19's `chain_length` accumulates correctly only because `hideNodeType` is called sequentially per type. If a future API hides multiple types atomically without going through the per-type bridge-creation logic, chain_length would need to be recomputed. The current implementation is correct for the UI workflow (one type per click).
+M19's `chain_length` accumulates correctly only when bridges are created in sequence by `hideNodeType`. Two known order dependencies:
+
+1. **Atomic multi-type hide.** If a future API hides multiple types atomically without going through the per-type bridge-creation logic, chain_length would need to be recomputed. The current implementation is correct for the UI workflow (one type per click).
+
+2. **Merge between hides loses chain_length.** `cveMerge.applyMerge()` hides every edge connected to a merged CVE via `display: none`, then adds synthetic compound↔outside edges. The synthetic edge does NOT carry `chain_length`. So in the sequence:
+
+   ```
+   hide CWE       → bridges CVE→TI with chain_length = 1
+   merge outcomes → CVE→TI bridges hidden; synthetic CVE_GROUP→TI created (no chain_length)
+   hide TI        → new bridge CVE_GROUP→VC with chain_length = 0 + 1 + 0 = 1
+                                                  ← user might expect 2 (CWE+TI both hidden)
+   ```
+
+   The semantically-correct value would be 2. The implementation reports 1 because the merge-step erased the bridge lineage. **The recommended paper pipeline (visibility before merge) avoids this**, so it isn't a paper-blocker.
+
+### 4.13 Bridge proportion denominator after outcomes-merge
+
+`bridge_edge_proportion = |bridges| / |visible edges|`. After `merge by outcomes`, originals are `display: none` → excluded from `cy.edges(':visible')` → the denominator drops. The proportion can rise sharply not because more bridges exist, but because fewer non-bridge originals are visible. **Don't read this as "more contraction"** — read the absolute `bridge_edge_count` and `mean_contraction_depth` for the contraction story; the proportion only makes sense when comparing across reductions that don't change the visible-edge denominator.
 
 ### 4.12 Stress visualisation: APSP per click
 
@@ -574,6 +593,40 @@ function compound_card(G):
 
 Singleton fraction is structurally 0 in the current merge implementation (CVEs never merged in groups <2). Kept as a regression sentinel.
 
+### 5.10 Geometric scalars (drawing area, bbox, aspect ratio, edge length CV)
+
+Trivial helpers in `frontend/js/features/metrics.ts`. Included for completeness so reviewers can verify against the source without context-switching.
+
+```
+function bbox(P):                            ;; P = list of 2-D points
+    if |P| = 0: return null
+    minX := +∞; maxX := -∞; minY := +∞; maxY := -∞
+    for (x, y) in P:
+        update extrema
+    return (minX, maxX, minY, maxY)
+
+function drawing_area(P):
+    bb := bbox(P)
+    if bb = null: return 0
+    return (bb.maxX - bb.minX) · (bb.maxY - bb.minY)
+
+function aspect_ratio(bb):                   ;; M9
+    if bb = null: return 0
+    w := bb.maxX - bb.minX
+    h := bb.maxY - bb.minY
+    if w ≤ 0 or h ≤ 0: return 0
+    return min(w, h) / max(w, h)              ;; ∈ [0, 1], 1 = square
+
+function edge_length_CV(E):                  ;; existing baseline metric
+    if |E| < 2: return 0
+    L := { ‖e.target - e.source‖₂ for e in E }
+    μ := mean(L);  if μ = 0: return 0
+    σ := √( mean((ℓ - μ)² for ℓ in L) )      ;; population std (÷ N, matches Purchase 2002)
+    return σ / μ
+```
+
+Bbox is computed once per `computeMetrics()` call; drawing area, aspect ratio, and the M1 stress normalisations all read from the same bbox object.
+
 ---
 
 ## 6. Paper showcase plan — recommended evaluation procedure
@@ -649,6 +702,30 @@ Same five rows, additional columns for completeness:
 3. **Mechanism contribution attribution**. Difference table — for each metric, the contribution of each mechanism = step value − previous-step value. Identifies which mechanism is doing the work.
 4. **Per-pair-typed-crossing illustration** (M25). At each step show the top-3 type pairs causing crossings; visualise this with the type-pair colouring overlay screenshots. This is unique to PAGDrawer's typed schema.
 5. **Reproduction guide**. Exact UI sequence for re-running the pipeline (already in this document's procedural section above).
+
+### Appendix: prereqs-merge variant
+
+`merge by prerequisites` is structurally different from `merge by outcomes` and tells a different story. Worth a short subsection in the appendix.
+
+Differences in the metric movements (Step 4 of the pipeline replaced with "Merge by prerequisites"):
+
+| Metric                       | Prereqs-merge behaviour                                                       |
+|------------------------------|-------------------------------------------------------------------------------|
+| $|V|$                        | ↑ slightly (compound parents added; children kept)                            |
+| $|E|$                        | ≈ (no synthetic edges, no edges hidden — children retain their connectivity)  |
+| crossings_raw                | ≈                                                                              |
+| crossings_per_edge           | ≈                                                                              |
+| stress_per_pair_*            | ≈ — the children stay connected so the reachable set doesn't lose them        |
+| stress_unreachable_pairs     | ↑ slightly — the new compound parents themselves have no edges (small noise)  |
+| M19                          | unchanged                                                                     |
+| **M20 ECR**                  | **0 / undefined** — no synthetic edges → ECR isn't computed. M20 doesn't apply to prereqs mode and the doc/CSV report `ecr_compounds_count = 0`. |
+| M21 compound_groups_count    | ↑ ↑                                                                           |
+| M21 largest_group_size       | tracks the most-prereq-shared CVE cluster                                     |
+| M25 top_pair_label           | unchanged or shifts mildly                                                    |
+
+**What prereqs-merge tells the reader.** It **identifies**, but doesn't **collapse**, equivalence classes — CVEs sharing prerequisites get visually grouped without losing their individual outgoing edges. Useful when the analyst wants to see "all the CVEs that exploit *this same configuration*" without losing the per-CVE detail. The fact that M20 doesn't apply is a feature: the metric is honest that prereqs-merge isn't a consolidation in the edge-count sense.
+
+For the paper, frame this as: *outcomes-merge is for compression; prereqs-merge is for grouping*. The metrics as a set express that distinction — M20 surfaces the consolidation only in the mode that actually consolidates.
 
 ### UI procedure (reproducibility)
 
