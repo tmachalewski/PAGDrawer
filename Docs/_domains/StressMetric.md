@@ -133,7 +133,7 @@ PAGDrawer's `merge by outcomes` and `merge by prerequisites` features create CVE
 
 **Net effect.** `stress_unreachable_pairs` no longer inflates structurally after merge. It reflects only genuine topology gaps (e.g. a CVE truly unreachable from any VC because the data has no path). When comparing stress across reduction steps in the paper, prefer the **normalised** values (`*_normalized_edge` / `_diagonal` / `_area`) and report `stress_reachable_pairs` alongside so the reader can see the denominator changing.
 
-**Implementation.** `getStressEligibleNodes()` lives next to `getVisibleNodesWithIds()` in `frontend/js/features/metrics.ts`; the latter is preserved for callers that want the broader set (bbox computation, etc.). M11 and M12 in Stage 7 will share the same eligibility filter.
+**Implementation.** `getStressEligibleNodes()` (`metrics.ts:229`) lives next to `getVisibleNodesWithIds()` (`metrics.ts:198`); the latter is preserved for callers that want the broader set (bbox computation, etc.). M11 and M12 in Stage 7 will share the same eligibility filter.
 
 **Historical note.** Before the visible-edge filter, stress included compound parents *and* their children regardless of edge visibility — outcomes-merge would inflate `stress_unreachable_pairs` by `|merged children| · (|V| − |merged children|)`. The reachable-pair stress was correct; only the side counter was noisy. The filter resolves both. When reading old JSON exports (pre-2026-05-05), expect higher unreachable counts after the merge step.
 
@@ -199,7 +199,7 @@ When the toggle is on, **clicking two nodes in sequence** pops a floating panel 
 
 A third click resets to "first selected"; the panel can also be dismissed via its `×` button or by clicking the graph background.
 
-Both modes can be enabled simultaneously — a single click triggers both behaviors. The pure helpers `computeDistanceColoringStyles(sourceId, nodes, apsp)` and `computeStressPairDisplay(firstId, secondId, nodes, apsp)` live in `frontend/js/ui/debugOverlay.ts` and are unit-tested independently of Cytoscape.
+Both modes can be enabled simultaneously — a single click triggers both behaviors. The pure helpers `computeDistanceColoringStyles(sourceId, nodes, apsp)` (`debugOverlay.ts:659`) and `computeStressPairDisplay(firstId, secondId, nodes, apsp)` (`debugOverlay.ts:745`) are unit-tested independently of Cytoscape.
 
 ---
 
@@ -222,9 +222,11 @@ Both modes can be enabled simultaneously — a single click triggers both behavi
 
 ## Implementation pointers
 
+> **Source pinning.** Line numbers below are accurate as of commit [`130f20b`](https://github.com/tmachalewski/PAGDrawer/commit/130f20b) (2026-05-05). Function names are stable identifiers; if the line numbers drift, `grep -n 'export function NAME' frontend/js/features/metrics.ts` will resolve them.
+
 | File | Role |
 |------|------|
-| `frontend/js/features/metrics.ts` | `computeAPSP`, `symmetrizedDistance`, `computeStressFromAPSP`, `computeStress` |
+| `frontend/js/features/metrics.ts` | `computeAPSP:1265`, `symmetrizedDistance:1316`, `computeStressFromAPSP:1365`, `computeStress:1455` |
 | `frontend/js/features/metrics.test.ts` | Pure-function tests for all four (directed + undirected APSP, symmetrise edge cases, stress upper-triangle iteration, skip-and-report) |
 | `frontend/js/ui/statistics.ts` | Surfaces `Stress per pair (M1)` row in the Drawing Quality table |
 | `Docs/_domains/DrawingQualityMetrics.md` | API summary table |

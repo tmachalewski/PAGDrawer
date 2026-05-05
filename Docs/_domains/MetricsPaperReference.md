@@ -206,7 +206,7 @@ ACR = 1 → every CVE has a unique key, no compression possible. ACR → 0 → m
 
 > Outcomes-merge would compress the visible CVEs to ACR = 0.32; prereqs-merge would compress to ACR = 0.68. Outcomes-merge is therefore the more aggressive consolidation on this data, justifying its choice for the headline reduction in our pipeline. Prereqs-merge remains useful as a grouping-without-compression alternative — see the appendix for that variant.
 
-**Implementation.** Merge-key functions live in `mergeKeys.ts` (extracted from `cveMerge.ts` in Stage 5 so the metric and the merge mechanism share the same key contract). The pure helper `computeAcrFromKeys(cveData)` takes plain `CveKeyData` records and is unit-tested without Cytoscape; the live `computeAcr()` wraps `cy.nodes(':visible[type="CVE"]')` and delegates.
+**Implementation.** Merge-key functions live in `frontend/js/features/mergeKeys.ts` (`computePrereqKeyFromData:43`, `computeOutcomeKeyFromData:51`, live wrappers `computePrereqKey:68`, `computeOutcomeKey:77`), extracted from `cveMerge.ts` in Stage 5 so the metric and the merge mechanism share the same key contract. The pure helper `computeAcrFromKeys` (`metrics.ts:969`) takes plain `CveKeyData` records and is unit-tested without Cytoscape; the live `computeAcr()` (`metrics.ts:998`) wraps `cy.nodes(':visible[type="CVE"]')` and delegates.
 
 **Scope.** Visible CVE nodes (`:visible` excludes exploit-hidden via `display: none`). Children of CVE_GROUP compounds are included — they remain `:visible` (rendered as small dots inside the parent box). The metric is invariant to merge state.
 
@@ -446,9 +446,11 @@ Each click in the stress-distance-coloring overlay recomputes APSP from scratch.
 
 The following pseudocode matches the actual TypeScript implementations one-to-one. File and function references are given so reviewers can verify against the source.
 
+> **Source pinning.** Line numbers below are accurate as of commit [`130f20b`](https://github.com/tmachalewski/PAGDrawer/commit/130f20b) (merge of `feature/metrics-roadmap` into `main`, 2026-05-05). Subsequent edits will drift these numbers; check out that commit (`git show 130f20b -- <file>`) to verify against the exact lines cited. Function names are stable identifiers and will continue to resolve via grep even if the line numbers move.
+
 ### 5.1 BFS-based directed APSP
 
-`computeAPSP` in `frontend/js/features/metrics.ts`:
+`computeAPSP` in `frontend/js/features/metrics.ts:1265`:
 
 ```
 function APSP(V, E, directed=true):
@@ -478,7 +480,7 @@ function APSP(V, E, directed=true):
 
 ### 5.2 Symmetrised pair distance
 
-`symmetrizedDistance` in `frontend/js/features/metrics.ts`:
+`symmetrizedDistance` in `frontend/js/features/metrics.ts:1316`:
 
 ```
 function symmetrized(D, a, b):
@@ -492,7 +494,7 @@ function symmetrized(D, a, b):
 
 ### 5.3 Stress with optional layout-distance scaling
 
-`computeStressFromAPSP` in `frontend/js/features/metrics.ts`:
+`computeStressFromAPSP` in `frontend/js/features/metrics.ts:1365`:
 
 ```
 function stress(V, P, D, σ):
@@ -518,7 +520,7 @@ function stress(V, P, D, σ):
 
 ### 5.4 Crossing detection + angle (M2)
 
-`findCrossings` + `computeCrossingAngle` in `frontend/js/features/metrics.ts`:
+`findCrossings` + `computeCrossingAngle` in `frontend/js/features/metrics.ts:417, :457`:
 
 ```
 function findCrossings(E):
@@ -556,7 +558,7 @@ The absolute value on both arguments folds $\theta$ into $[0, \pi/2]$ (matches H
 
 ### 5.5 M2 stats from a CrossingInfo list
 
-`computeCrossingAngleStats`:
+`computeCrossingAngleStats` in `frontend/js/features/metrics.ts:485`:
 
 ```
 function angle_stats(crossings, τ = π/12):
@@ -573,7 +575,7 @@ Returns radians; UI converts to degrees.
 
 ### 5.6 Type-pair decomposition (M25)
 
-`computeTypePairCrossingStats`:
+`computeTypePairCrossingStats` in `frontend/js/features/metrics.ts:519`:
 
 ```
 function type_pair_stats(crossings):
@@ -594,7 +596,7 @@ Tie-break is lex-first on the label key — deterministic across runs.
 
 ### 5.7 Bridge chain_length accumulation (M19)
 
-`hideNodeType` in `frontend/js/features/filter.ts`:
+`hideNodeType` in `frontend/js/features/filter.ts:142` (the `chain_length_of` helper is `readChainLength` at `filter.ts:32`):
 
 ```
 function hide_node_type(T):
@@ -630,7 +632,7 @@ Step 2 (hide TI):
 
 ### 5.8 Edge consolidation ratio (M20)
 
-`computeEcr` in `frontend/js/features/metrics.ts`:
+`computeEcr` in `frontend/js/features/metrics.ts:1155`:
 
 ```
 function ecr(G):
@@ -660,7 +662,7 @@ function ecr(G):
 
 ### 5.9 Compound cardinality (M21)
 
-`computeCompoundCardinality`:
+`computeCompoundCardinality` in `frontend/js/features/metrics.ts:713` (pure helper `computeCompoundCardinalityFromCounts` at `:670`):
 
 ```
 function compound_card(G):
@@ -683,7 +685,7 @@ Singleton fraction is structurally 0 in the current merge implementation (CVEs n
 
 ### 5.10 Geometric scalars (drawing area, bbox, aspect ratio, edge length CV)
 
-Trivial helpers in `frontend/js/features/metrics.ts`. Included for completeness so reviewers can verify against the source without context-switching.
+Trivial helpers in `frontend/js/features/metrics.ts`: `computeBoundingBox:743`, `computeDrawingArea:636`, `computeAspectRatio:649`, `computeMeanEdgeLength:770`, `computeEdgeLengthStd:779`, `computeEdgeLengthCV:793`. Included for completeness so reviewers can verify against the source without context-switching.
 
 ```
 function bbox(P):                            ;; P = list of 2-D points

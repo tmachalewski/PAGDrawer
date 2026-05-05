@@ -166,6 +166,8 @@ The Statistics modal's collapsible "⚠️ Interpretation notes" section flags t
 
 ## Implementation
 
+> **Source pinning.** Line numbers in this section are accurate as of commit [`130f20b`](https://github.com/tmachalewski/PAGDrawer/commit/130f20b) (2026-05-05). Function names are stable identifiers — even if the line numbers drift, `grep -n 'export function NAME' frontend/js/features/metrics.ts` will resolve them.
+
 - **Module**: `frontend/js/features/metrics.ts`
 - **Tests**: `frontend/js/features/metrics.test.ts` (57 unit tests, pure functions, no Cytoscape instance needed)
 - **UI integration**: `frontend/js/ui/statistics.ts` (table + export buttons), `frontend/js/ui/debugOverlay.ts` (per-overlay state machine + drawing pipeline)
@@ -265,13 +267,13 @@ The Debug Overlay Settings modal exposes a **radio group** `Crossings — color 
 - `angle` (M2) — interpolate `hsl(hue, 75%, 50%)` with hue ∈ `[0°, 120°]` mapped from angle ∈ `[0, π/2]` (red = acute → yellow ≈ 45° → green ≈ 90°)
 - `typePair` (M25) — categorical 10-color palette assigned to each `typeA×typeB` bucket in descending count order (most-common pair = red, second = orange, …)
 
-Implementation: `pickCrossingColor(c, mode, palette)` and `buildTypePairPalette(crossings)` in `frontend/js/ui/debugOverlay.ts`.
+Implementation: `pickCrossingColor(c, mode, palette)` (`debugOverlay.ts:460`) and `buildTypePairPalette(crossings)` (`debugOverlay.ts:427`).
 
 ### M19 — Bridge Edge Proportion + Contraction Depth
 
 PAGDrawer's visibility toggles (hide CWE / TI / etc.) replace chains of hidden nodes with a single "bridge" edge from the surviving predecessor to the surviving successor. Bridges carry a `chain_length` data attribute = the number of hidden nodes the bridge spans.
 
-`chain_length` accumulates over chained `hideNodeType` calls. When CWE is hidden first, bridges CVE→TI get chain_length=1. When TI is hidden next, the new bridges CVE→VC get chain_length = (old CVE→TI chain_length, 1) + 1 (for TI itself) + (TI→VC chain_length, 0) = 2. The accumulation is implemented in `frontend/js/features/filter.ts` via the `readChainLength` helper.
+`chain_length` accumulates over chained `hideNodeType` calls. When CWE is hidden first, bridges CVE→TI get chain_length=1. When TI is hidden next, the new bridges CVE→VC get chain_length = (old CVE→TI chain_length, 1) + 1 (for TI itself) + (TI→VC chain_length, 0) = 2. The accumulation is implemented in `frontend/js/features/filter.ts` (`hideNodeType:142`) via the `readChainLength` helper at `filter.ts:32`.
 
 `computeBridgeStats()` reports:
 - `bridge_edge_proportion` — `|bridges| / |edges|`
@@ -317,7 +319,7 @@ PAGDrawer reports two values, one per merge mode:
 
 The two values let a paper compare how compressible the same data is under each merge convention. A low `acr_cve_outcomes` (e.g. 0.32) and high `acr_cve_prereqs` (e.g. 0.68) on the same scan justifies "outcomes-merge for compression, prereqs-merge for grouping" framing.
 
-**Implementation.** The merge-key functions live in `frontend/js/features/mergeKeys.ts` (extracted from `cveMerge.ts` so the metric and the merge mechanism share the same key contract). The pure helper `computeAcrFromKeys(cveData)` takes plain `CveKeyData` records and returns the two ACRs in a single pass; the live `computeAcr()` walks `cy.nodes(':visible[type="CVE"]')` and delegates.
+**Implementation.** The merge-key functions live in `frontend/js/features/mergeKeys.ts` (`computePrereqKeyFromData:43`, `computeOutcomeKeyFromData:51`; live wrappers `computePrereqKey:68`, `computeOutcomeKey:77`), extracted from `cveMerge.ts` so the metric and the merge mechanism share the same key contract. The pure helper `computeAcrFromKeys(cveData)` (`metrics.ts:969`) takes plain `CveKeyData` records and returns the two ACRs in a single pass; the live `computeAcr()` (`metrics.ts:998`) walks `cy.nodes(':visible[type="CVE"]')` and delegates.
 
 **Scope.** Computed over **visible** CVE nodes (excluding exploit-hidden), **including** CVEs currently inside a CVE_GROUP — they remain `:visible` (rendered as small dots inside the parent box). The metric measures structural compression potential across the visible set, regardless of merge state.
 
