@@ -393,6 +393,12 @@ function populateDrawingMetrics(): void {
                 ? '—   (no synthetic-edge compounds)'
                 : `${m.meanEcrWeighted.toFixed(2)}×   (over ${m.ecrCompoundsCount} compounds)`,
         ],
+        [
+            'Attribute compression ratio (M22)',
+            m.acrCveNodeCount === 0
+                ? '—   (no visible CVEs)'
+                : `prereqs ${m.acrCvePrereqs.toFixed(4)}  /  outcomes ${m.acrCveOutcomes.toFixed(4)}   (${m.acrCveNodeCount} CVEs)`,
+        ],
     ];
 
     rows.forEach(([label, value]) => {

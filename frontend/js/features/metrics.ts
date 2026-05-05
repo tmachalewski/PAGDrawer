@@ -13,6 +13,7 @@
 
 import { getCy } from '../graph/core';
 import { getGitSha, getAppVersion } from '../config/buildInfo';
+import { computePrereqKeyFromData, computeOutcomeKeyFromData, type CveKeyData } from './mergeKeys';
 import type { SettingsSnapshot } from './settingsSnapshot';
 import type { ScanInfo } from '../types';
 
@@ -54,6 +55,21 @@ export interface DrawingMetrics {
      * would break stable CSV headers).
      */
     crossingsTypePairDistribution: Record<string, number>;
+
+    // M22 — Attribute Compression Ratio (CVE keys).
+    /**
+     * |distinct prereq keys| / |CVE nodes|. ∈ (0, 1]. Lower = more
+     * compressible by prereqs-merge. 1.0 means every CVE has a unique
+     * prereq key (no compression possible). Reports 0 when no CVEs.
+     */
+    acrCvePrereqs: number;
+    /**
+     * |distinct outcome keys| / |CVE nodes|. ∈ (0, 1]. Lower = more
+     * compressible by outcomes-merge.
+     */
+    acrCveOutcomes: number;
+    /** Number of visible CVE nodes the ratios were computed over. */
+    acrCveNodeCount: number;
 
     // M19 — Bridge-edge contraction depth (visibility-toggle bridges).
     bridgeEdgeProportion: number;      // |bridges| / |edges|, 0 when |edges|=0 or no bridges
@@ -283,6 +299,9 @@ export function computeMetrics(): DrawingMetrics | null {
     // M19 — bridge contraction depth
     const bridgeStats = computeBridgeStats();
 
+    // M22 — Attribute Compression Ratio (CVE keys)
+    const acrStats = computeAcr();
+
     // M20 — edge consolidation ratio (per compound parent, size-weighted)
     const ecrStats = computeEcr();
 
@@ -322,6 +341,9 @@ export function computeMetrics(): DrawingMetrics | null {
         meanContractionDepth: bridgeStats.meanContractionDepth,
         bridgeEdgeCount: bridgeStats.bridgeEdgeCount,
         bridgeChainLengthDistribution: bridgeStats.chainLengthDistribution,
+        acrCvePrereqs: acrStats.acrPrereqs,
+        acrCveOutcomes: acrStats.acrOutcomes,
+        acrCveNodeCount: acrStats.nodeCount,
         meanEcrWeighted: ecrStats.meanEcrWeighted,
         ecrCompoundsCount: ecrStats.compoundsCount,
         ecrPerCompound: ecrStats.perCompound,
@@ -786,6 +808,9 @@ export function metricsToCSV(m: DrawingMetrics, context: MetricsCsvContext = {})
         'bridge_edge_count',
         'mean_ecr_weighted',
         'ecr_compounds_count',
+        'acr_cve_prereqs',
+        'acr_cve_outcomes',
+        'acr_cve_node_count',
     ].join(',');
     const row = [
         m.nodes,
@@ -820,6 +845,9 @@ export function metricsToCSV(m: DrawingMetrics, context: MetricsCsvContext = {})
         m.bridgeEdgeCount,
         m.meanEcrWeighted.toFixed(4),
         m.ecrCompoundsCount,
+        m.acrCvePrereqs.toFixed(4),
+        m.acrCveOutcomes.toFixed(4),
+        m.acrCveNodeCount,
     ].join(',');
     return header + '\n' + row + '\n';
 }
@@ -859,6 +887,77 @@ function csvEscape(s: string): string {
 function formatTimestamp(d: Date): string {
     const pad = (n: number) => String(n).padStart(2, '0');
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}-${pad(d.getHours())}-${pad(d.getMinutes())}`;
+}
+
+// =============================================================================
+// M22 — Attribute Compression Ratio (CVE keys)
+//
+// For a set of CVE nodes V_cve and a key function k (prereqs or outcomes):
+//
+//     ACR = |{ k(v) : v ∈ V_cve }| / |V_cve|
+//
+// ACR ∈ (0, 1]. ACR = 1 means every CVE has a unique key — no merge could
+// compress them. ACR → 0 means most CVEs collapse into the same bucket.
+// The metric reports the **structural upper bound** on what the merge
+// mechanism could achieve, regardless of whether the user has actually
+// applied a merge.
+//
+// We report TWO values — one per key function. They tell different
+// stories about the data: outcomes-ACR predicts outcomes-merge potential,
+// prereqs-ACR predicts prereqs-merge potential. Reporting both lets a
+// paper say "outcomes-merge would compress 100 CVEs to 32 (ACR=0.32);
+// prereqs-merge would compress them to 68 (ACR=0.68)."
+// =============================================================================
+
+/**
+ * Pure ACR computation from a list of `CveKeyData` records. Tests pass
+ * synthetic objects directly without needing a Cytoscape graph.
+ *
+ * Returns `{ acrPrereqs, acrOutcomes, nodeCount }`. Counts are computed
+ * in a single pass over the input.
+ */
+export function computeAcrFromKeys(
+    cveData: ReadonlyArray<CveKeyData>,
+): { acrPrereqs: number; acrOutcomes: number; nodeCount: number } {
+    if (cveData.length === 0) {
+        return { acrPrereqs: 0, acrOutcomes: 0, nodeCount: 0 };
+    }
+    const prereqKeys = new Set<string>();
+    const outcomeKeys = new Set<string>();
+    for (const d of cveData) {
+        prereqKeys.add(computePrereqKeyFromData(d));
+        outcomeKeys.add(computeOutcomeKeyFromData(d));
+    }
+    return {
+        acrPrereqs: prereqKeys.size / cveData.length,
+        acrOutcomes: outcomeKeys.size / cveData.length,
+        nodeCount: cveData.length,
+    };
+}
+
+/**
+ * M22 — live wrapper. Walks visible CVE nodes (excluding exploit-hidden
+ * via the `:visible` Cytoscape filter), reads `prereqs`, `vc_outcomes`,
+ * `chain_depth`, `layer` from each, and computes both ACR variants.
+ *
+ * "Visible" includes CVEs that are currently inside a CVE_GROUP — they
+ * remain `:visible` (rendered as small dots inside the parent box). The
+ * metric measures structural compression potential across the visible
+ * set, regardless of merge state.
+ */
+export function computeAcr(): ReturnType<typeof computeAcrFromKeys> {
+    const cy = getCy();
+    if (!cy) return computeAcrFromKeys([]);
+    const cveData: CveKeyData[] = [];
+    cy.nodes(':visible[type="CVE"]').forEach(n => {
+        cveData.push({
+            prereqs: n.data('prereqs'),
+            vc_outcomes: n.data('vc_outcomes'),
+            chain_depth: n.data('chain_depth'),
+            layer: n.data('layer'),
+        });
+    });
+    return computeAcrFromKeys(cveData);
 }
 
 // =============================================================================
@@ -1475,6 +1574,9 @@ export function metricsToJsonObject(
         mean_ecr_weighted: m.meanEcrWeighted,
         ecr_compounds_count: m.ecrCompoundsCount,
         ecr_per_compound: m.ecrPerCompound,
+        acr_cve_prereqs: m.acrCvePrereqs,
+        acr_cve_outcomes: m.acrCveOutcomes,
+        acr_cve_node_count: m.acrCveNodeCount,
     };
 }
 

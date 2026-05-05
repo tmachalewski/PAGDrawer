@@ -24,6 +24,7 @@ import {
     symmetrizedDistance,
     computeBridgeStatsFromList,
     computeEcrFromList,
+    computeAcrFromKeys,
     type NodeWithPosition,
     type BridgeEdgeInfo,
     metricsToCSV,
@@ -831,6 +832,108 @@ describe('computeEcrFromList (M20)', () => {
     });
 });
 
+describe('computeAcrFromKeys (M22)', () => {
+    function mkCve(
+        prereqs: { AV?: string; AC?: string; PR?: string; UI?: string } | null,
+        vc_outcomes: ReadonlyArray<readonly [string, string]> | null,
+        chain_depth = 0,
+        layer = 'L1',
+    ) {
+        return { prereqs, vc_outcomes, chain_depth, layer };
+    }
+
+    it('returns zeros for empty input', () => {
+        expect(computeAcrFromKeys([])).toEqual({
+            acrPrereqs: 0, acrOutcomes: 0, nodeCount: 0,
+        });
+    });
+
+    it('ACR=1.0 when every CVE has a unique prereq AND outcome key', () => {
+        const cves = [
+            mkCve({ AV: 'N', AC: 'L', PR: 'N', UI: 'N' }, [['A', 'L']]),
+            mkCve({ AV: 'L', AC: 'H', PR: 'L', UI: 'R' }, [['B', 'L']]),
+            mkCve({ AV: 'A', AC: 'L', PR: 'N', UI: 'N' }, [['C', 'L']]),
+        ];
+        const r = computeAcrFromKeys(cves);
+        expect(r.acrPrereqs).toBe(1.0);
+        expect(r.acrOutcomes).toBe(1.0);
+        expect(r.nodeCount).toBe(3);
+    });
+
+    it('ACR < 1 when CVEs share keys', () => {
+        // 4 CVEs, only 2 distinct prereq-keys → acrPrereqs = 0.5
+        const cves = [
+            mkCve({ AV: 'N', AC: 'L', PR: 'N', UI: 'N' }, [['A', 'L']]),
+            mkCve({ AV: 'N', AC: 'L', PR: 'N', UI: 'N' }, [['B', 'L']]),
+            mkCve({ AV: 'L', AC: 'H', PR: 'L', UI: 'R' }, [['A', 'L']]),
+            mkCve({ AV: 'L', AC: 'H', PR: 'L', UI: 'R' }, [['A', 'L']]),
+        ];
+        const r = computeAcrFromKeys(cves);
+        // Distinct prereq keys: 2 ({N,L,N,N}, {L,H,L,R}) over 4 CVEs → 0.5
+        expect(r.acrPrereqs).toBe(0.5);
+        // Distinct outcome keys: 2 ([A,L], [B,L]) over 4 CVEs → 0.5
+        expect(r.acrOutcomes).toBe(0.5);
+        expect(r.nodeCount).toBe(4);
+    });
+
+    it('layer separates otherwise-identical keys', () => {
+        // Same prereqs but different layers → 2 distinct keys, ACR=1.0
+        const cves = [
+            mkCve({ AV: 'N', AC: 'L', PR: 'N', UI: 'N' }, [['A', 'L']], 0, 'L1'),
+            mkCve({ AV: 'N', AC: 'L', PR: 'N', UI: 'N' }, [['A', 'L']], 0, 'L2'),
+        ];
+        const r = computeAcrFromKeys(cves);
+        expect(r.acrPrereqs).toBe(1.0);
+        expect(r.acrOutcomes).toBe(1.0);
+    });
+
+    it('chain_depth separates otherwise-identical keys', () => {
+        const cves = [
+            mkCve({ AV: 'N', AC: 'L', PR: 'N', UI: 'N' }, [['A', 'L']], 0),
+            mkCve({ AV: 'N', AC: 'L', PR: 'N', UI: 'N' }, [['A', 'L']], 1),
+        ];
+        const r = computeAcrFromKeys(cves);
+        expect(r.acrPrereqs).toBe(1.0);
+        expect(r.acrOutcomes).toBe(1.0);
+    });
+
+    it('null prereqs / outcomes get a sentinel "unknown" key shared across nulls', () => {
+        // Three CVEs with null prereqs at the same layer/depth → all collapse
+        // into one "unknown" key → acrPrereqs = 1/3
+        const cves = [
+            mkCve(null, [['A', 'L']]),
+            mkCve(null, [['B', 'L']]),
+            mkCve(null, [['C', 'L']]),
+        ];
+        const r = computeAcrFromKeys(cves);
+        expect(r.acrPrereqs).toBeCloseTo(1 / 3, 6);
+        expect(r.acrOutcomes).toBe(1.0);  // all distinct outcomes
+    });
+
+    it('outcomes-mode: empty outcomes array shares the "none" sentinel', () => {
+        // Three CVEs with empty outcomes → all collapse to "none|L1|d0"
+        const cves = [
+            mkCve({ AV: 'N', AC: 'L', PR: 'N', UI: 'N' }, []),
+            mkCve({ AV: 'L', AC: 'H', PR: 'L', UI: 'R' }, []),
+            mkCve({ AV: 'A', AC: 'L', PR: 'N', UI: 'N' }, []),
+        ];
+        const r = computeAcrFromKeys(cves);
+        expect(r.acrPrereqs).toBe(1.0);  // distinct prereqs
+        expect(r.acrOutcomes).toBeCloseTo(1 / 3, 6);  // all "none|L1|d0"
+    });
+
+    it('orders sensitivity: outcomes are NOT sorted by the metric (backend pre-sorts)', () => {
+        // Same outcome list in different orders should produce DIFFERENT keys
+        // (the backend sorts before storage; we trust that contract).
+        const cves = [
+            mkCve(null, [['A', 'L'], ['B', 'L']]),
+            mkCve(null, [['B', 'L'], ['A', 'L']]),
+        ];
+        const r = computeAcrFromKeys(cves);
+        expect(r.acrOutcomes).toBe(1.0);  // 2 distinct keys
+    });
+});
+
 describe('computeAspectRatio (M9)', () => {
     it('returns 1 for a square bbox', () => {
         expect(computeAspectRatio({ minX: 0, maxX: 10, minY: 0, maxY: 10 })).toBe(1);
@@ -954,20 +1057,23 @@ describe('metricsToCSV', () => {
             { parentId: 'p1', ecr: 3.0, childCount: 5 },
             { parentId: 'p2', ecr: 1.5, childCount: 5 },
         ],
+        acrCvePrereqs: 0.68,
+        acrCveOutcomes: 0.32,
+        acrCveNodeCount: 87,
     };
 
     it('emits all columns with unique_cves and empty trivy_vuln_count when context missing', () => {
         const csv = metricsToCSV(baseMetrics);
         const lines = csv.trim().split('\n');
         expect(lines.length).toBe(2);
-        expect(lines[0]).toBe('nodes,edges,unique_cves,trivy_vuln_count,crossings_raw,crossings_normalized,crossings_per_edge,drawing_area,bbox_width,bbox_height,area_per_node,edge_length_cv,aspect_ratio,compound_groups_count,compound_largest_group_size,compound_singleton_fraction,crossings_mean_angle_deg,crossings_min_angle_deg,crossings_right_angle_ratio,crossings_top_pair_share,crossings_top_pair_label,stress_per_pair,stress_per_pair_normalized_edge,stress_per_pair_normalized_diagonal,stress_per_pair_normalized_area,stress_unreachable_pairs,stress_reachable_pairs,bridge_edge_proportion,mean_contraction_depth,bridge_edge_count,mean_ecr_weighted,ecr_compounds_count');
-        expect(lines[1]).toBe('10,15,7,,3,0.9500,0.2000,12345.67,200.00,61.73,1234.57,0.4200,0.5000,4,5,0.2500,67.50,30.00,0.5000,0.6000,HAS_VULN×LEADS_TO,12.50,0.5000,0.0125,0.0250,4,41,0.2000,1.5000,3,2.4000,2');
+        expect(lines[0]).toBe('nodes,edges,unique_cves,trivy_vuln_count,crossings_raw,crossings_normalized,crossings_per_edge,drawing_area,bbox_width,bbox_height,area_per_node,edge_length_cv,aspect_ratio,compound_groups_count,compound_largest_group_size,compound_singleton_fraction,crossings_mean_angle_deg,crossings_min_angle_deg,crossings_right_angle_ratio,crossings_top_pair_share,crossings_top_pair_label,stress_per_pair,stress_per_pair_normalized_edge,stress_per_pair_normalized_diagonal,stress_per_pair_normalized_area,stress_unreachable_pairs,stress_reachable_pairs,bridge_edge_proportion,mean_contraction_depth,bridge_edge_count,mean_ecr_weighted,ecr_compounds_count,acr_cve_prereqs,acr_cve_outcomes,acr_cve_node_count');
+        expect(lines[1]).toBe('10,15,7,,3,0.9500,0.2000,12345.67,200.00,61.73,1234.57,0.4200,0.5000,4,5,0.2500,67.50,30.00,0.5000,0.6000,HAS_VULN×LEADS_TO,12.50,0.5000,0.0125,0.0250,4,41,0.2000,1.5000,3,2.4000,2,0.6800,0.3200,87');
     });
 
     it('populates trivy_vuln_count when provided via context', () => {
         const csv = metricsToCSV(baseMetrics, { trivyVulnCount: 189 });
         const lines = csv.trim().split('\n');
-        expect(lines[1]).toBe('10,15,7,189,3,0.9500,0.2000,12345.67,200.00,61.73,1234.57,0.4200,0.5000,4,5,0.2500,67.50,30.00,0.5000,0.6000,HAS_VULN×LEADS_TO,12.50,0.5000,0.0125,0.0250,4,41,0.2000,1.5000,3,2.4000,2');
+        expect(lines[1]).toBe('10,15,7,189,3,0.9500,0.2000,12345.67,200.00,61.73,1234.57,0.4200,0.5000,4,5,0.2500,67.50,30.00,0.5000,0.6000,HAS_VULN×LEADS_TO,12.50,0.5000,0.0125,0.0250,4,41,0.2000,1.5000,3,2.4000,2,0.6800,0.3200,87');
     });
 
     it('CSV-quotes a top-pair label that contains a comma or quote', () => {
@@ -1029,6 +1135,9 @@ describe('JSON metrics export (schema v1)', () => {
             { parentId: 'p1', ecr: 3.0, childCount: 5 },
             { parentId: 'p2', ecr: 1.5, childCount: 5 },
         ],
+        acrCvePrereqs: 0.68,
+        acrCveOutcomes: 0.32,
+        acrCveNodeCount: 87,
     };
 
     const baseSettings: SettingsSnapshot = {
@@ -1118,6 +1227,9 @@ describe('JSON metrics export (schema v1)', () => {
                 { parentId: 'p1', ecr: 3.0, childCount: 5 },
                 { parentId: 'p2', ecr: 1.5, childCount: 5 },
             ],
+            acr_cve_prereqs: 0.68,
+            acr_cve_outcomes: 0.32,
+            acr_cve_node_count: 87,
         });
     });
 
@@ -1154,6 +1266,9 @@ describe('JSON metrics export (schema v1)', () => {
 
         const metricKeys = Object.keys(snap.metrics).sort();
         expect(metricKeys).toEqual([
+            'acr_cve_node_count',
+            'acr_cve_outcomes',
+            'acr_cve_prereqs',
             'area_per_node',
             'aspect_ratio',
             'bbox_height',

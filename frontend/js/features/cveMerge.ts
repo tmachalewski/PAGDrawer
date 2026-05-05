@@ -8,9 +8,17 @@
 
 import { getCy } from '../graph/core';
 import { runLayout } from '../graph/layout';
-import type { NodeSingular } from 'cytoscape';
+import {
+    computePrereqKey,
+    computeOutcomeKey,
+    formatMergeLabel,
+    type MergeMode,
+} from './mergeKeys';
 
-export type MergeMode = 'none' | 'prereqs' | 'outcomes';
+// Re-export for back-compat: callers that imported these from cveMerge.ts
+// continue to work. New callers should import directly from `./mergeKeys`.
+export { computePrereqKey, computeOutcomeKey, formatMergeLabel };
+export type { MergeMode };
 
 // --- State ---
 let currentMergeMode: MergeMode = 'none';
@@ -99,51 +107,6 @@ export function setMergeMode(mode: MergeMode): void {
         const el = opt as HTMLElement;
         el.classList.toggle('active', el.dataset.mode === mode);
     });
-}
-
-/**
- * Compute merge key based on CVSS prerequisites.
- * Includes layer (L1/L2) and chain_depth to prevent cross-layer merging.
- */
-export function computePrereqKey(node: NodeSingular): string {
-    const prereqs = node.data('prereqs');
-    const depth = node.data('chain_depth') ?? 0;
-    const layer = node.data('layer') ?? 'L1';
-    if (!prereqs) return `unknown|${layer}|d${depth}`;
-
-    return `AV:${prereqs.AV}|AC:${prereqs.AC}|PR:${prereqs.PR}|UI:${prereqs.UI}|${layer}|d${depth}`;
-}
-
-/**
- * Compute merge key based on VC outcomes.
- * Includes layer (L1/L2) and chain_depth to prevent cross-layer merging.
- */
-export function computeOutcomeKey(node: NodeSingular): string {
-    const outcomes = node.data('vc_outcomes');
-    const depth = node.data('chain_depth') ?? 0;
-    const layer = node.data('layer') ?? 'L1';
-    if (!outcomes || !Array.isArray(outcomes)) return `unknown|${layer}|d${depth}`;
-
-    // outcomes is [["AV","L"], ["EX","Y"], ["PR","H"]] — already sorted by backend
-    const key = outcomes.map(([t, v]: [string, string]) => `${t}:${v}`).join(',');
-    return `${key || 'none'}|${layer}|d${depth}`;
-}
-
-/**
- * Format a merge key into a readable compound node label
- */
-export function formatMergeLabel(key: string, count: number, mode: MergeMode): string {
-    // Remove layer and depth suffixes for display
-    const cleanKey = key.replace(/\|L\d+\|d\d+$/, '');
-
-    if (mode === 'prereqs') {
-        // "AV:N|AC:L|PR:N|UI:N" → "AV:N / AC:L / PR:N / UI:N (×6)"
-        return cleanKey.replace(/\|/g, ' / ') + ` (×${count})`;
-    } else {
-        // "AV:L,EX:Y,PR:H" → "→ AV:L, EX:Y, PR:H (×3)"
-        if (cleanKey === 'none') return `→ no VCs (×${count})`;
-        return '→ ' + cleanKey.replace(/,/g, ', ') + ` (×${count})`;
-    }
 }
 
 /**
