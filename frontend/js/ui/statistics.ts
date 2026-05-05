@@ -346,8 +346,8 @@ function populateDrawingMetrics(): void {
         { kind: 'row', label: 'Bounding box (W × H)', value: `${m.bboxWidth.toFixed(2)} × ${m.bboxHeight.toFixed(2)}` },
         { kind: 'row', label: 'Area per node (logical units²)', value: m.areaPerNode.toFixed(2) + '   (lower = denser)' },
         { kind: 'row', label: 'Aspect ratio (M9)', value: m.aspectRatio.toFixed(4) + '   (1 = square)' },
-        { kind: 'row', label: 'Edge length CV', value: m.edgeLengthCV.toFixed(4) + '   (0 = uniform)' },
-        { kind: 'row', label: 'Edge length mean / std', value: m.edgeLengthMean > 0 ? `${m.edgeLengthMean.toFixed(2)}  /  ${m.edgeLengthStd.toFixed(2)}   (CV = ${(m.edgeLengthStd / m.edgeLengthMean).toFixed(4)})` : '—' },
+        { kind: 'row', label: 'Edge length μ, σ', value: m.edgeLengthMean > 0 ? `μ = ${m.edgeLengthMean.toFixed(2)},   σ = ${m.edgeLengthStd.toFixed(2)}` : '—' },
+        { kind: 'row', label: 'Edge length CV (σ/μ)', value: m.edgeLengthCV.toFixed(4) + '   (0 = uniform)' },
 
         { kind: 'group', label: 'Reductions: bridges + merges (M19 + M20 + M21)' },
         { kind: 'row', label: 'Bridge edge proportion (M19)', value: m.bridgeEdgeCount === 0 ? '—   (no visibility-toggle bridges)' : `${m.bridgeEdgeProportion.toFixed(4)}   (${m.bridgeEdgeCount} bridges)` },
