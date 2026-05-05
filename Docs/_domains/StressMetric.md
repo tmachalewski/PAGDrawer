@@ -121,21 +121,21 @@ So BFS isn't a "simpler-but-less-correct" choice; it's **the** correct algorithm
 
 ## Behaviour with compound nodes (CVE merge, ATTACKER_BOX)
 
-PAGDrawer's `merge by outcomes` and `merge by prerequisites` features create CVE_GROUP compound parents that wrap the merged CVEs. ATTACKER_BOX does the same for the initial-state VCs. Stress computation does **not** specially handle compound nodes — `computeStress()` includes every visible non-debug node returned by `cy.nodes(':visible')`, regardless of whether it's a compound parent, a compound child, or a regular node.
+PAGDrawer's `merge by outcomes` and `merge by prerequisites` features create CVE_GROUP compound parents that wrap the merged CVEs. ATTACKER_BOX does the same for the initial-state VCs.
 
-The practical consequences vary by mode:
+**As of 2026-05-05** stress operates on `getStressEligibleNodes()` — visible non-debug nodes that have at least one **visible** incident edge. This filter cleanly handles compound merging:
 
-| Mode | Compound parent | Compound children |
-|------|-----------------|-------------------|
-| **outcomes merge** | Has synthetic edges → contributes correctly to stress | Original edges are `display: none` → children are graph-disconnected from everything; appear as unreachable pairs |
-| **prereqs merge** | No synthetic edges → parent itself disconnected → appears in unreachable pairs | Original edges remain visible → children contribute correctly |
-| **ATTACKER_BOX** (always present) | No edges itself → contributes a small fixed amount of noise (ATTACKER_BOX vs every other node is one unreachable pair) | VCs inside have HAS_STATE edges → contribute correctly. The ATTACKER node itself (separate from ATTACKER_BOX) is also always visible and connected. |
+| Mode | Compound parent | Compound children | Filter outcome |
+|------|-----------------|-------------------|----------------|
+| **outcomes merge** | Has synthetic edges → kept | Original edges are `display: none` → no visible edges → **filtered out** | Stress sees compound parents + non-merged nodes; correct |
+| **prereqs merge** | No synthetic edges → **filtered out** | Original edges remain visible → kept | Stress sees children + non-merged; correct |
+| **ATTACKER_BOX** | No edges itself → **filtered out** | VCs have HAS_STATE edges → kept | Correct; ATTACKER (separate from ATTACKER_BOX) is also always visible and connected |
 
-So after `merge by outcomes`, you'll see `stress_unreachable_pairs` rise by roughly `|merged children| · (|V| − |merged children|)` — the children's pairs against everything else. The pairs that *do* count (reachable) compute the metric correctly; the unreachable inflation is noise on the side counter, not on the stress value itself.
+**Net effect.** `stress_unreachable_pairs` no longer inflates structurally after merge. It reflects only genuine topology gaps (e.g. a CVE truly unreachable from any VC because the data has no path). When comparing stress across reduction steps in the paper, prefer the **normalised** values (`*_normalized_edge` / `_diagonal` / `_area`) and report `stress_reachable_pairs` alongside so the reader can see the denominator changing.
 
-**This is documented behaviour, not a bug.** The metric remains internally consistent: every reachable pair has a well-defined symmetrised distance, and the unreachable count is reported transparently so a paper reviewer can disambiguate. If a future iteration wants cleaner numbers, the cleanest fix is to filter `getVisibleNodesWithIds()` to nodes that have at least one visible edge — that automatically excludes whichever of `parent`/`child` is the "ghost" layer in each merge mode. Tracked as a known limitation; intentionally not addressed in this iteration.
+**Implementation.** `getStressEligibleNodes()` lives next to `getVisibleNodesWithIds()` in `frontend/js/features/metrics.ts`; the latter is preserved for callers that want the broader set (bbox computation, etc.). M11 and M12 in Stage 7 will share the same eligibility filter.
 
-When comparing stress across reduction steps in the paper, prefer the **normalised** values (`*_normalized_edge` / `_diagonal` / `_area`) and report `stress_reachable_pairs` alongside so the reader can see the denominator changing.
+**Historical note.** Before the visible-edge filter, stress included compound parents *and* their children regardless of edge visibility — outcomes-merge would inflate `stress_unreachable_pairs` by `|merged children| · (|V| − |merged children|)`. The reachable-pair stress was correct; only the side counter was noisy. The filter resolves both. When reading old JSON exports (pre-2026-05-05), expect higher unreachable counts after the merge step.
 
 ---
 

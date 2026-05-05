@@ -1155,7 +1155,7 @@ describe('JSON metrics export (schema v1)', () => {
         type: 'trivy',
         scans_uploaded_total: 1,
         scans_in_current_graph: [
-            { id: 'scan-1', name: 'nginx:stable', vuln_count: 189 },
+            { id: 'scan-1', name: 'nginx:stable', vuln_count: 189, uploaded_at: '2026-05-04T10:00:00Z' },
         ],
         selection_was_implicit: true,
     };
@@ -1334,8 +1334,8 @@ describe('buildDataSourceSnapshot', () => {
         expect(ds.scans_uploaded_total).toBe(2);
         expect(ds.selection_was_implicit).toBe(true);
         expect(ds.scans_in_current_graph).toEqual([
-            { id: 'a', name: 'nginx', vuln_count: 5 },
-            { id: 'b', name: 'redis', vuln_count: 12 },
+            { id: 'a', name: 'nginx', vuln_count: 5, uploaded_at: 't' },
+            { id: 'b', name: 'redis', vuln_count: 12, uploaded_at: 't' },
         ]);
     });
 

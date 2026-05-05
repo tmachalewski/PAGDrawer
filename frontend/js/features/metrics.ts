@@ -206,6 +206,45 @@ export function getVisibleNodesWithIds(): NodeWithPosition[] {
     return nodes;
 }
 
+/**
+ * Stress-eligible nodes: visible non-debug nodes that **have at least
+ * one visible incident edge**. Solves the merge-noise problem
+ * documented in `StressMetric.md` § "Behaviour with compound nodes":
+ *
+ *   - outcomes-merge: children have `display: none` on their edges →
+ *                     filtered out here; the compound parent (with
+ *                     synthetic edges) remains.
+ *   - prereqs-merge: parent has no edges → filtered out; the children
+ *                    (with their original edges) remain.
+ *   - ATTACKER_BOX: no edges itself → filtered out; the VC children
+ *                   (with HAS_STATE edges) remain.
+ *
+ * Net effect: stress and APSP operate on the layer the user actually
+ * perceives as "the graph", regardless of merge mode. The
+ * `stress_unreachable_pairs` count reflects genuine topology gaps
+ * rather than the structural noise compound merging introduces.
+ */
+export function getStressEligibleNodes(): NodeWithPosition[] {
+    const cy = getCy();
+    if (!cy) return [];
+    const nodes: NodeWithPosition[] = [];
+    cy.nodes(':visible').forEach(n => {
+        const t = n.data('type');
+        if (t === 'CROSSING_DEBUG' || t === 'AREA_DEBUG' || t === 'UNIT_EDGE_NODE') return;
+        // At least one *visible* connected edge — `:visible` filter
+        // excludes display:none edges (outcomes-merge originals,
+        // exploit-hidden, etc.).
+        const visibleEdges = n.connectedEdges(':visible').filter(e => {
+            const et = e.data('type');
+            return et !== 'UNIT_EDGE' && et !== 'UNIT_EDGE_STD';
+        });
+        if (visibleEdges.length === 0) return;
+        const p = n.position();
+        nodes.push({ id: n.id(), x: p.x, y: p.y });
+    });
+    return nodes;
+}
+
 export function getVisibleEdgeEndpoints(): EdgeEndpoints[] {
     const cy = getCy();
     if (!cy) return [];
@@ -1411,7 +1450,13 @@ export function computeStress(): StressBundle {
         unreachablePairs: 0,
         reachablePairs: 0,
     };
-    const nodes = getVisibleNodesWithIds();
+    // Stress operates on the user-perceived "graph" — nodes with at
+    // least one visible incident edge. This excludes ghost layers
+    // produced by merge (children-with-hidden-edges in outcomes mode,
+    // empty-parent in prereqs mode, ATTACKER_BOX). See
+    // `StressMetric.md` § "Behaviour with compound nodes" and
+    // `getStressEligibleNodes` above for the reasoning.
+    const nodes = getStressEligibleNodes();
     if (nodes.length < 2) return empty;
 
     const edges = getVisibleEdgeEndpoints();
@@ -1463,6 +1508,14 @@ export interface DataSourceScanRef {
     id: string;
     name: string;
     vuln_count: number;
+    /**
+     * ISO 8601 timestamp recording when the user uploaded this scan to
+     * PAGDrawer (the closest proxy to "when Trivy data is from" we
+     * currently have on the frontend). Useful for paper-replication
+     * provenance — Trivy results change as NVD updates, so the same
+     * `image:tag` can report a different vuln count tomorrow.
+     */
+    uploaded_at: string;
 }
 
 export interface DataSourceSnapshot {
@@ -1523,6 +1576,7 @@ export function buildDataSourceSnapshot(
             id: s.id,
             name: s.name,
             vuln_count: s.vuln_count,
+            uploaded_at: s.uploaded_at,
         })),
         selection_was_implicit: !explicit,
     };

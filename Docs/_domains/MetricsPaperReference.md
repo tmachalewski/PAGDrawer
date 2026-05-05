@@ -400,6 +400,19 @@ M19's `chain_length` accumulates correctly only when bridges are created in sequ
 
    The semantically-correct value would be 2. The implementation reports 1 because the merge-step erased the bridge lineage. **The recommended paper pipeline (visibility before merge) avoids this**, so it isn't a paper-blocker.
 
+### 4.14 Stress visible-edge filter (resolved compound-noise issue)
+
+As of 2026-05-05 (commit at the time of the metrics-roadmap merge), `computeStress()` operates on **`getStressEligibleNodes()`**, which is `getVisibleNodesWithIds()` further restricted to nodes that have at least one **visible** incident edge. This automatically resolves the merge-noise issue documented in [`StressMetric.md`](StressMetric.md) § "Behaviour with compound nodes":
+
+- Outcomes-merge: children whose original edges are now `display: none` get filtered out; the compound parent (with synthetic edges) remains.
+- Prereqs-merge: parent (no edges of its own) gets filtered out; the children (with original edges) remain.
+- ATTACKER_BOX: filtered out (no edges); the VC children remain.
+- Isolated nodes anywhere: filtered out (no edges → no pair to evaluate stress on).
+
+Net effect: `stress_unreachable_pairs` no longer inflates structurally after merge — it now reflects genuine topology gaps only. M11 / M12 in Stage 7 will share the same eligibility filter once they ship.
+
+The unfiltered `getVisibleNodesWithIds()` is kept as a separate export for any caller that wants the broader set (e.g. layout-bbox computation, which should include compound parents).
+
 ### 4.13 Bridge proportion denominator after outcomes-merge
 
 `bridge_edge_proportion = |bridges| / |visible edges|`. After `merge by outcomes`, originals are `display: none` → excluded from `cy.edges(':visible')` → the denominator drops. The proportion can rise sharply not because more bridges exist, but because fewer non-bridge originals are visible. **Don't read this as "more contraction"** — read the absolute `bridge_edge_count` and `mean_contraction_depth` for the contraction story; the proportion only makes sense when comparing across reductions that don't change the visible-edge denominator.
@@ -694,10 +707,13 @@ The metrics tell a clean story when reductions are applied in this order. Each s
 ```
 Step 1 — Baseline           (default sliders, all visible, no merge, no exploit paths)
 Step 2 — Granularity        (tighten the relevant slider — e.g. CVE per HOST → CVE singular)
-Step 3 — Hide internal types (hide CWE, hide TI — bridges materialise)
+Step 3 — Hide internal types (hide CPE, CWE, TI — bridges materialise)
+                              [alternative: hide CWE+TI to preserve infrastructure column]
 Step 4 — Merge by outcomes   (compound parents materialise)
 Step 5 — Exploit Paths       (task-driven final filter)
 ```
+
+The recommended Step 3 is **Hide CPE+CWE+TI** based on the 5 May 2026 nginx test session: dropping CPE drives C/E from 925.48 → 0.37 (three orders of magnitude) and ECR_w to 24.93×, vs. the gentler "preserve CPE" variant which still gets to C/E ≈ 3.20 and ECR_w = 5.64. Both variants are valid — see the appendix variant subsection below.
 
 **Why this order:**
 
@@ -748,8 +764,9 @@ Same five rows, additional columns for completeness:
 1. **Don't compare raw `stress_per_pair` across graphs.** Always use a normalised variant; report `stress_reachable_pairs` alongside.
 2. **Don't apply Exploit Paths before merge.** ECR is computed over visible CVEs; if exploit-paths pruned them already, M20 looks smaller than the mechanism's actual effect.
 3. **Don't mix prereqs- and outcomes-merge in the same column.** Pick one for the body (outcomes is more compressive); discuss prereqs in the appendix.
-4. **Be honest about M20 vs ATTACKER_BOX.** The implementation excludes ATTACKER_BOX (no synthetic edges) — `ecr_compounds_count` reports the actual denominator. Mention this in the table caption.
-5. **Be honest about stress on merged graphs.** §4.3 caveat — `stress_unreachable_pairs` inflates after merge; reachable-pair stress is correct, side counter is noisy.
+4. **Be honest about M20 vs ATTACKER_BOX.** The implementation excludes ATTACKER_BOX (no synthetic edges) — `ecr_compounds_count` reports the actual denominator. **Add this to the table caption explicitly**: e.g. *"compound_groups_count in Steps 1–3 includes ATTACKER_BOX (5 attacker nodes); the merge step adds CVE_GROUP compound parents on top."* Without this note a reader sees `compound_groups_count: 1` in the baseline and is confused about what that "1" means.
+5. **Be honest about stress on merged graphs.** §4.3 caveat — `stress_unreachable_pairs` historically inflated after merge. Resolved as of the 2026-05-05 visible-edge filter for stress (caveat 4.14): reachable-pair stress is now stable across the merge step.
+6. **Don't report `compound_singleton_fraction` in the paper body.** It's structurally 0 in normal operation (`cveMerge.ts:176` skips groups with size < 2). A reviewer reads "100% of groups have >1 element" and asks "well, how could it be otherwise?" Keep it in the JSON / regression test as a sentinel; in the paper's headline and appendix tables use only `compound_groups_count` and `compound_largest_group_size`.
 
 ### Recommended paper structure for the evaluation section
 
