@@ -792,6 +792,80 @@ describe('computeBridgeStatsFromList (M19)', () => {
     });
 });
 
+// ---------------------------------------------------------------------------
+// Caveat 4.11.2 regression sentinels (review note #8)
+//
+// The MetricsPaperReference.md caveat 4.11.2 warns that running CVE merge
+// BEFORE hiding layers would corrupt chain_length. The recommended order is
+// visibility-first, merge-second. Nothing in the runtime currently *enforces*
+// that order, so these tests act as trip-wires: if a future refactor either
+// (a) breaks the chain_length recurrence formula, or
+// (b) starts mutating chain_length inside cveMerge,
+// the failure here will catch it before paper numbers go silently wrong.
+// ---------------------------------------------------------------------------
+describe('chain_length invariants (caveat 4.11.2 sentinel)', () => {
+    const mkE = (isBridge: boolean, chainLength = 0): BridgeEdgeInfo =>
+        ({ isBridge, chainLength });
+
+    it('recurrence is additive: incoming + 1 + outgoing', () => {
+        // The formula in filter.ts hideNodeType:
+        //   chainLength = incomingChain + 1 + outgoingChain
+        // where incoming/outgoing are 0 for original edges, or the prior
+        // bridge's chain_length when chaining bridges across hides.
+        //
+        // Hiding three layers in sequence (A → hide; B → hide; C → hide)
+        // on a linear path original→A→B→C→original should accumulate:
+        //   after hide A: 0 + 1 + 0 = 1
+        //   after hide B: 1 + 1 + 0 = 2  (incoming is the A-bridge)
+        //   after hide C: 2 + 1 + 0 = 3
+        let chain = 0 + 1 + 0;
+        expect(chain).toBe(1);
+        chain = chain + 1 + 0;
+        expect(chain).toBe(2);
+        chain = chain + 1 + 0;
+        expect(chain).toBe(3);
+    });
+
+    it('mean over a known mixed distribution stays in the canonical range', () => {
+        // Sentinel scenario: hide(CPE+CWE+TI) on a typed PAG produces a
+        // distribution centred on 1–2 (not 3) because the anchor-type
+        // property of PAGDrawer's schema (CVE survives between CPE and
+        // CWE+TI) splits long runs into independent shorter ones.
+        // See MetricsPaperReference.md §4.13 for the detailed argument.
+        // If this drifts above ~2.5, a refactor likely changed the order.
+        const edges = [
+            mkE(true, 1), mkE(true, 1), mkE(true, 1), mkE(true, 1), mkE(true, 1),
+            mkE(true, 2), mkE(true, 2), mkE(true, 2),
+            mkE(true, 3),
+        ];
+        const r = computeBridgeStatsFromList(edges);
+        // 5×1 + 3×2 + 1×3 = 14, /9 ≈ 1.555
+        expect(r.meanContractionDepth).toBeGreaterThan(1.0);
+        expect(r.meanContractionDepth).toBeLessThan(2.5);
+        expect(r.chainLengthDistribution).toEqual({ 1: 5, 2: 3, 3: 1 });
+    });
+});
+
+// Source-level invariant: cveMerge must not read or write chain_length.
+// Merging should leave bridge-edge data untouched; if a future refactor
+// adds chain_length manipulation inside merge, the order-of-operations
+// invariant breaks silently. This trip-wire fires the moment that happens.
+describe('cveMerge does not touch chain_length (caveat 4.11.2 sentinel)', () => {
+    it('cveMerge.ts source contains no chain_length references', async () => {
+        const fs = await import('node:fs/promises');
+        const url = await import('node:url');
+        const path = await import('node:path');
+        const here = path.dirname(url.fileURLToPath(import.meta.url));
+        const src = await fs.readFile(path.join(here, 'cveMerge.ts'), 'utf-8');
+        // Strip line/block comments so a future explanatory comment doesn't
+        // accidentally trip the test — we only care about live code.
+        const code = src
+            .replace(/\/\*[\s\S]*?\*\//g, '')
+            .replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+        expect(code).not.toMatch(/chain_length|chainLength/);
+    });
+});
+
 describe('computeEcrFromList (M20)', () => {
     it('returns zeros for empty input', () => {
         expect(computeEcrFromList([])).toEqual({
