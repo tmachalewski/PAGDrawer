@@ -1233,6 +1233,14 @@ body {
     margin-bottom: 0;
 }
 
+/* Wrapper for stacking multiple stats-section blocks within one grid
+ * cell — used by the left column of the Drawing Quality split so
+ * Clean Metrics + spillover share the same column. */
+.stats-column-stack {
+    display: flex;
+    flex-direction: column;
+}
+
 @media (max-width: 900px) {
     .stats-two-column {
         grid-template-columns: 1fr;

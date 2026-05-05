@@ -274,20 +274,31 @@
                 </div>
             </div>
 
-            <!-- Two-column: clean metrics and drawing quality side-by-side -->
+            <!-- Two-column: clean metrics + drawing quality (split across both
+                 columns to balance the layout — left column carries the
+                 paper-headline groups, right column carries geometry + the
+                 mechanism-evaluating reduction groups + the action buttons). -->
             <div class="stats-two-column">
-                <div class="stats-section">
-                    <div class="stats-section-title">Clean Attack Graph Metrics</div>
-                    <table class="stats-table" id="stats-clean-table">
-                        <tbody></tbody>
-                    </table>
-                    <div class="stats-card-hint" style="margin-top: 8px;">
-                        Excludes ATTACKER, COMPOUND, BRIDGE, CVE_GROUP, and synthetic merge edges.
+                <div class="stats-column-stack">
+                    <div class="stats-section">
+                        <div class="stats-section-title">Clean Attack Graph Metrics</div>
+                        <table class="stats-table" id="stats-clean-table">
+                            <tbody></tbody>
+                        </table>
+                        <div class="stats-card-hint" style="margin-top: 8px;">
+                            Excludes ATTACKER, COMPOUND, BRIDGE, CVE_GROUP, and synthetic merge edges.
+                        </div>
+                    </div>
+                    <div class="stats-section" style="margin-top: 16px;">
+                        <div class="stats-section-title">Drawing Quality — primary aesthetic</div>
+                        <table class="stats-table" id="stats-drawing-table-left">
+                            <tbody></tbody>
+                        </table>
                     </div>
                 </div>
                 <div class="stats-section">
-                    <div class="stats-section-title">Drawing Quality Metrics</div>
-                    <table class="stats-table" id="stats-drawing-table">
+                    <div class="stats-section-title">Drawing Quality — geometry &amp; reductions</div>
+                    <table class="stats-table" id="stats-drawing-table-right">
                         <tbody></tbody>
                     </table>
                     <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px;">

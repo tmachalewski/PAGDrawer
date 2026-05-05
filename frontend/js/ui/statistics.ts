@@ -287,12 +287,18 @@ function setText(id: string, value: string): void {
  */
 function populateDrawingMetrics(): void {
     lastMetrics = computeMetrics();
-    const tableBody = document.querySelector('#stats-drawing-table tbody');
-    if (!tableBody) return;
-    tableBody.innerHTML = '';
+    // The Drawing Quality Metrics section is split across two tables to
+    // balance the modal layout — left for paper-headline aesthetic
+    // metrics (Counts / Crossings / Stress), right for geometry +
+    // reduction-evaluating groups.
+    const leftBody = document.querySelector('#stats-drawing-table-left tbody');
+    const rightBody = document.querySelector('#stats-drawing-table-right tbody');
+    if (!leftBody || !rightBody) return;
+    leftBody.innerHTML = '';
+    rightBody.innerHTML = '';
 
     if (!lastMetrics) {
-        tableBody.innerHTML = '<tr><td colspan="2">No graph loaded</td></tr>';
+        rightBody.innerHTML = '<tr><td colspan="2">No graph loaded</td></tr>';
         return;
     }
 
@@ -313,7 +319,7 @@ function populateDrawingMetrics(): void {
     // groups is deliberate — the most-cited / paper-headline metric in
     // each section comes first.
     type Row = { kind: 'group'; label: string } | { kind: 'row'; label: string; value: string };
-    const rows: Row[] = [
+    const leftRows: Row[] = [
         { kind: 'group', label: 'Counts' },
         { kind: 'row', label: 'Unique CVEs (graph)', value: String(m.uniqueCves) },
         { kind: 'row', label: 'Trivy vulnerabilities (scans)', value: trivyLabel },
@@ -332,7 +338,9 @@ function populateDrawingMetrics(): void {
         { kind: 'row', label: 'Stress / mean edge length', value: noStress ? '—' : `${m.stressPerPairNormalizedEdge.toFixed(4)}   (Kamada-Kawai, dimensionless)` },
         { kind: 'row', label: 'Stress / bbox diagonal', value: noStress ? '—' : `${m.stressPerPairNormalizedDiagonal.toFixed(4)}   (dimensionless)` },
         { kind: 'row', label: 'Stress / √area', value: noStress ? '—' : `${m.stressPerPairNormalizedArea.toFixed(4)}   (dimensionless)` },
+    ];
 
+    const rightRows: Row[] = [
         { kind: 'group', label: 'Layout geometry' },
         { kind: 'row', label: 'Drawing area (logical units²)', value: m.drawingArea.toFixed(2) },
         { kind: 'row', label: 'Bounding box (W × H)', value: `${m.bboxWidth.toFixed(2)} × ${m.bboxHeight.toFixed(2)}` },
@@ -355,26 +363,30 @@ function populateDrawingMetrics(): void {
         { kind: 'row', label: 'Attribute compression ratio (M22)', value: m.acrCveNodeCount === 0 ? '—   (no visible CVEs)' : `prereqs ${m.acrCvePrereqs.toFixed(4)}  /  outcomes ${m.acrCveOutcomes.toFixed(4)}   (${m.acrCveNodeCount} CVEs)` },
     ];
 
-    rows.forEach(item => {
-        if (item.kind === 'group') {
+    const renderInto = (body: Element, items: Row[]) => {
+        items.forEach(item => {
+            if (item.kind === 'group') {
+                const tr = document.createElement('tr');
+                tr.className = 'stats-group-header';
+                const td = document.createElement('td');
+                td.colSpan = 2;
+                td.textContent = item.label;
+                tr.appendChild(td);
+                body.appendChild(tr);
+                return;
+            }
             const tr = document.createElement('tr');
-            tr.className = 'stats-group-header';
-            const td = document.createElement('td');
-            td.colSpan = 2;
-            td.textContent = item.label;
-            tr.appendChild(td);
-            tableBody.appendChild(tr);
-            return;
-        }
-        const tr = document.createElement('tr');
-        const td1 = document.createElement('td');
-        td1.textContent = item.label;
-        const td2 = document.createElement('td');
-        td2.textContent = item.value;
-        tr.appendChild(td1);
-        tr.appendChild(td2);
-        tableBody.appendChild(tr);
-    });
+            const td1 = document.createElement('td');
+            td1.textContent = item.label;
+            const td2 = document.createElement('td');
+            td2.textContent = item.value;
+            tr.appendChild(td1);
+            tr.appendChild(td2);
+            body.appendChild(tr);
+        });
+    };
+    renderInto(leftBody, leftRows);
+    renderInto(rightBody, rightRows);
 }
 
 /**
