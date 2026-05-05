@@ -140,18 +140,13 @@ If the orange line is nearly as long as the green line, the edge-length CV is hi
 
 ## CSV Export
 
-For the ESORICS paper workflow: apply each reduction step manually, click **📥 Export CSV** in the Statistics modal, collect one CSV per step, concatenate in a spreadsheet.
+For the GD 2026 paper workflow: apply each reduction step manually, click **📥 Export CSV** in the Statistics modal, collect one CSV per step, concatenate in a spreadsheet.
 
-Format (header row + one data row):
+The header row currently has **37 columns** spanning every metric exposed by the modal. The full ordered column list lives in [`StatisticsModal.md`](StatisticsModal.md) § "CSV export" so a single source of truth stays in sync with the implementation. Filename: `pagdrawer-metrics-YYYY-MM-DD-HH-mm.csv`.
 
-```
-nodes,edges,unique_cves,trivy_vuln_count,crossings_raw,crossings_normalized,crossings_per_edge,drawing_area,area_per_node,edge_length_cv
-67,88,32,189,32,0.9909,0.3636,1523400.50,22737.32,0.7748
-```
+`trivy_vuln_count` is left empty if the scan list cannot be fetched. Numeric columns are formatted with 4 decimals for [0,1] scores, 2 decimals for area/length/angle values, and integers as integers. The `crossings_top_pair_label` column is RFC 4180-quoted when it contains a comma or double quote.
 
-`trivy_vuln_count` is left empty if the scan list cannot be fetched. All numeric columns are formatted with 4 decimals for [0,1] scores and 2 decimals for area/length values.
-
-Filename: `pagdrawer-metrics-YYYY-MM-DD-HH-mm.csv`.
+For the **paper showcase plan** — which 5 reduction steps to apply in what order to produce the headline evaluation table — see [`MetricsPaperReference.md`](MetricsPaperReference.md) § 6.
 
 No step labeling or aggregation in-app — the user adds those in their sheet after combining rows. Keeps the frontend stateless.
 
@@ -200,7 +195,9 @@ computeAPSP(nodeIds, edges, opts?) → Map<string, Map<string, number>>  // BFS 
 symmetrizedDistance(apsp, a, b) → number | undefined              // min of two directed paths
 computeStress() → StressBundle                                   // M1  — raw + 3 normalisations
 computeStressFromAPSP(nodes, apsp, layoutScale?)                 // M1  — pure helper
-getVisibleNodesWithIds() → NodeWithPosition[]                    // helper for M1 / M11 / M12
+getVisibleNodesWithIds() → NodeWithPosition[]                    // visible non-debug nodes (broader set)
+getStressEligibleNodes() → NodeWithPosition[]                    // visible non-debug nodes WITH ≥1 visible edge
+                                                                  //   — used by computeStress so compound ghost-layers don't pollute the metric
 computeBridgeStats() → BridgeStats                               // M19 — live cy
 computeBridgeStatsFromList(edgeInfos)                            // M19 — pure helper
 computeEcr() → EcrStats                                          // M20 — live cy

@@ -21,19 +21,34 @@ It is intentionally **observational** — opening the modal never modifies the g
 
 ## Layout
 
-The modal opens at a wide max-width (1100 px, 95 % of viewport) and arranges its content in a four-row layout, with rows 2 and 3 splitting into two columns:
+The modal opens at a wide max-width (1100 px, 95 % of viewport). Four rows; rows 2 and 3 use a two-column grid. The Drawing Quality Metrics section spans both grid cells of row 3 (left under Clean Metrics, right with the action buttons) so the long metric list reads in two parallel columns instead of one tall scroll:
 
 ```
-┌───────────────────────────────────────────────────────────┐
-│ Visible (Live)              Backend Graph                 │  Row 1: totals
-├───────────────────────────────────────────────────────────┤
-│ Nodes by Type        │  Edges by Type                     │  Row 2: per-type
-├───────────────────────────────────────────────────────────┤
-│ Clean Attack Graph   │  Drawing Quality Metrics           │  Row 3: derived
-│ Metrics              │  + Show debug overlay  + Export CSV │
-├───────────────────────────────────────────────────────────┤
-│ ⚠️ Interpretation notes (collapsible)                     │  Row 4: notes
-└───────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│ Visible (Live)              Backend Graph                        │  Row 1
+├──────────────────────────────────────────────────────────────────┤
+│ Nodes by Type        │  Edges by Type                            │  Row 2
+├──────────────────────────────────────────────────────────────────┤
+│ Clean Attack Graph   │  Drawing Quality —                        │
+│ Metrics              │    geometry & reductions                  │
+│                      │  ┌────────────────────────────────────┐   │
+│                      │  │ Layout geometry (6 rows)           │   │
+│                      │  │ Reductions: bridges + merges (8)   │   │  Row 3
+│                      │  │ Reduction potential — M22 (1)      │   │
+│                      │  └────────────────────────────────────┘   │
+│ ────────────────     │  + 🔍 ⚙️ 📥 📄  buttons                   │
+│ Drawing Quality —    │                                            │
+│   primary aesthetic  │                                            │
+│ ┌──────────────────┐ │                                            │
+│ │ Counts (2)       │ │                                            │
+│ │ Edge crossings   │ │                                            │
+│ │   M2 + M25 (7)   │ │                                            │
+│ │ Layout fidelity  │ │                                            │
+│ │   Stress (4)     │ │                                            │
+│ └──────────────────┘ │                                            │
+├──────────────────────────────────────────────────────────────────┤
+│ ⚠️ Interpretation notes (collapsible)                            │  Row 4
+└──────────────────────────────────────────────────────────────────┘
 ```
 
 Below 900 px viewport, rows 2 and 3 collapse to a single column.
@@ -74,25 +89,29 @@ A small table of counts that **strip structural artifacts** so you can compare t
 | Unique CVE IDs | distinct base IDs (strip `:dN` and `@...` from CVE node IDs) |
 | Initial-state VCs (in Initial State box) | VC nodes with `is_initial: true` (the AV:N / PR:N / UI / AC inside ATTACKER_BOX) |
 
-### Drawing Quality Metrics (right column)
+### Drawing Quality Metrics (split across both columns)
 
-| Row | Source |
-|-----|--------|
-| Edge crossings (raw) | `findCrossings(edges).length` |
-| Edge crossings (normalized, Purchase) | `1 − raw / max_possible`, max_possible per Purchase 2002 |
-| Edge crossings per edge | `raw / |E|` |
-| Drawing area (logical units²) | bounding box of node centers |
-| Area per node (logical units²) | `drawing_area / |V|` |
-| Edge length CV | population std / mean of edge lengths |
+The Drawing Quality Metrics section spans both row-3 columns. Each column has its own `<table class="stats-table">`; rows alternate between **group headers** (amber tint, uppercase, `tr.stats-group-header`) and data rows. The complete metric set is grouped as:
 
-Plus two non-aesthetic counts useful for paper context:
+**Left column** (`#stats-drawing-table-left`, sits below Clean Metrics in a `.stats-column-stack` flex wrapper). Section title: *Drawing Quality — primary aesthetic*.
 
-| Row | Source |
-|-----|--------|
-| Unique CVEs (graph) | same value as in the Clean Attack Graph table — repeated here so the Drawing Quality table is self-contained for the CSV export |
-| Trivy vulnerabilities (scans) | sum of `vuln_count` across all uploaded scans, fetched from `/api/data/scans` when the modal opens |
+| Group                              | Rows | Notes |
+|------------------------------------|------|-------|
+| Counts                             | 2    | Unique CVEs (graph) + Trivy vulnerabilities (scans, filtered to selected scans) |
+| Edge crossings (M2 + M25)          | 7    | Raw / normalized / per-edge counts + M2 mean/min/RAC + M25 top-pair label |
+| Layout fidelity — Stress (M1)      | 4    | Raw + 3 normalisations (`_edge`, `_diagonal`, `_area`) |
 
-The right column has **four action buttons**: 🔍 **Show debug overlay**, ⚙️ (debug overlay settings), 📥 **Export CSV**, and 📄 **Export JSON**.
+**Right column** (`#stats-drawing-table-right`, with the action buttons + Purchase footnote). Section title: *Drawing Quality — geometry & reductions*.
+
+| Group                                           | Rows | Notes |
+|-------------------------------------------------|------|-------|
+| Layout geometry                                 | 6    | Drawing area, bbox W×H, area/node, M9 aspect ratio, edge-length CV (σ/μ), edge-length μ + σ |
+| Reductions: bridges + merges (M19 + M20 + M21)  | 8    | Bridge proportion + mean depth + chain dist (M19), ECR weighted (M20), compound groups + largest + singletons + size dist (M21) |
+| Reduction potential (M22)                       | 1    | ACR (prereqs / outcomes / denominator) |
+
+**Total: 28 metric rows + 6 group headers across the two tables.** Per-metric formulas, scope, and edge cases live in [`MetricsPaperReference.md`](MetricsPaperReference.md) §2 and [`DrawingQualityMetrics.md`](DrawingQualityMetrics.md). For the M1 stress story including the directed-BFS / symmetrised-distance / 3-normalisations choices, see [`StressMetric.md`](StressMetric.md).
+
+The right column has **four action buttons** below the table: 🔍 **Show debug overlay**, ⚙️ (debug overlay settings), 📥 **Export CSV**, and 📄 **Export JSON**.
 
 The 🔍 button toggles all currently-enabled overlays on/off; its label reports how many are enabled (e.g. `🔍 Show debug overlay (3)`). The ⚙️ button opens the **Debug Overlay Settings modal** described below.
 
