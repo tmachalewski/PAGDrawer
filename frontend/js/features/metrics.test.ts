@@ -22,7 +22,10 @@ import {
     computeAPSP,
     computeStressFromAPSP,
     symmetrizedDistance,
+    computeBridgeStatsFromList,
+    computeEcrFromList,
     type NodeWithPosition,
+    type BridgeEdgeInfo,
     metricsToCSV,
     metricsToJSON,
     metricsToJsonObject,
@@ -736,6 +739,98 @@ describe('computeStressFromAPSP (M1)', () => {
     });
 });
 
+describe('computeBridgeStatsFromList (M19)', () => {
+    function mkE(isBridge: boolean, chainLength = 0): BridgeEdgeInfo {
+        return { isBridge, chainLength };
+    }
+
+    it('returns zeros for empty input', () => {
+        expect(computeBridgeStatsFromList([])).toEqual({
+            bridgeEdgeProportion: 0,
+            meanContractionDepth: 0,
+            bridgeEdgeCount: 0,
+            chainLengthDistribution: {},
+        });
+    });
+
+    it('returns zeros when there are no bridges among the edges', () => {
+        const r = computeBridgeStatsFromList([mkE(false), mkE(false), mkE(false)]);
+        expect(r.bridgeEdgeProportion).toBe(0);
+        expect(r.meanContractionDepth).toBe(0);
+        expect(r.bridgeEdgeCount).toBe(0);
+    });
+
+    it('counts bridges and computes proportion correctly', () => {
+        // 5 edges, 2 of which are bridges → proportion 0.4
+        const edges = [
+            mkE(true, 1), mkE(true, 2),
+            mkE(false), mkE(false), mkE(false),
+        ];
+        const r = computeBridgeStatsFromList(edges);
+        expect(r.bridgeEdgeProportion).toBe(0.4);
+        expect(r.bridgeEdgeCount).toBe(2);
+        expect(r.meanContractionDepth).toBe(1.5);
+    });
+
+    it('emits a chain_length distribution', () => {
+        const edges = [
+            mkE(true, 1), mkE(true, 1), mkE(true, 1),  // 3 single-hop
+            mkE(true, 2), mkE(true, 2),                 // 2 double-hop
+            mkE(false), mkE(false),                     // 2 originals
+        ];
+        const r = computeBridgeStatsFromList(edges);
+        expect(r.chainLengthDistribution).toEqual({ 1: 3, 2: 2 });
+    });
+
+    it('mean contraction depth is bridge-only (originals do not dilute)', () => {
+        // 1 bridge with chain_length=5, 100 originals → mean is 5, not 5/101
+        const edges: BridgeEdgeInfo[] = [mkE(true, 5)];
+        for (let i = 0; i < 100; i++) edges.push(mkE(false));
+        const r = computeBridgeStatsFromList(edges);
+        expect(r.meanContractionDepth).toBe(5);
+    });
+});
+
+describe('computeEcrFromList (M20)', () => {
+    it('returns zeros for empty input', () => {
+        expect(computeEcrFromList([])).toEqual({
+            meanEcrWeighted: 0,
+            compoundsCount: 0,
+            perCompound: [],
+        });
+    });
+
+    it('excludes compounds with zero synthetic edges', () => {
+        // p1 has synthetics → included; p2 has none → excluded
+        const r = computeEcrFromList([
+            { parentId: 'p1', rawEdges: 12, syntheticEdges: 4, childCount: 3 },
+            { parentId: 'p2', rawEdges: 5,  syntheticEdges: 0, childCount: 2 },
+        ]);
+        expect(r.compoundsCount).toBe(1);
+        expect(r.perCompound[0].parentId).toBe('p1');
+        expect(r.perCompound[0].ecr).toBe(3); // 12/4
+    });
+
+    it('computes size-weighted mean ECR', () => {
+        // p1: ECR=3, weight=10
+        // p2: ECR=1, weight=5
+        // weighted mean = (3·10 + 1·5) / (10+5) = 35/15 ≈ 2.333
+        const r = computeEcrFromList([
+            { parentId: 'p1', rawEdges: 30, syntheticEdges: 10, childCount: 10 },
+            { parentId: 'p2', rawEdges: 5,  syntheticEdges: 5,  childCount: 5 },
+        ]);
+        expect(r.meanEcrWeighted).toBeCloseTo(35 / 15, 6);
+    });
+
+    it('falls back to zero when total weight is zero (all-singleton compounds with synth edges and child=0)', () => {
+        // edge case — childCount: 0 should not divide by zero
+        const r = computeEcrFromList([
+            { parentId: 'p1', rawEdges: 5, syntheticEdges: 1, childCount: 0 },
+        ]);
+        expect(r.meanEcrWeighted).toBe(0);
+    });
+});
+
 describe('computeAspectRatio (M9)', () => {
     it('returns 1 for a square bbox', () => {
         expect(computeAspectRatio({ minX: 0, maxX: 10, minY: 0, maxY: 10 })).toBe(1);
@@ -849,20 +944,30 @@ describe('metricsToCSV', () => {
         stressPerPairNormalizedEdge: 0.5,
         stressPerPairNormalizedDiagonal: 0.0125,
         stressPerPairNormalizedArea: 0.025,
+        bridgeEdgeProportion: 0.2,
+        meanContractionDepth: 1.5,
+        bridgeEdgeCount: 3,
+        bridgeChainLengthDistribution: { 1: 2, 2: 1 },
+        meanEcrWeighted: 2.4,
+        ecrCompoundsCount: 2,
+        ecrPerCompound: [
+            { parentId: 'p1', ecr: 3.0, childCount: 5 },
+            { parentId: 'p2', ecr: 1.5, childCount: 5 },
+        ],
     };
 
     it('emits all columns with unique_cves and empty trivy_vuln_count when context missing', () => {
         const csv = metricsToCSV(baseMetrics);
         const lines = csv.trim().split('\n');
         expect(lines.length).toBe(2);
-        expect(lines[0]).toBe('nodes,edges,unique_cves,trivy_vuln_count,crossings_raw,crossings_normalized,crossings_per_edge,drawing_area,bbox_width,bbox_height,area_per_node,edge_length_cv,aspect_ratio,compound_groups_count,compound_largest_group_size,compound_singleton_fraction,crossings_mean_angle_deg,crossings_min_angle_deg,crossings_right_angle_ratio,crossings_top_pair_share,crossings_top_pair_label,stress_per_pair,stress_per_pair_normalized_edge,stress_per_pair_normalized_diagonal,stress_per_pair_normalized_area,stress_unreachable_pairs,stress_reachable_pairs');
-        expect(lines[1]).toBe('10,15,7,,3,0.9500,0.2000,12345.67,200.00,61.73,1234.57,0.4200,0.5000,4,5,0.2500,67.50,30.00,0.5000,0.6000,HAS_VULN×LEADS_TO,12.50,0.5000,0.0125,0.0250,4,41');
+        expect(lines[0]).toBe('nodes,edges,unique_cves,trivy_vuln_count,crossings_raw,crossings_normalized,crossings_per_edge,drawing_area,bbox_width,bbox_height,area_per_node,edge_length_cv,aspect_ratio,compound_groups_count,compound_largest_group_size,compound_singleton_fraction,crossings_mean_angle_deg,crossings_min_angle_deg,crossings_right_angle_ratio,crossings_top_pair_share,crossings_top_pair_label,stress_per_pair,stress_per_pair_normalized_edge,stress_per_pair_normalized_diagonal,stress_per_pair_normalized_area,stress_unreachable_pairs,stress_reachable_pairs,bridge_edge_proportion,mean_contraction_depth,bridge_edge_count,mean_ecr_weighted,ecr_compounds_count');
+        expect(lines[1]).toBe('10,15,7,,3,0.9500,0.2000,12345.67,200.00,61.73,1234.57,0.4200,0.5000,4,5,0.2500,67.50,30.00,0.5000,0.6000,HAS_VULN×LEADS_TO,12.50,0.5000,0.0125,0.0250,4,41,0.2000,1.5000,3,2.4000,2');
     });
 
     it('populates trivy_vuln_count when provided via context', () => {
         const csv = metricsToCSV(baseMetrics, { trivyVulnCount: 189 });
         const lines = csv.trim().split('\n');
-        expect(lines[1]).toBe('10,15,7,189,3,0.9500,0.2000,12345.67,200.00,61.73,1234.57,0.4200,0.5000,4,5,0.2500,67.50,30.00,0.5000,0.6000,HAS_VULN×LEADS_TO,12.50,0.5000,0.0125,0.0250,4,41');
+        expect(lines[1]).toBe('10,15,7,189,3,0.9500,0.2000,12345.67,200.00,61.73,1234.57,0.4200,0.5000,4,5,0.2500,67.50,30.00,0.5000,0.6000,HAS_VULN×LEADS_TO,12.50,0.5000,0.0125,0.0250,4,41,0.2000,1.5000,3,2.4000,2');
     });
 
     it('CSV-quotes a top-pair label that contains a comma or quote', () => {
@@ -914,6 +1019,16 @@ describe('JSON metrics export (schema v1)', () => {
         stressPerPairNormalizedEdge: 0.5,
         stressPerPairNormalizedDiagonal: 0.0125,
         stressPerPairNormalizedArea: 0.025,
+        bridgeEdgeProportion: 0.2,
+        meanContractionDepth: 1.5,
+        bridgeEdgeCount: 3,
+        bridgeChainLengthDistribution: { 1: 2, 2: 1 },
+        meanEcrWeighted: 2.4,
+        ecrCompoundsCount: 2,
+        ecrPerCompound: [
+            { parentId: 'p1', ecr: 3.0, childCount: 5 },
+            { parentId: 'p2', ecr: 1.5, childCount: 5 },
+        ],
     };
 
     const baseSettings: SettingsSnapshot = {
@@ -993,6 +1108,16 @@ describe('JSON metrics export (schema v1)', () => {
             stress_per_pair_normalized_area: 0.025,
             stress_unreachable_pairs: 4,
             stress_reachable_pairs: 41,
+            bridge_edge_proportion: 0.2,
+            mean_contraction_depth: 1.5,
+            bridge_edge_count: 3,
+            bridge_chain_length_distribution: { 1: 2, 2: 1 },
+            mean_ecr_weighted: 2.4,
+            ecr_compounds_count: 2,
+            ecr_per_compound: [
+                { parentId: 'p1', ecr: 3.0, childCount: 5 },
+                { parentId: 'p2', ecr: 1.5, childCount: 5 },
+            ],
         });
     });
 
@@ -1033,6 +1158,9 @@ describe('JSON metrics export (schema v1)', () => {
             'aspect_ratio',
             'bbox_height',
             'bbox_width',
+            'bridge_chain_length_distribution',
+            'bridge_edge_count',
+            'bridge_edge_proportion',
             'compound_groups_count',
             'compound_largest_group_size',
             'compound_singleton_fraction',
@@ -1047,8 +1175,12 @@ describe('JSON metrics export (schema v1)', () => {
             'crossings_top_pair_share',
             'crossings_type_pair_distribution',
             'drawing_area',
+            'ecr_compounds_count',
+            'ecr_per_compound',
             'edge_length_cv',
             'edges',
+            'mean_contraction_depth',
+            'mean_ecr_weighted',
             'nodes',
             'stress_per_pair',
             'stress_per_pair_normalized_area',

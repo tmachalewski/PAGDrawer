@@ -122,7 +122,7 @@ Single click → single-row CSV downloads as `pagdrawer-metrics-YYYY-MM-DD-HH-mm
 Columns:
 
 ```
-nodes,edges,unique_cves,trivy_vuln_count,crossings_raw,crossings_normalized,crossings_per_edge,drawing_area,bbox_width,bbox_height,area_per_node,edge_length_cv,aspect_ratio,compound_groups_count,compound_largest_group_size,compound_singleton_fraction,crossings_mean_angle_deg,crossings_min_angle_deg,crossings_right_angle_ratio,crossings_top_pair_share,crossings_top_pair_label,stress_per_pair,stress_per_pair_normalized_edge,stress_per_pair_normalized_diagonal,stress_per_pair_normalized_area,stress_unreachable_pairs,stress_reachable_pairs
+nodes,edges,unique_cves,trivy_vuln_count,crossings_raw,crossings_normalized,crossings_per_edge,drawing_area,bbox_width,bbox_height,area_per_node,edge_length_cv,aspect_ratio,compound_groups_count,compound_largest_group_size,compound_singleton_fraction,crossings_mean_angle_deg,crossings_min_angle_deg,crossings_right_angle_ratio,crossings_top_pair_share,crossings_top_pair_label,stress_per_pair,stress_per_pair_normalized_edge,stress_per_pair_normalized_diagonal,stress_per_pair_normalized_area,stress_unreachable_pairs,stress_reachable_pairs,bridge_edge_proportion,mean_contraction_depth,bridge_edge_count,mean_ecr_weighted,ecr_compounds_count
 ```
 
 Two variable-cardinality dictionaries are intentionally **not** flattened into CSV because they would produce non-stable headers across runs:
@@ -217,7 +217,17 @@ Click 📄 **Export JSON** and a `pagdrawer-metrics-YYYY-MM-DD-HH-mm.json` file 
     "stress_per_pair_normalized_diagonal": 0.00012,      // ÷ sqrt(w² + h²)
     "stress_per_pair_normalized_area": 0.00018,          // ÷ sqrt(drawing_area)
     "stress_unreachable_pairs": 12,
-    "stress_reachable_pairs": 2168
+    "stress_reachable_pairs": 2168,
+    "bridge_edge_proportion": 0.18,
+    "mean_contraction_depth": 1.42,
+    "bridge_edge_count": 16,
+    "bridge_chain_length_distribution": { "1": 12, "2": 4 },
+    "mean_ecr_weighted": 2.85,
+    "ecr_compounds_count": 5,
+    "ecr_per_compound": [
+      { "parentId": "cve_merge_outcomes_outcome_x", "ecr": 3.4, "childCount": 8 },
+      { "parentId": "cve_merge_outcomes_outcome_y", "ecr": 2.1, "childCount": 5 }
+    ]
   }
 }
 ```
@@ -259,6 +269,8 @@ The 🔍 button toggles overlays on/off. Each overlay is **independently** toggl
 | Compound label suffix `(×N)` (M21) | Member count for every compound parent (idempotent: skips parents whose label already ends with `(×<digits>)`, e.g. CVE_GROUP) | `computeCompoundCardinality()` | off |
 | Node fills coloured by graph distance from clicked source (M1) | Click any node → red→yellow→green gradient by symmetrised graph distance; unreachable = translucent grey; source = black with yellow border | `computeAPSP` + `symmetrizedDistance`. See [`StressMetric.md`](StressMetric.md) § Visualisation. | off |
 | Floating pair-distance panel (M1) | Click two nodes in sequence → upper-right panel shows both directed distances, the symmetrised distance, and the Euclidean (layout) distance | same as above | off |
+| `k=N` labels on bridge edges (M19) | Each visibility-toggle bridge gets a small `k=N` label showing how many hidden nodes the bridge spans (1 for single-hop, 2+ for chained) | `chain_length` data attribute set by `frontend/js/features/filter.ts` when bridges are created; aggregated by `computeBridgeStats()` | off |
+| `ECR×N` suffix on compound labels (M20) | Each compound parent's label gains `(ECR×N.M)` showing how much its outcomes-merge consolidated edges. Composes with the M21 `(×N)` suffix when both are on. | `computeEcr()` walks each compound parent, counts raw vs synthetic edges, divides | off |
 
 All overlay shapes are added as Cytoscape pseudo-nodes/edges with custom `type` values (`CROSSING_DEBUG`, `AREA_DEBUG`, `UNIT_EDGE_NODE`, `UNIT_EDGE`, `UNIT_EDGE_STD`). They zoom and pan with the graph, ignore mouse events, and are explicitly filtered out of every metric computation so toggling the overlay never changes what the metrics report.
 
@@ -296,6 +308,10 @@ A dedicated modal that lets the user toggle each overlay individually and apply 
 │   ☐ Color nodes by graph distance from clicked      │
 │     source                                            │
 │   ☐ Show pair distances on click                     │
+│                                                       │
+│ Reductions (M19 + M20):                              │
+│   ☐ Bridge chain-depth labels k=N (M19)              │
+│   ☐ ECR×N suffix on compound labels (M20)            │
 └──────────────────────────────────────────────────────┘
 ```
 

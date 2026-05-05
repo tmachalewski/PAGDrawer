@@ -196,9 +196,13 @@ computeCrossingAngleStats(crossings, tolRad?)                    // M2  — {mea
 computeTypePairCrossingStats(crossings)                          // M25 — {distribution, topPairLabel, topPairShare}
 computeAPSP(nodeIds, edges, opts?) → Map<string, Map<string, number>>  // BFS APSP, default directed, unweighted
 symmetrizedDistance(apsp, a, b) → number | undefined              // min of two directed paths
-computeStress() → {stressPerPair, stressUnreachablePairs, ...}   // M1  — live cy
-computeStressFromAPSP(nodes, apsp)                               // M1  — pure helper
+computeStress() → StressBundle                                   // M1  — raw + 3 normalisations
+computeStressFromAPSP(nodes, apsp, layoutScale?)                 // M1  — pure helper
 getVisibleNodesWithIds() → NodeWithPosition[]                    // helper for M1 / M11 / M12
+computeBridgeStats() → BridgeStats                               // M19 — live cy
+computeBridgeStatsFromList(edgeInfos)                            // M19 — pure helper
+computeEcr() → EcrStats                                          // M20 — live cy
+computeEcrFromList(perParent)                                    // M20 — pure helper
 metricsToCSV(m, context?) → string
 downloadMetricsCSV(m, context?) → void
 metricsToJSON(m, context, settings, dataSource, now?) → string   // schema v1
@@ -263,6 +267,37 @@ The Debug Overlay Settings modal exposes a radio group `Crossings — color dots
 - `typePair` (M25) — categorical 10-color palette assigned to each `typeA×typeB` bucket in descending count order (most-common pair = red, second = orange, …)
 
 Implementation: `pickCrossingColor(c, mode, palette)` and `buildTypePairPalette(crossings)` in `frontend/js/ui/debugOverlay.ts`.
+
+### M19 — Bridge Edge Proportion + Contraction Depth
+
+PAGDrawer's visibility toggles (hide CWE / TI / etc.) replace chains of hidden nodes with a single "bridge" edge from the surviving predecessor to the surviving successor. Bridges carry a `chain_length` data attribute = the number of hidden nodes the bridge spans.
+
+`chain_length` accumulates over chained `hideNodeType` calls. When CWE is hidden first, bridges CVE→TI get chain_length=1. When TI is hidden next, the new bridges CVE→VC get chain_length = (old CVE→TI chain_length, 1) + 1 (for TI itself) + (TI→VC chain_length, 0) = 2. The accumulation is implemented in `frontend/js/features/filter.ts` via the `readChainLength` helper.
+
+`computeBridgeStats()` reports:
+- `bridge_edge_proportion` — `|bridges| / |edges|`
+- `mean_contraction_depth` — average `chain_length` across bridges only
+- `bridge_edge_count` — raw count
+- `bridge_chain_length_distribution` — JSON-only; e.g. `{ "1": 12, "2": 4 }`
+
+CSV columns: `bridge_edge_proportion`, `mean_contraction_depth`, `bridge_edge_count`. Distribution dict is JSON-only.
+
+Overlay: a per-bridge `k=N` label (font 11px, white with black outline) at the midpoint of every bridge whose chain_length > 0. Toggleable in the Debug Overlay Settings modal under "Reductions (M19 + M20)".
+
+### M20 — Edge Consolidation Ratio
+
+For each compound parent (e.g. CVE_GROUP from outcomes-merge): how much edge consolidation did the merge achieve? `ECR = raw_edges / synthetic_edges` per parent, where:
+- `raw_edges` = original edges connected to any child (counted regardless of `display: none` — that's the whole point: the originals were hidden by outcomes-merge)
+- `synthetic_edges` = edges incident on the parent itself, marked `data('synthetic') === true`
+
+`computeEcr()` aggregates as a **size-weighted mean** across parents that have synthetic edges (childCount-weighted). Compounds with no synthetic edges (e.g. prereqs-mode merge, ATTACKER_BOX) are excluded from the mean.
+
+CSV columns: `mean_ecr_weighted`, `ecr_compounds_count`. Per-parent breakdown lives in JSON's `ecr_per_compound`.
+
+Overlay: appends `(ECR×N.M)` to compound parent labels. Composes with M21's `(×N)`:
+- M21 alone: `Outcome XYZ  (×5)`
+- M20 alone: `Outcome XYZ  (ECR×3.4)`
+- Both: `Outcome XYZ  (×5  ECR×3.4)` (or `Outcome XYZ (×5)  (ECR×3.4)` when the backend label already includes the count)
 
 ### M9 — Aspect Ratio
 

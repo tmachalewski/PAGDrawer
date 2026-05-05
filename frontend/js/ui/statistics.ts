@@ -369,6 +369,30 @@ function populateDrawingMetrics(): void {
             'Compound size distribution (M21)',
             formatSizeDistribution(m.compoundSizeDistribution),
         ],
+        [
+            'Bridge edge proportion (M19)',
+            m.bridgeEdgeCount === 0
+                ? '—   (no visibility-toggle bridges)'
+                : `${m.bridgeEdgeProportion.toFixed(4)}   (${m.bridgeEdgeCount} bridges)`,
+        ],
+        [
+            'Mean contraction depth (M19)',
+            m.bridgeEdgeCount === 0
+                ? '—'
+                : `${m.meanContractionDepth.toFixed(2)}   (hidden hops per bridge)`,
+        ],
+        [
+            'Bridge chain-length distribution (M19)',
+            m.bridgeEdgeCount === 0
+                ? '—'
+                : formatSizeDistribution(m.bridgeChainLengthDistribution),
+        ],
+        [
+            'Edge consolidation ratio (M20, weighted)',
+            m.ecrCompoundsCount === 0
+                ? '—   (no synthetic-edge compounds)'
+                : `${m.meanEcrWeighted.toFixed(2)}×   (over ${m.ecrCompoundsCount} compounds)`,
+        ],
     ];
 
     rows.forEach(([label, value]) => {

@@ -52,6 +52,8 @@ describe('DEFAULT_OVERLAY_STATE', () => {
             crossingsColorBy: 'none',
             stressDistanceColoring: false,
             stressPairDistance: false,
+            bridgeChainDepth: false,
+            edgeConsolidationRatio: false,
         });
     });
 });
@@ -109,7 +111,7 @@ describe('applyPreset', () => {
         expect(s.aspectRatio).toBe(true);
     });
 
-    it('reductions preset enables only group cardinality', () => {
+    it('reductions preset enables M21 + M19 + M20 (the reduction-transparency triad)', () => {
         applyPreset('reductions');
         expect(getOverlayState()).toEqual({
             crossings: false,
@@ -121,6 +123,8 @@ describe('applyPreset', () => {
             crossingsColorBy: 'none',
             stressDistanceColoring: false,
             stressPairDistance: false,
+            bridgeChainDepth: true,
+            edgeConsolidationRatio: true,
         });
     });
 
@@ -172,7 +176,7 @@ describe('countEnabledOverlays', () => {
         expect(countEnabledOverlays(PRESETS.clear)).toBe(0);
     });
 
-    it('returns 8 when every overlay is enabled', () => {
+    it('returns 10 when every overlay is enabled', () => {
         const all: OverlayState = {
             crossings: true,
             drawingArea: true,
@@ -183,8 +187,10 @@ describe('countEnabledOverlays', () => {
             crossingsColorBy: 'angle',
             stressDistanceColoring: true,
             stressPairDistance: true,
+            bridgeChainDepth: true,
+            edgeConsolidationRatio: true,
         };
-        expect(countEnabledOverlays(all)).toBe(8);
+        expect(countEnabledOverlays(all)).toBe(10);
     });
 
     it('does not count the crossingsColorBy radio mode (only boolean toggles)', () => {
@@ -257,6 +263,26 @@ describe('validateState', () => {
         });
         expect(r.stressDistanceColoring).toBe(false);
         expect(r.stressPairDistance).toBe(false);
+    });
+
+    it('preserves bridgeChainDepth + edgeConsolidationRatio booleans', () => {
+        const r = validateState({
+            ...DEFAULT_OVERLAY_STATE,
+            bridgeChainDepth: true,
+            edgeConsolidationRatio: true,
+        });
+        expect(r.bridgeChainDepth).toBe(true);
+        expect(r.edgeConsolidationRatio).toBe(true);
+    });
+
+    it('falls back to false for non-boolean reduction overlay flags', () => {
+        const r = validateState({
+            ...DEFAULT_OVERLAY_STATE,
+            bridgeChainDepth: 'on',
+            edgeConsolidationRatio: 0,
+        });
+        expect(r.bridgeChainDepth).toBe(false);
+        expect(r.edgeConsolidationRatio).toBe(false);
     });
 });
 
