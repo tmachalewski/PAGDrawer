@@ -24,6 +24,8 @@ This is exactly the kind of paper-implementation liaison document I was recommen
 
 **The microseconds claim contradicts the data.** Caveat 4.9 says *PAGDrawer's typical |E| is 100s, not thousands, brute-force is microseconds.* Your nginx Step 1 has |E| = 5675 and `C_raw` = 5,252,118. Brute-force segment intersection is ~16M comparisons. Even if it runs in ~30 ms in TypeScript, that is not "microseconds." Either rephrase or include a concrete timing measurement for the largest scan in the corpus.
 
+> **Resolution (2026-05-06).** Rephrased the timing claims in three docs (MetricsPaperReference.md § 4.9, DrawingQualityMetrics.md APSP paragraph, StressMetric.md complexity table) to reflect honest order-of-magnitude estimates anchored on the actual nginx baseline ($|V| \approx 830$, $|E| \approx 5{,}675$): tens of milliseconds at baseline, sub-millisecond after Step 2. Concrete `performance.now()` medians for the five pipeline steps will be measured during paper writing and inserted at that point — TODO note left at `MetricsPaperReference.md § 4.9`.
+
 **Singleton fraction as noise.** Keeping `compound_singleton_fraction` "at 0 in normal operation" is fine as a regression sentinel, but do not report this column in the paper body. A reviewer reads "100% of groups have >1 element" and thinks "well, how could it be otherwise?" Keep the metric in JSON for diagnostics, but in the body and appendix only `compound_groups_count` and `compound_largest_group_size`.
 
 ---
@@ -66,9 +68,11 @@ This is also a strong illustration of one of your main paper points: *orthogonal
 
 ## 3. Ten concrete change proposals
 
-### 1. Change the default pipeline in section 6 of the metrics document
+### 1. Change the default pipeline in section 6 of the metrics document — **RESOLVED**
 
 You currently write *Step 3 - Hide internal types (hide CWE, hide TI - bridges materialise).* Change it to **hide CPE, CWE, TI** for the maximum-reduction variant, and keep *(alternative: hide CWE+TI to preserve infrastructure column)* as a parenthetical note. You have concrete data confirming the larger effect.
+
+**Resolution.** `MetricsPaperReference.md § 6` recommends Hide CPE+CWE+TI as Step 3 with the alternative parenthetical. The rationale paragraph cites the C/E 925.48 → 0.37 swing.
 
 ### 2. ~~Investigate why `mean_chain_depth` = 1.6 in scenario 2~~ — RESOLVED, not a bug
 
@@ -94,7 +98,7 @@ So the longest possible chain when hiding CPE+CWE+TI is **2** (the longer of the
 
 Updated (2026-05-05): MetricsPaperReference.md §2 (M19 spec) and DrawingQualityMetrics.md M19 sections document the anchor-type property.
 
-### 3. Stress paradox after merge: add an alternative stress
+### 3. Stress paradox after merge: add an alternative stress — **RESOLVED (option a)**
 
 Caveat 4.3 says *stress_unreachable_pairs inflates after merge.* The data confirms this (scenario 2: 3967 → 7575 after merge, the wrong direction from what we want). Two options:
 
@@ -103,6 +107,8 @@ Caveat 4.3 says *stress_unreachable_pairs inflates after merge.* The data confir
 (b) Or report `stress_per_visible_pair` next to the existing `stress_per_pair`. Two columns in the paper table and the reviewer sees for themselves which one is meaningful.
 
 I would push for (a) because you only touch one line of code (a filter predicate) and you gain a metric that makes sense for every step of the pipeline.
+
+**Resolution.** Option (a) implemented as `getStressEligibleNodes()` in `metrics.ts:229` — filters `getVisibleNodesWithIds()` further to nodes with at least one visible incident edge. Outcomes-merge children whose originals are now `display:none` get filtered out; prereqs-merge parents (no own edges) get filtered; ATTACKER_BOX (no edges) gets filtered. `stress_unreachable_pairs` no longer inflates structurally after merge. Documented in `MetricsPaperReference.md § 4.14` and `StressMetric.md`.
 
 ### 4. `top_pair_label` evolution: ready-made paper material
 
@@ -120,13 +126,25 @@ This tells a perceptual story. Each mechanism "resolves" a different dominant pa
 
 In Step 3 you report `compound_groups_count` = 1, largest = 5. That is ATTACKER_BOX. After merge you have 10 compound_groups. A reviewer will not know what "1 compound" means before merge. State it in the table caption: *Step 1-3 compound count includes ATTACKER_BOX (5 attacker nodes); the merge step adds CVE_GROUP compound parents on top.*
 
-### 6. JSON schema: add `scan_timestamp`
+### 6. JSON schema: add `scan_timestamp` — **RESOLVED (five fields)**
 
 `schema_version` = 1, `git_sha`, `app_version` are great. What is missing is *when Trivy ran the scan*. Trivy results change as NVD updates; without a scan timestamp, the same `image:tag` may report a different number of CVEs tomorrow. For replication, the moment of the scan matters (`trivy_scan_at: ISO-8601`). An alternative is to record a hash of the source Trivy JSON.
 
-### 7. A stable variant of `bridges_share`
+**Resolution.** Five Trivy-side reproducibility fields extracted at upload time and exposed in `data_source.scans_in_current_graph[*]`:
+
+- `trivy_created_at` — Trivy's `CreatedAt` (actual scan time)
+- `trivy_repo_digest` — `Metadata.RepoDigests[0]` (pinned image, byte-exact)
+- `trivy_artifact_id` — `ArtifactID` (content hash)
+- `trivy_report_id`   — `ReportID` (UUID per scan run)
+- `trivy_version`     — Trivy scanner version
+
+`uploaded_at` (PAGDrawer ingest time) kept alongside as a different dimension. Schema stays at v1 — these are additive optional fields. See `StatisticsModal.md` JSON example.
+
+### 7. A stable variant of `bridges_share` — **DECLINED (acknowledged in caveat 4.13)**
 
 Caveat 4.13 correctly warns that `bridge_edge_proportion` has *an unstable denominator* after merge. An alternative: `bridges_share` = bridges / (bridges + retained_originals), where retained_originals counts only non-`display:none` non-synthetic edges. More stable across steps. Or keep the current value but split it into components: `bridges_count`, `originals_visible_count`, `synthetics_count`. The reader can then compute any share they want.
+
+**Decision.** Not implementing the stable variant. Caveat 4.13 was strengthened to "Critical for paper readers" with a denominator-breakdown table and the concrete nginx 0.27 → 0.93 swing, plus explicit guidance to prefer `bridge_edge_count` + `mean_contraction_depth` (absolute counts) over the proportion when comparing across the merge step. The proposed stable formulation is captured in the caveat as future-iteration work; for the GD 2026 deadline the absolute counts already give the right story without adding a new metric to maintain and document.
 
 ### 8. Validate `chain_length` against caveat 4.11.2 — **RESOLVED (test sentinels)**
 
