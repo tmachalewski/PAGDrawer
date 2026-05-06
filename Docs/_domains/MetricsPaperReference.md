@@ -373,11 +373,11 @@ Compound parents that have `.exploit-hidden` class or `display: none` are exclud
 ### 4.9 Crossing detection is brute-force $O(|E|^2)$
 
 We don't use Bentley-Ottmann ($O((|E|+|X|)\log |E|)$) because:
-1. PAGDrawer's typical $|E|$ is 100s, not thousands — brute-force is microseconds.
+1. **Practical scale.** $|E|$ is in the low thousands at the baseline step (the nginx test scan hits $|E| \approx 5{,}675$, $C_{\text{raw}} \approx 5.25 \times 10^6$) and drops to the low hundreds once granularity and visibility reductions apply. Brute-force runs interactively (worst-case tens of milliseconds at the baseline; sub-millisecond after Step 2 of the pipeline). Concrete `performance.now()` numbers will be added during paper measurement; we deliberately don't hard-code a microsecond figure here that the data contradicts.
 2. We need every crossing's edge-type pair anyway (M25), which Bentley-Ottmann doesn't give for free.
 3. Sweep-line implementation in TypeScript is non-trivial and not worth the maintenance burden for current scales.
 
-If a future scan pushes $|E|$ above ~5,000, this would be the first thing to optimise.
+If a future scan pushes baseline $|E|$ well past $5{,}000$ and the user routinely views the graph at that step, this would be the first thing to optimise. **TODO (paper writing):** wire `performance.now()` around `findCrossings()` for the five nginx pipeline steps and replace this paragraph with measured medians.
 
 ### 4.10 Type-pair sorting
 

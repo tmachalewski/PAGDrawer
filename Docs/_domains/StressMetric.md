@@ -161,13 +161,13 @@ The unreachable count is reported in:
 
 `O(|V| · (|V| + |E|))` for the APSP, `O(|V|²)` for the pair iteration. Total `O(|V|² + |V|·|E|)`.
 
-| Graph size | APSP cost (rough) |
+| Graph size (rough) | APSP cost (order-of-magnitude estimate) |
 |-----------|-------------------|
-| ~70 nodes / ~90 edges (typical PAGDrawer) | microseconds |
-| ~300 nodes / ~600 edges | < 50 ms |
-| ~1000 nodes / ~3000 edges | ~ 1 second on the main thread |
+| ~80 nodes / ~30 edges (post-reduction tail of nginx pipeline) | sub-millisecond |
+| ~200 nodes / ~100 edges (mid-pipeline, after visibility hides) | ~ a few ms |
+| ~830 nodes / ~5,700 edges (nginx baseline, the worst case in the test corpus) | tens of ms |
 
-Stress is computed lazily — only when the Statistics modal opens or refreshes — so even at the upper end the user-perceived cost is at most a single sub-second beat after clicking 📊.
+Stress is computed lazily — only when the Statistics modal opens or refreshes — so even at the baseline step the user-perceived cost is well under a second. Concrete medians will be measured during paper writing — see TODO note in `MetricsPaperReference.md` § 4.9.
 
 If a future scan ever pushes stress compute above ~1 second consistently, the right fix is a within-modal cache: `computeMetrics()` would memoize the APSP map by `(visibleNodeIds, visibleEdgeIds)` so subsequent reads (export, JSON, hint hover) reuse the matrix. **M11 (k-NN preservation)** and **M12 (trustworthiness)** in Stage 7 will need the same APSP matrix and benefit from the same cache.
 
