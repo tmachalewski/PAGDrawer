@@ -110,7 +110,9 @@ I would push for (a) because you only touch one line of code (a filter predicate
 
 **Resolution.** Option (a) implemented as `getStressEligibleNodes()` in `metrics.ts:229` — filters `getVisibleNodesWithIds()` further to nodes with at least one visible incident edge. Outcomes-merge children whose originals are now `display:none` get filtered out; prereqs-merge parents (no own edges) get filtered; ATTACKER_BOX (no edges) gets filtered. `stress_unreachable_pairs` no longer inflates structurally after merge. Documented in `MetricsPaperReference.md § 4.14` and `StressMetric.md`.
 
-### 4. `top_pair_label` evolution: ready-made paper material
+### 4. `top_pair_label` evolution: ready-made paper material — **EARMARKED**
+
+Resolution: M25 evidence earmark added to `MetricsPaperReference.md § 6` (Recommended paper structure → item 4) listing the 5-step `top_pair_label` sequence and the JSON file paths. No code action; the breadcrumb is in the liaison doc so paper writing doesn't have to re-spelunk the example JSONs.
 
 Your data shows the following evolution:
 
@@ -122,9 +124,11 @@ Your data shows the following evolution:
 
 This tells a perceptual story. Each mechanism "resolves" a different dominant pair. This is the M25 killer story and a **unique advantage of the heterogeneous schema** that no one else has. Give it a callout box or a small table in the paper.
 
-### 5. Make ATTACKER_BOX explicit in the table caption
+### 5. Make ATTACKER_BOX explicit in the table caption — **EARMARKED**
 
 In Step 3 you report `compound_groups_count` = 1, largest = 5. That is ATTACKER_BOX. After merge you have 10 compound_groups. A reviewer will not know what "1 compound" means before merge. State it in the table caption: *Step 1-3 compound count includes ATTACKER_BOX (5 attacker nodes); the merge step adds CVE_GROUP compound parents on top.*
+
+Resolution: The exact caption sentence is already saved as Pitfall #4 in `MetricsPaperReference.md § 6` so it can be lifted verbatim into the paper table caption. No code change needed.
 
 ### 6. JSON schema: add `scan_timestamp` — **RESOLVED (five fields)**
 
@@ -159,13 +163,17 @@ A runtime UI warning was considered but rejected: PAGDrawer's rebuild pipeline a
 
 See [`MetricsPaperReference.md` § 4.11](../_domains/MetricsPaperReference.md) for the updated caveat with sentinel cross-references.
 
-### 9. Singleton fraction: drop from body, keep in JSON
+### 9. Singleton fraction: drop from body, keep in JSON — **EARMARKED (no code change)**
 
 In the current implementation `compound_singleton_fraction` will always be 0 (`cveMerge.ts:176` skips groups with size < 2). In the paper this is misleading: a reviewer reads "100% of groups have >1 element... how could it be otherwise?" Keep the metric as a **regression sentinel in unit tests**, but do not report it in the paper table. Otherwise it is visual noise.
 
-### 10. SVG vs JSON: are SVGs for figures?
+Resolution: leave the metric in JSON and the Statistics modal as-is (it stays useful as a regression sentinel and a debugging signal). The decision *not to put it in the paper body* is captured as Pitfall #6 in `MetricsPaperReference.md § 6`. Same place explains the ATTACKER_BOX-as-the-only-compound-before-merge note (Pitfall #4), so the paper-writer sees both at once.
+
+### 10. SVG vs JSON: are SVGs for figures? — **DEFERRED (PDF-era)**
 
 You have five SVGs and five JSONs per scenario. The question: are the SVGs raw Cytoscape layout snapshots, or are they rendered for the paper? If the latter, add a script that normalises the style (font, grayscale-friendly path colours, no colour-only labels for black-and-white printing). For submission, everything must be readable in a black-and-white printout. I would write a small Python or Inkscape script to do the pretty-print conversion.
+
+Resolution: deferred. GD 2026 papers are read on PDFs in colour; grayscale-printability is no longer the default expectation. Pick this up only if a reviewer asks for it.
 
 ---
 

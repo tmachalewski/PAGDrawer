@@ -797,6 +797,8 @@ Same five rows, additional columns for completeness:
 2. **Cross-corpus ablation** (all 9 example scans). Same 5 steps, report **mean ± std** of each metric per step. Strengthens the "this works generally" claim.
 3. **Mechanism contribution attribution**. Difference table — for each metric, the contribution of each mechanism = step value − previous-step value. Identifies which mechanism is doing the work.
 4. **Per-pair-typed-crossing illustration** (M25). At each step show the top-3 type pairs causing crossings; visualise this with the type-pair colouring overlay screenshots. This is unique to PAGDrawer's typed schema.
+
+   > **Evidence earmark.** The five-step `top_pair_label` evolution captured during the 5 May 2026 nginx test session is: ENABLES×ENABLES (97.3%) → LEADS_TO×LEADS_TO (46.9%) → BRIDGE×BRIDGE (49.6%) → BRIDGE×ENABLES (41.9%) → BRIDGE×BRIDGE (70%). Source JSONs: `examples/02_preemptive_test_nginx/02_HIDE_CPE_CWE_TI/pagdrawer-metrics-2026-05-05-14-0X.json`, fields `top_pair_label` + `top_pair_share`. Pull these directly when writing the M25 callout / table.
 5. **Reproduction guide**. Exact UI sequence for re-running the pipeline (already in this document's procedural section above).
 
 ### Appendix: prereqs-merge variant
