@@ -1,0 +1,137 @@
+{
+  "schema_version": 1,
+  "exported_at": "2026-05-06T10:59:01.592Z",
+  "app_version": "1.0.0",
+  "git_sha": "89f5bb5f9ba3f0095739533ebf48ec17eeb0ae9c",
+  "data_source": {
+    "type": "trivy",
+    "scans_uploaded_total": 1,
+    "scans_in_current_graph": [
+      {
+        "id": "bb6a31df-9ba6-475e-bab2-93e76486ba40",
+        "name": "redis:7.4.8-alpine3.21",
+        "vuln_count": 90,
+        "uploaded_at": "2026-05-06T12:56:38.210362",
+        "trivy_created_at": "2026-04-21T10:55:52.437502261Z",
+        "trivy_repo_digest": "redis@sha256:7aec734b2bb298a1d769fd8729f13b8514a41bf90fcdd1f38ec52267fbaa8ee6",
+        "trivy_artifact_id": "sha256:f2e6415435db9ebbba74d64d996640b85ee8689aad2390c5edb65bc5d42b2e41",
+        "trivy_report_id": "019dafae-a875-77a5-9053-592e7e285c91",
+        "trivy_version": "0.70.0"
+      }
+    ],
+    "selection_was_implicit": false
+  },
+  "settings": {
+    "granularity": {
+      "HOST": "universal",
+      "CPE": "HOST",
+      "CVE": "CPE",
+      "CWE": "CVE",
+      "TI": "CWE",
+      "VC": "HOST"
+    },
+    "skip_layer_2": true,
+    "visibility_hidden": [
+      "CPE",
+      "CWE",
+      "TI"
+    ],
+    "cve_merge_mode": "outcomes",
+    "environment_filter": {
+      "ui": "N",
+      "ac": "L"
+    },
+    "exploit_paths_only_active": false,
+    "force_refresh_on_last_rebuild": false,
+    "layout": "dagre"
+  },
+  "metrics": {
+    "nodes": 109,
+    "edges": 29,
+    "unique_cves": 90,
+    "trivy_vuln_count": 90,
+    "crossings_raw": 18,
+    "crossings_normalized": 0.941747572815534,
+    "crossings_per_edge": 0.6206896551724138,
+    "drawing_area": 10252834,
+    "bbox_width": 1247,
+    "bbox_height": 8222,
+    "area_per_node": 94062.69724770643,
+    "edge_length_cv": 0.9290483714638685,
+    "edge_length_mean": 1662.3931021131593,
+    "edge_length_std": 1544.4436042509992,
+    "aspect_ratio": 0.15166626125030405,
+    "compound_groups_count": 7,
+    "compound_largest_group_size": 52,
+    "compound_singleton_fraction": 0,
+    "compound_size_distribution": {
+      "2": 1,
+      "3": 1,
+      "4": 1,
+      "5": 1,
+      "6": 1,
+      "22": 1,
+      "52": 1
+    },
+    "crossings_mean_angle_deg": 27.861451900605715,
+    "crossings_min_angle_deg": 1.3205085530230154,
+    "crossings_right_angle_ratio": 0,
+    "crossings_top_pair_share": 0.5555555555555556,
+    "crossings_top_pair_label": "BRIDGE×BRIDGE",
+    "crossings_type_pair_distribution": {
+      "BRIDGE×ENABLES": 5,
+      "BRIDGE×BRIDGE": 10,
+      "ENABLES×ENABLES": 3
+    },
+    "stress_per_pair": 10977707.075196916,
+    "stress_per_pair_normalized_edge": 2.0531312554028274,
+    "stress_per_pair_normalized_diagonal": 5.698971812591473,
+    "stress_per_pair_normalized_area": 3.5671193376323185,
+    "stress_unreachable_pairs": 41,
+    "stress_reachable_pairs": 130,
+    "bridge_edge_proportion": 0.06896551724137931,
+    "mean_contraction_depth": 1.5,
+    "bridge_edge_count": 2,
+    "bridge_chain_length_distribution": {
+      "1": 1,
+      "2": 1
+    },
+    "mean_ecr_weighted": 36.47415730337079,
+    "ecr_compounds_count": 6,
+    "ecr_per_compound": [
+      {
+        "parentId": "cve_merge_outcomes_AV:L,EX:Y,PR:H|L1|d0",
+        "ecr": 22,
+        "childCount": 22
+      },
+      {
+        "parentId": "cve_merge_outcomes_none|L1|d0",
+        "ecr": 52,
+        "childCount": 52
+      },
+      {
+        "parentId": "cve_merge_outcomes_AV:L,PR:H|L1|d0",
+        "ecr": 3,
+        "childCount": 3
+      },
+      {
+        "parentId": "cve_merge_outcomes_AV:L|L1|d0",
+        "ecr": 2,
+        "childCount": 2
+      },
+      {
+        "parentId": "cve_merge_outcomes_EX:Y,PR:H|L1|d1",
+        "ecr": 3.8,
+        "childCount": 4
+      },
+      {
+        "parentId": "cve_merge_outcomes_none|L1|d1",
+        "ecr": 5,
+        "childCount": 6
+      }
+    ],
+    "acr_cve_prereqs": 0.1111111111111111,
+    "acr_cve_outcomes": 0.07777777777777778,
+    "acr_cve_node_count": 90
+  }
+}

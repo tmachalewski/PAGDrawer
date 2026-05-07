@@ -1,0 +1,5 @@
+The Graph for python:latest didn't load.
+
+It has 1856 vulnerabilities in packages and ~750 unique ones
+
+Further discussion in the paper and the attached video
