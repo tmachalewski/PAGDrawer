@@ -1226,6 +1226,7 @@ describe('JSON metrics export (schema v1)', () => {
         environment_filter: { ui: 'N', ac: 'L' },
         exploit_paths_only_active: false,
         force_refresh_on_last_rebuild: false,
+        ignore_ttl_on_last_rebuild: false,
         layout: 'dagre',
     };
 

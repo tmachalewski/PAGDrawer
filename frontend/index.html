@@ -65,6 +65,11 @@
                             <input type="checkbox" id="force-refresh-checkbox" />
                             Force refresh (ignore cache)
                         </label>
+                        <label style="font-size: 11px; color: #aaa; display: flex; align-items: center; gap: 6px; margin-top: 4px;"
+                               title="Use cached NVD/EPSS/CWE data regardless of age — no re-downloading. For reusing old scans offline. Mutually exclusive with Force refresh.">
+                            <input type="checkbox" id="ignore-ttl-checkbox" />
+                            Use cache without age limit (offline)
+                        </label>
                     </div>
 
                     <!-- Action Buttons -->

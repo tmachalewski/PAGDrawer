@@ -147,6 +147,17 @@ describe('gatherCurrentSettings', () => {
         expect(snap.force_refresh_on_last_rebuild).toBe(false);
     });
 
+    it('captures ignore_ttl_on_last_rebuild from DOM checkbox', async () => {
+        setCheckbox('ignore-ttl-checkbox', true);
+        const snap = await gatherCurrentSettings();
+        expect(snap.ignore_ttl_on_last_rebuild).toBe(true);
+    });
+
+    it('ignore_ttl defaults to false when checkbox is missing', async () => {
+        const snap = await gatherCurrentSettings();
+        expect(snap.ignore_ttl_on_last_rebuild).toBe(false);
+    });
+
     it('captures current layout name', async () => {
         mockedGetCurrentLayout.mockReturnValue('cose');
         const snap = await gatherCurrentSettings();
@@ -169,6 +180,7 @@ describe('gatherCurrentSettings', () => {
             'exploit_paths_only_active',
             'force_refresh_on_last_rebuild',
             'granularity',
+            'ignore_ttl_on_last_rebuild',
             'layout',
             'skip_layer_2',
             'visibility_hidden',

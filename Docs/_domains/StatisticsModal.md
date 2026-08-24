@@ -211,6 +211,9 @@ Click 📄 **Export JSON** and a `pagdrawer-metrics-YYYY-MM-DD-HH-mm.json` file 
     "environment_filter": { "ui": "N", "ac": "L" },
     "exploit_paths_only_active": false,         // true when "show only exploit paths" mode is on
     "force_refresh_on_last_rebuild": false,
+    "ignore_ttl_on_last_rebuild": false,       // true ⇒ cached NVD/EPSS/CWE data was
+                                                //   accepted regardless of age (offline
+                                                //   rebuild) — enrichment may be stale
     "layout": "dagre"
   },
 

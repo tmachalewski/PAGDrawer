@@ -199,21 +199,26 @@ class CWEFetcher:
     # data from cwe-api.mitre.org rather than the in-code constant.
     USE_STATIC_MAPPING: bool = False
 
-    def __init__(self, timeout: int = 30, force_refresh: bool = False):
+    def __init__(self, timeout: int = 30, force_refresh: bool = False,
+                 ignore_ttl: bool = False):
         """
         Initialize the CWE fetcher.
 
         Args:
             timeout: Request timeout in seconds for API calls
             force_refresh: When True, bypass the Mongo cache on every call
+            ignore_ttl: When True, accept cached documents regardless of age
+                (offline reuse of old scans). force_refresh wins if both set.
         """
         self.timeout = timeout
         self.force_refresh = force_refresh
+        self.ignore_ttl = ignore_ttl
 
     def _get_cached(self, cwe_id: str) -> Optional[Dict[str, Any]]:
         """Return the full cached document for a CWE or None if stale/absent."""
         return cached_doc_if_fresh(
-            COLLECTION_CWE_IMPACTS, cwe_id, TTL_CWE_DAYS, self.force_refresh
+            COLLECTION_CWE_IMPACTS, cwe_id, TTL_CWE_DAYS, self.force_refresh,
+            ignore_ttl=self.ignore_ttl,
         )
 
     def _upsert_impacts(self, cwe_id: str, impacts: List[str], source: str = "rest") -> None:

@@ -194,6 +194,24 @@ class TestRebuildEndpoint:
         assert response.status_code == 400
         assert "No Trivy data" in response.json()["detail"]
 
+    def test_rebuild_rejects_force_refresh_with_ignore_ttl(self, client):
+        """force_refresh and ignore_ttl are mutually exclusive (400)."""
+        client.post("/api/upload/trivy/json", json=SAMPLE_TRIVY_REPORT)
+        response = client.post(
+            "/api/data/rebuild?force_refresh=true&ignore_ttl=true"
+        )
+        assert response.status_code == 400
+        assert "mutually exclusive" in response.json()["detail"]
+
+    def test_rebuild_accepts_ignore_ttl_alone(self, client):
+        """ignore_ttl by itself starts a job normally."""
+        client.post("/api/upload/trivy/json", json=SAMPLE_TRIVY_REPORT)
+        response = client.post(
+            "/api/data/rebuild?enrich=false&use_deployment=false&ignore_ttl=true"
+        )
+        assert response.status_code == 200
+        assert response.json()["status"] == "started"
+
     def test_rebuild_returns_job_id(self, client):
         """Rebuild is now async; the endpoint returns a job_id immediately."""
         client.post("/api/upload/trivy/json", json=SAMPLE_TRIVY_REPORT)

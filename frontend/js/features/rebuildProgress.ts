@@ -34,13 +34,14 @@ export async function rebuildWithProgress(
     enrich: boolean,
     scanIds?: string[],
     forceRefresh: boolean = false,
-    callbacks: ProgressCallbacks = {}
+    callbacks: ProgressCallbacks = {},
+    ignoreTtl: boolean = false
 ): Promise<RebuildProgress> {
     showProgressBar();
 
     let jobId: string;
     try {
-        const { job_id } = await startRebuild(enrich, scanIds, forceRefresh);
+        const { job_id } = await startRebuild(enrich, scanIds, forceRefresh, ignoreTtl);
         jobId = job_id;
     } catch (e) {
         hideProgressBar();

@@ -89,8 +89,11 @@ export function getSelectedScanIds(): string[] | undefined {
 export async function rebuildGraph(): Promise<void> {
     const enrichCheckbox = document.getElementById('enrich-checkbox') as HTMLInputElement;
     const forceCheckbox = document.getElementById('force-refresh-checkbox') as HTMLInputElement;
+    const ignoreTtlCheckbox = document.getElementById('ignore-ttl-checkbox') as HTMLInputElement;
     const enrich = enrichCheckbox?.checked ?? true;
     const forceRefresh = forceCheckbox?.checked ?? false;
+    // Force refresh wins over ignore-TTL (backend rejects the combination)
+    const ignoreTtl = !forceRefresh && (ignoreTtlCheckbox?.checked ?? false);
     const scanIds = getSelectedScanIds();
 
     const statusMsg = enrich
@@ -100,7 +103,7 @@ export async function rebuildGraph(): Promise<void> {
     disableRebuildButton();
 
     try {
-        await rebuildWithProgress(enrich, scanIds, forceRefresh);
+        await rebuildWithProgress(enrich, scanIds, forceRefresh, {}, ignoreTtl);
 
         // Reload graph with new data
         const [graphData, stats] = await Promise.all([fetchGraph(), fetchStats()]);
@@ -121,7 +124,7 @@ export async function rebuildGraph(): Promise<void> {
 
         setStatus('✅ Graph rebuilt successfully', 'success');
         await refreshDataStatus();
-        console.log('Graph rebuilt with enrich=' + enrich + ', forceRefresh=' + forceRefresh + ', scanIds=' + (scanIds || 'all'));
+        console.log('Graph rebuilt with enrich=' + enrich + ', forceRefresh=' + forceRefresh + ', ignoreTtl=' + ignoreTtl + ', scanIds=' + (scanIds || 'all'));
     } catch (error) {
         const message = error instanceof Error ? error.message : 'Rebuild failed';
         setStatus(`❌ ${message}`, 'error');

@@ -425,6 +425,7 @@ def _run_rebuild_job(
     use_deployment: bool,
     deployment_cfg: Optional[Dict[str, Any]],
     force_refresh: bool,
+    ignore_ttl: bool = False,
 ):
     """Background worker that performs the rebuild and updates the job doc.
 
@@ -458,6 +459,7 @@ def _run_rebuild_job(
                     job_manager=jm,
                     job_id=job_id,
                     force_refresh=force_refresh,
+                    ignore_ttl=ignore_ttl,
                 )
                 data = loader.load()
                 all_data.hosts.extend(data.hosts)
@@ -501,6 +503,7 @@ async def rebuild_from_uploaded_data(
     enrich: bool = True,
     use_deployment: bool = True,
     force_refresh: bool = False,
+    ignore_ttl: bool = False,
     scan_ids: Optional[List[str]] = Query(default=None),
 ):
     """Start a rebuild job and return a job_id. Poll /api/data/rebuild/progress
@@ -510,8 +513,16 @@ async def rebuild_from_uploaded_data(
         enrich: Whether to enrich data from NVD/CWE sources.
         use_deployment: Whether to use uploaded deployment config.
         force_refresh: When True, bypass the Mongo cache and refetch everything.
+        ignore_ttl: When True, accept cached NVD/EPSS/CWE entries regardless of
+            age — lets old scans be reused offline without refetching.
+            Mutually exclusive with force_refresh.
         scan_ids: Optional list of scan IDs. If None, uses all scans.
     """
+    if force_refresh and ignore_ttl:
+        raise HTTPException(
+            status_code=400,
+            detail="force_refresh and ignore_ttl are mutually exclusive"
+        )
     if not uploaded_trivy_scans:
         raise HTTPException(
             status_code=400,
@@ -559,6 +570,7 @@ async def rebuild_from_uploaded_data(
                 use_deployment=use_deployment,
                 deployment_cfg=deployment_cfg,
                 force_refresh=force_refresh,
+                ignore_ttl=ignore_ttl,
             ),
             daemon=True,
         )

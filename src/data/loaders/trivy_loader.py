@@ -54,6 +54,7 @@ class TrivyDataLoader(DataLoader):
         job_manager: Optional[Any] = None,
         job_id: Optional[str] = None,
         force_refresh: bool = False,
+        ignore_ttl: bool = False,
     ):
         self._source = source
         self._enrich_from_nvd = enrich_from_nvd
@@ -63,6 +64,7 @@ class TrivyDataLoader(DataLoader):
         self._job_manager = job_manager
         self._job_id = job_id
         self._force_refresh = force_refresh
+        self._ignore_ttl = ignore_ttl
 
         # Lazily initialized fetchers
         self._nvd_fetcher: Optional[NVDFetcher] = None
@@ -80,6 +82,7 @@ class TrivyDataLoader(DataLoader):
             self._nvd_fetcher = NVDFetcher(
                 nvd_api_key=self._nvd_api_key,
                 force_refresh=self._force_refresh,
+                ignore_ttl=self._ignore_ttl,
             )
         return self._nvd_fetcher
 
@@ -87,7 +90,10 @@ class TrivyDataLoader(DataLoader):
     def cwe_fetcher(self) -> CWEFetcher:
         """Lazy initialization of CWE fetcher."""
         if self._cwe_fetcher is None:
-            self._cwe_fetcher = CWEFetcher(force_refresh=self._force_refresh)
+            self._cwe_fetcher = CWEFetcher(
+                force_refresh=self._force_refresh,
+                ignore_ttl=self._ignore_ttl,
+            )
         return self._cwe_fetcher
 
     # -------------------------------------------------------------------------

@@ -131,17 +131,22 @@ def cached_doc_if_fresh(
     doc_id: str,
     ttl_days: int,
     force_refresh: bool = False,
+    ignore_ttl: bool = False,
 ) -> Optional[Dict[str, Any]]:
     """Read a document by _id and return it only if within TTL.
 
     Returns None if the document is missing, stale, or if force_refresh is set.
+
+    ignore_ttl accepts a cached document regardless of its age — the mirror
+    of force_refresh, for reusing old scans offline without refetching.
+    force_refresh wins if both are set.
     """
     if force_refresh:
         return None
     doc = get_db()[collection_name].find_one({"_id": doc_id})
     if doc is None:
         return None
-    if not is_fresh(doc.get("cached_at"), ttl_days):
+    if not ignore_ttl and not is_fresh(doc.get("cached_at"), ttl_days):
         return None
     return doc
 

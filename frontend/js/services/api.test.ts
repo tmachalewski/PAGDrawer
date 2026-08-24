@@ -201,6 +201,33 @@ describe('API Service Module', () => {
             const callUrl = mockFetch.mock.calls[0][0];
             expect(callUrl).toContain('force_refresh=true');
         });
+
+        it('should include ignore_ttl query param when true', async () => {
+            mockFetch.mockResolvedValueOnce({
+                ok: true,
+                json: () => Promise.resolve({ status: 'started', job_id: 'x' })
+            });
+
+            const { startRebuild } = await import('../services/api');
+            await startRebuild(true, undefined, false, true);
+
+            const callUrl = mockFetch.mock.calls[0][0];
+            expect(callUrl).toContain('ignore_ttl=true');
+            expect(callUrl).toContain('force_refresh=false');
+        });
+
+        it('ignore_ttl defaults to false', async () => {
+            mockFetch.mockResolvedValueOnce({
+                ok: true,
+                json: () => Promise.resolve({ status: 'started', job_id: 'x' })
+            });
+
+            const { startRebuild } = await import('../services/api');
+            await startRebuild(true);
+
+            const callUrl = mockFetch.mock.calls[0][0];
+            expect(callUrl).toContain('ignore_ttl=false');
+        });
     });
 
     describe('fetchRebuildProgress', () => {

@@ -53,6 +53,12 @@ export interface SettingsSnapshot {
     environment_filter: EnvironmentFilter;
     exploit_paths_only_active: boolean;
     force_refresh_on_last_rebuild: boolean;
+    /**
+     * True when the last rebuild accepted cached NVD/EPSS/CWE entries
+     * regardless of age (offline reuse of old scans). Provenance-relevant:
+     * enrichment data may be arbitrarily stale in this mode.
+     */
+    ignore_ttl_on_last_rebuild: boolean;
     layout: string;                    // "dagre" | "breadthfirst" | "cose" | "circle"
 }
 
@@ -146,6 +152,7 @@ export async function gatherCurrentSettings(): Promise<SettingsSnapshot> {
         },
         exploit_paths_only_active: readExploitPathsActive(),
         force_refresh_on_last_rebuild: readCheckbox('force-refresh-checkbox'),
+        ignore_ttl_on_last_rebuild: readCheckbox('ignore-ttl-checkbox'),
         layout: readLayout(),
     };
 }

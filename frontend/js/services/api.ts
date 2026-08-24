@@ -79,12 +79,14 @@ export async function uploadTrivyFile(file: File): Promise<UploadResponse> {
 export async function startRebuild(
     enrich: boolean = true,
     scanIds?: string[],
-    forceRefresh: boolean = false
+    forceRefresh: boolean = false,
+    ignoreTtl: boolean = false
 ): Promise<{ status: string; job_id: string }> {
     const params = new URLSearchParams({
         enrich: String(enrich),
         use_deployment: 'false',
         force_refresh: String(forceRefresh),
+        ignore_ttl: String(ignoreTtl),
     });
 
     if (scanIds && scanIds.length > 0) {

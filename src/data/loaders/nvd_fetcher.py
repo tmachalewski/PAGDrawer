@@ -59,6 +59,7 @@ class NVDFetcher:
         self,
         nvd_api_key: Optional[str] = None,
         force_refresh: bool = False,
+        ignore_ttl: bool = False,
     ):
         """
         Initialize the NVD fetcher.
@@ -67,9 +68,12 @@ class NVDFetcher:
             nvd_api_key: Optional NVD API key for higher rate limits
             force_refresh: When True, bypass the Mongo cache and fetch fresh
                 for every call. Default False.
+            ignore_ttl: When True, accept cached documents regardless of age
+                (offline reuse of old scans). force_refresh wins if both set.
         """
         self.nvd_api_key = nvd_api_key
         self.force_refresh = force_refresh
+        self.ignore_ttl = ignore_ttl
 
         self._last_nvd_request: float = 0
         self._last_epss_request: float = 0
@@ -122,7 +126,8 @@ class NVDFetcher:
         # Check Mongo cache first
         if use_cache:
             cached = cached_doc_if_fresh(
-                COLLECTION_NVD_CVES, cve_id, TTL_NVD_DAYS, self.force_refresh
+                COLLECTION_NVD_CVES, cve_id, TTL_NVD_DAYS, self.force_refresh,
+                ignore_ttl=self.ignore_ttl,
             )
             if cached is not None:
                 logger.debug(f"Using cached data for {cve_id}")
@@ -315,7 +320,8 @@ class NVDFetcher:
         # Check Mongo cache
         if use_cache:
             cached = cached_doc_if_fresh(
-                COLLECTION_EPSS, cve_id, TTL_EPSS_DAYS, self.force_refresh
+                COLLECTION_EPSS, cve_id, TTL_EPSS_DAYS, self.force_refresh,
+                ignore_ttl=self.ignore_ttl,
             )
             if cached is not None:
                 return cached.get("epss_score")
@@ -376,7 +382,8 @@ class NVDFetcher:
             if data:
                 # Pull EPSS from Mongo cache if present
                 epss_doc = cached_doc_if_fresh(
-                    COLLECTION_EPSS, cve_id.upper(), TTL_EPSS_DAYS, self.force_refresh
+                    COLLECTION_EPSS, cve_id.upper(), TTL_EPSS_DAYS, self.force_refresh,
+                    ignore_ttl=self.ignore_ttl,
                 )
                 if epss_doc is not None:
                     data["epss_score"] = epss_doc.get("epss_score")
@@ -395,7 +402,8 @@ class NVDFetcher:
             missing: List[str] = []
             for cve in cve_ids:
                 fresh = cached_doc_if_fresh(
-                    COLLECTION_EPSS, cve.upper(), TTL_EPSS_DAYS, False
+                    COLLECTION_EPSS, cve.upper(), TTL_EPSS_DAYS, False,
+                    ignore_ttl=self.ignore_ttl,
                 )
                 if fresh is None:
                     missing.append(cve)
@@ -459,7 +467,8 @@ class NVDFetcher:
         else:
             # Cache-only: look up Mongo without fetching
             nvd_data = cached_doc_if_fresh(
-                COLLECTION_NVD_CVES, cve_id.upper(), TTL_NVD_DAYS, self.force_refresh
+                COLLECTION_NVD_CVES, cve_id.upper(), TTL_NVD_DAYS, self.force_refresh,
+                ignore_ttl=self.ignore_ttl,
             )
 
         if not nvd_data:

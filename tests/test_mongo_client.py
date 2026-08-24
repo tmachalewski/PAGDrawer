@@ -81,6 +81,29 @@ class TestCachedDocIfFresh:
         })
         assert mc.cached_doc_if_fresh("nvd_cves", "CVE-3", ttl_days=7, force_refresh=True) is None
 
+    def test_ignore_ttl_returns_stale_doc(self, mock_db):
+        mock_db.nvd_cves.insert_one({
+            "_id": "CVE-4",
+            "cached_at": datetime.now(timezone.utc) - timedelta(days=365),
+            "payload": "ancient"
+        })
+        doc = mc.cached_doc_if_fresh("nvd_cves", "CVE-4", ttl_days=7, ignore_ttl=True)
+        assert doc is not None
+        assert doc["payload"] == "ancient"
+
+    def test_ignore_ttl_still_returns_none_when_missing(self, mock_db):
+        assert mc.cached_doc_if_fresh("nvd_cves", "CVE-absent", ttl_days=7, ignore_ttl=True) is None
+
+    def test_force_refresh_wins_over_ignore_ttl(self, mock_db):
+        mock_db.nvd_cves.insert_one({
+            "_id": "CVE-5",
+            "cached_at": datetime.now(timezone.utc),
+            "payload": "fresh"
+        })
+        assert mc.cached_doc_if_fresh(
+            "nvd_cves", "CVE-5", ttl_days=7, force_refresh=True, ignore_ttl=True
+        ) is None
+
 
 class TestUpsertCachedDoc:
     def test_inserts_new_doc_with_timestamp(self, mock_db):

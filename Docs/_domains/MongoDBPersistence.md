@@ -142,7 +142,13 @@ def is_fresh(cached_at: Optional[datetime], ttl_days: int) -> bool:
     return age <= timedelta(days=ttl_days)
 ```
 
-Callers use `cached_doc_if_fresh(collection, doc_id, ttl_days, force_refresh)` which returns `None` for missing, stale, or force-refresh'd documents and the document itself otherwise.
+Callers use `cached_doc_if_fresh(collection, doc_id, ttl_days, force_refresh, ignore_ttl)` which returns `None` for missing, stale, or force-refresh'd documents and the document itself otherwise.
+
+**`ignore_ttl`** (added 2026-08-24) is the mirror of `force_refresh`: when set, a cached document is accepted **regardless of age**. Purpose: reusing old scans offline — rebuild a graph months later without re-downloading NVD/EPSS/CWE data. `force_refresh` wins if both are set (and the rebuild API rejects the combination with 400). Exposed end-to-end:
+
+- API: `POST /api/data/rebuild?ignore_ttl=true`
+- UI: "Use cache without age limit (offline)" checkbox in the data panel
+- Provenance: the metrics JSON export records `settings.ignore_ttl_on_last_rebuild` — readers of an export can see that enrichment data may be arbitrarily stale.
 
 ---
 
