@@ -20,9 +20,26 @@ $$\text{ATTACKER} \to \text{HOST} \to \text{CPE} \to \text{CVE} \to \text{CWE} \
 
 A slider position $g(T)$ chooses the *grouping level* for $T$: every node of type $T$ that shares the same chain of ancestors **up to** $g(T)$ collapses into a single representative. Pulling the slider toward `ATTACKER` is more aggressive grouping (fewer survivors); pulling it toward the schema's own type is most-granular (each instance keeps its own context).
 
-The slider is **monotone**: $g(T)$ can only be an ancestor of $T$ — never a descendant — which guarantees that the grouped node-id is uniquely determined by the chosen ancestor chain. This monotonicity is what lets the metric layer treat granularity as a clean structural reduction (no soundness side-effects).
+The slider is **monotone**: $g(T)$ can only be an ancestor of $T$ — never a descendant — which guarantees that the grouped node-id is uniquely determined by the chosen ancestor chain.
 
 A second axis of the same control is the **`skip_layer_2`** boolean, which suppresses construction of the internal-network sublayer entirely. When set, the `INSIDE_NETWORK` bridge node is still emitted with `ENTERS_NETWORK` edges from L1 `EX:Y` nodes, but no L2 hosts / CPEs / CVEs are materialised — useful when the analyst only wants the external-surface story.
+
+**⚠ Reachability caveat — junction nodes and fictional chains** (added 2026-08-24). Grouping an *intermediate* type coarser than its parent creates **junction nodes**: a single merged node with in-edges from many contexts and out-edges into many context-bound subtrees. Path reachability does not remember which in-edge a walk entered through, so the graph asserts every pairing of (in-edge$_i$, out-edge$_j$) — including $i \neq j$ pairings that are **fictional chains**. Example with `CWE: ATTACKER` (one shared node per weakness class):
+
+```
+CVE_1@hostA ──┐                ┌──> TI@CVE_1 ──> VC@CVE_1
+              ├──> CWE-79 ─────┤
+CVE_2@hostB ──┘   (shared)     └──> TI@CVE_2 ──> VC@CVE_2
+```
+
+Reachability now claims `CVE_1@hostA` leads to `VC@CVE_2` — that exploiting CVE_1 on host A yields outcomes only CVE_2 on host B actually has. The number of fictional paths grows as the in×out cross-product on each shared node. The fault is *positional*, not semantic: the CWE→TI edge itself is class-level knowledge (host-independent); the fiction arises from pairing foreign in-edges with foreign out-edges at the merged node. Severity scales with coarseness: `CWE: HOST` confines the conflation within one host; `CWE: ATTACKER` pairs across hosts.
+
+Consequences:
+
+1. **This is why the default is `CWE: CVE`** (each chain keeps its own CWE instance — no junctions).
+2. **Universal grouping levels are for taxonomic overview, not reachability analysis.** Any metric or exploit-path computation run on a universally-grouped intermediate layer overcounts chains.
+3. **The sound way to remove a layer from view is the type toggle (§2), not the slider.** `hideNodeType` bridges pred→succ *per hidden instance*, preserving exactly the pairings the graph had; the slider merges node identity and changes semantics.
+4. **VC is the most dangerous type to group coarsely**, not the safest. Although it is last in the per-stage schema, VC nodes have out-edges in multi-stage graphs (they enable next-stage CVEs via the chain-depth mechanism, e.g. `EX:Y → ENTERS_NETWORK`). A host-unbound "PR:H" junction node would enable every privilege-gated CVE on *every* host — fabricating cross-host attack stages wholesale. Host context must survive along the whole path to any VC that feeds a next stage.
 
 ### 1.2 Pseudocode
 
