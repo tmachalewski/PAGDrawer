@@ -31,6 +31,8 @@ These were discussed and settled; do not re-litigate without new evidence.
 | D8 | **0-hop GNN is the primary structural baseline** (2026-08-24) | Same architecture / features / optimizer with message passing disabled (an MLP per node). Isolates exactly one variable — edge propagation — which the XGBoost comparison cannot (different model family, capacity, regularization). XGBoost stays as an out-of-family sanity check. |
 | D9 | **Labels from FIRST daily CSV snapshots, same-date prediction** (2026-08-24) | `epss_scores-YYYY-MM-DD.csv.gz` — one atomic file = one consistent model date for the whole corpus (API calls spread over time can straddle a model update), no rate limits, archivable next to the model artifact for full reproducibility. Task is pure same-date imputation; the D+30 drift study is demoted to future work. |
 | D10 | **Three-way split (train/val/test)** (2026-08-24) | Hyperparameters are tuned — so tuning looks only at validation; test is evaluated once per model family. k-fold CV on train+val for HP selection at this corpus size; multiple seeds, report mean±std (seed variance can exceed rung deltas at ~1–2k nodes). |
+| D11 | **Scan-derived corpus first** (2026-08-24) | Confirmed: GML-0/1 build from unique CVEs of the existing scans corpus (§7 option 1). Scale-ups (100+ images, full NVD) only when results justify the cost. |
+| D12 | **Text embeddings: local sentence-transformers, not Claude API** (2026-08-24) | The Claude API has no embeddings endpoint (Anthropic recommends third-party providers, e.g. Voyage AI). Local sentence-transformers is deterministic, free, offline, and cacheable — matching the offline-exporter design. Optional variant A1b: use Claude for *feature extraction* from descriptions (classify into tags: RCE / DoS / auth-bypass / attacked component) — sometimes better than raw embeddings at small corpus sizes, but slow, paid, and non-deterministic; ablation-only, never the mainline. |
 
 ## 3. Graph specification
 
@@ -111,7 +113,7 @@ The structural contribution is the delta **rung 2 → rung 3/4**, measured withi
 
 Because the graph and label are both global (D3, D5), the corpus is **not limited by Trivy scans**. Options in order of scale:
 
-1. **Scan-derived corpus** (start here): union of unique CVEs across the 9-image examples corpus (+ any new scans). Small (~1–2k unique CVEs) but the pipeline exists end-to-end today.
+1. **Scan-derived corpus** (start here, per D11): union of unique CVEs across the 9-image examples corpus (+ any new scans). Small (~1–2k unique CVEs) but the pipeline exists end-to-end today. The `ignore_ttl` rebuild mode (added 2026-08-24) helps here: old scans can be re-ingested offline against the frozen Mongo cache, keeping the feature snapshot stable across ML experiments without refetching.
 2. **Extended scan corpus**: Trivy-scan ~100–200 popular Docker Hub images (automatable; ingest pipeline exists). ~5–15k unique CVEs, same distribution as production use.
 3. **Full NVD corpus**: all CVEs with CVSS v3 vectors (~200k). Only needed if rung-3 results look promising and data-hungry; requires bulk NVD ingest rather than per-CVE fetch.
 
