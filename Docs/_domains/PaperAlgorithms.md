@@ -39,7 +39,18 @@ Consequences:
 1. **This is why the default is `CWE: CVE`** (each chain keeps its own CWE instance — no junctions).
 2. **Universal grouping levels are for taxonomic overview, not reachability analysis.** Any metric or exploit-path computation run on a universally-grouped intermediate layer overcounts chains.
 3. **The sound way to remove a layer from view is the type toggle (§2), not the slider.** `hideNodeType` bridges pred→succ *per hidden instance*, preserving exactly the pairings the graph had; the slider merges node identity and changes semantics.
-4. **VC is the most dangerous type to group coarsely**, not the safest. Although it is last in the per-stage schema, VC nodes have out-edges in multi-stage graphs (they enable next-stage CVEs via the chain-depth mechanism, e.g. `EX:Y → ENTERS_NETWORK`). A host-unbound "PR:H" junction node would enable every privilege-gated CVE on *every* host — fabricating cross-host attack stages wholesale. Host context must survive along the whole path to any VC that feeds a next stage.
+4. **VC is the most dangerous type to group coarsely across hosts**. Although it is last in the per-stage schema, VC nodes have out-edges in multi-stage graphs (they enable next-stage CVEs via the chain-depth mechanism, e.g. `EX:Y → ENTERS_NETWORK`). A host-unbound "PR:H" junction node would enable every privilege-gated CVE on *every* host — fabricating cross-host attack stages wholesale. Host context must survive along the whole path to any VC that feeds a next stage.
+
+**Refinement — not every junction is a fiction** (2026-08-25). A junction fabricates chains only when the merged node's *downstream semantics depend on the discarded context*. Invariance criterion per common slider setting:
+
+| Merge | Context discarded | Downstream depends on it? | Verdict |
+|---|---|---|---|
+| `CVE: HOST` | CPE | no — CVSS vector, CWE class, `vc_outcomes`, prereqs are per-CVE globals, identical on every package | **benign** — loses "which package carried the attack", fabricates nothing |
+| `CWE: HOST` / `CWE: ATTACKER` | CVE | yes — each CVE's TI/VC subtree differs | **fictional chains** (the main example above) |
+| `CVE: ATTACKER` on multi-host data | HOST | yes — VC outcomes are host-bound attacker state | **fictional cross-host stages** — the truly dangerous CVE setting |
+| `VC: HOST` | CVE / TI | no under a monotonic-attacker model — "PR:H on host X" is a property of attacker-on-host, regardless of which CVE granted it | **benign**; in fact the classic attack-graph state abstraction |
+
+Single-host scans (the current examples corpus) exercise none of the dangerous rows — every cross-host distinction collapses. When multi-host deployment configs arrive, re-audit the slider settings used for any metric or reachability claim against this table.
 
 ### 1.2 Pseudocode
 
