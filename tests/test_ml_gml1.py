@@ -109,3 +109,30 @@ def test_metrics_basic():
     assert spearman(y, y) == 1.0
     assert top_decile_precision(y, y, q=0.75) == 1.0     # top-1 recovered
     assert mae(y, y) == 0.0
+
+
+def test_pyg_batch_builder():
+    # verify the GNN batch has per-image subgraphs and no cross-image edges
+    import pytest
+    pytest.importorskip("torch_geometric")
+    from ml.gnn import build_pyg_batch
+    corpus = {
+        "graphs": [
+            {"image": "i1", "nodes": [
+                {"cve_id": "CVE-A", "chain_depth": 0, "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/C:H/I:H/A:H",
+                 "av": "N", "pr": "N", "ac": "L", "ui": "N", "cwe_ids": ["CWE-1"], "epss_percentile": 0.9},
+                {"cve_id": "CVE-B", "chain_depth": 1, "cvss_vector": "CVSS:3.1/AV:L/AC:L/PR:H/UI:N/C:H/I:H/A:H",
+                 "av": "L", "pr": "H", "ac": "L", "ui": "N", "cwe_ids": ["CWE-2"], "epss_percentile": 0.3}],
+             "edges": [{"source": "CVE-A", "target": "CVE-B"}]},
+            {"image": "i2", "nodes": [
+                {"cve_id": "CVE-C", "chain_depth": 0, "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/C:H/I:H/A:H",
+                 "av": "N", "pr": "N", "ac": "L", "ui": "N", "cwe_ids": ["CWE-1"], "epss_percentile": 0.5}],
+             "edges": []},
+        ],
+        "meta": {},
+    }
+    ds = build_dataset(corpus)
+    batch = build_pyg_batch(ds, corpus, bidirectional=True)
+    assert batch.num_nodes == 3
+    # one contribution edge, bidirectional → 2 directed edges; no cross-image
+    assert batch.num_edges == 2
