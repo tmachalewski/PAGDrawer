@@ -70,15 +70,19 @@ class Dataset:
         return self.X.shape[0]
 
 
-def build_dataset(corpus: dict, drop_structural: bool = False) -> Dataset:
+def build_dataset(corpus: dict, drop_structural: bool = False,
+                  drop_vc: bool = False) -> Dataset:
     """Flatten the per-image DAG corpus into a labeled feature matrix.
 
     Uses the EPSS percentile as the target; drops node occurrences that have
     no percentile (CVE missing from the snapshot).
 
     ``drop_structural=True`` zeroes the graph-derived columns (chain_depth,
-    in/out degree) → the pure node-intrinsic baseline (P0), so the lift from
-    structure-as-features can be isolated.
+    in/out degree) → the pure node-intrinsic baseline (P0).
+    ``drop_vc=True`` zeroes the Vector Changers (AV, PR, AC, UI) → measures
+    how much the *non-VC* features (CWE, C/I/A impact) carry. Since the graph
+    topology is a function of the VCs, this also bounds what message passing
+    could add beyond VC-as-features.
     """
     comps = _component_maps(corpus)
     rows_X: List[List[float]] = []
@@ -96,11 +100,12 @@ def build_dataset(corpus: dict, drop_structural: bool = False) -> Dataset:
             cve = n["cve_id"]
             c = comps.get((g["image"], cve), {})
             depth = n.get("chain_depth")
+            vc = (lambda vals: [0.0] * len(vals)) if drop_vc else (lambda vals: None)
             feat = (
-                _onehot(n.get("av", ""), AV_VALUES)
-                + _onehot(n.get("pr", ""), PR_VALUES)
-                + _onehot(n.get("ac", ""), AC_VALUES)
-                + _onehot(n.get("ui", ""), UI_VALUES)
+                (vc(AV_VALUES) or _onehot(n.get("av", ""), AV_VALUES))
+                + (vc(PR_VALUES) or _onehot(n.get("pr", ""), PR_VALUES))
+                + (vc(AC_VALUES) or _onehot(n.get("ac", ""), AC_VALUES))
+                + (vc(UI_VALUES) or _onehot(n.get("ui", ""), UI_VALUES))
                 + _onehot(c.get("C", ""), CIA_VALUES)
                 + _onehot(c.get("I", ""), CIA_VALUES)
                 + _onehot(c.get("A", ""), CIA_VALUES)

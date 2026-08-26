@@ -142,6 +142,8 @@ def main(argv: List[str] | None = None) -> int:
     ap.add_argument("--no-tensorboard", action="store_true")
     ap.add_argument("--drop-structural", action="store_true",
                     help="P0 ablation: zero chain_depth + degree features (pure node-intrinsic)")
+    ap.add_argument("--drop-vc", action="store_true",
+                    help="VC ablation: zero the Vector Changers (AV/PR/AC/UI)")
     args = ap.parse_args(argv)
 
     with open(args.corpus, "r", encoding="utf-8") as fh:
@@ -159,9 +161,12 @@ def main(argv: List[str] | None = None) -> int:
           f"({report.coverage:.1%}); {report.labeled_nodes}/{report.total_nodes} node rows",
           file=sys.stderr)
 
-    ds = build_dataset(corpus, drop_structural=args.drop_structural)
-    tag = "P0 pure-intrinsic (no depth/degree)" if args.drop_structural else "P1 with structural summaries"
-    print(f"Dataset: {len(ds)} labeled rows × {ds.X.shape[1]} features  [{tag}]\n", file=sys.stderr)
+    ds = build_dataset(corpus, drop_structural=args.drop_structural, drop_vc=args.drop_vc)
+    parts = []
+    parts.append("no depth/degree" if args.drop_structural else "with structural")
+    parts.append("no VCs" if args.drop_vc else "with VCs")
+    print(f"Dataset: {len(ds)} labeled rows × {ds.X.shape[1]} features  [{', '.join(parts)}]\n",
+          file=sys.stderr)
 
     writer = None
     if not args.no_tensorboard:
