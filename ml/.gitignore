@@ -2,3 +2,5 @@ out/
 runs/
 *.pt
 *.ckpt
+*.csv.gz
+epss_scores-*.csv
