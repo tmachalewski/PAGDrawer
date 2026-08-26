@@ -90,9 +90,11 @@ def build_pyg_batch(ds: Dataset, corpus: dict, bidirectional: bool = True):
     return Batch.from_data_list(data_list)
 
 
-def _mask(ridx, idx_set, device):
+def _mask(ridx, idx_array, device):
     import torch
-    keep = np.isin(ridx.cpu().numpy(), idx_set)
+    # np.isin needs an array-like, NOT a Python set (a set becomes a 0-d
+    # object array → every membership test is False → empty mask).
+    keep = np.isin(ridx.cpu().numpy(), np.asarray(idx_array))
     return torch.tensor(keep, dtype=torch.bool, device=device)
 
 
@@ -111,9 +113,9 @@ def run_gnn(ds: Dataset, batch, tr, va, te, seed: int, hops: int,
     b = batch.clone().to(device)
     b.x = ((b.x - torch.tensor(mu, device=device)) / torch.tensor(sd, device=device)).float()
 
-    tr_mask = _mask(b.ridx, set(tr.tolist()), device)
-    va_mask = _mask(b.ridx, set(va.tolist()), device)
-    te_mask = _mask(b.ridx, set(te.tolist()), device)
+    tr_mask = _mask(b.ridx, tr, device)
+    va_mask = _mask(b.ridx, va, device)
+    te_mask = _mask(b.ridx, te, device)
 
     class Net(nn.Module):
         def __init__(self, in_dim, hidden=128, hops=1):
