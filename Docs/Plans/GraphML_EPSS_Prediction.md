@@ -1,6 +1,6 @@
 # Graph ML: EPSS Prediction over the Vulnerability-Chain Graph
 
-Status: **GML-0 implemented** (post-GD-2026 work). Initial design settled 2026-08-22; amendments D8–D12 on 2026-08-24/25; critique-driven revision D13–D18 on 2026-08-26; **structural correction D19–D22 on 2026-08-27** (corpus is a set of per-image DAGs, not one global graph). GML-0 exporter + diagnostics built and run; see §8 and the GML-0.5 findings in §6.
+Status: **GML-0/1/2 done — ladder complete, research question answered** (post-GD-2026 work). Design D1–D22 (2026-08-22…27). The full baseline ladder ran on 2026-08-27: **message passing does not improve EPSS prediction on this corpus** (1-hop GNN = 0-hop = 0.740 Spearman; 2-hop worse). Positive corollary: the Vector Changers are the dominant EPSS predictor (+0.27 over CWE/impact). See §6 for the result and §8 for stage status.
 
 ---
 
@@ -107,6 +107,28 @@ docker-compose:  mongo  +  backend (FastAPI)  +  ml (NEW container)  +  tensorbo
 
 ## 6. Evaluation protocol
 
+### GML-1/2 result (2026-08-27) — the ladder answers §1: measured NO
+
+The full ladder, EPSS snapshot 2026-08-21, 5 seeds, grouped split by `original_cve`:
+
+| Rung | Model | Spearman ρ | top-decile |
+|---|---|---:|---:|
+| — | CWE + impact only (no VCs, no structure) | 0.462 ± 0.069 | 0.21 |
+| 1 | XGBoost (features incl. VCs) | 0.742 ± 0.041 | 0.55 |
+| 2 | 0-hop MLP | 0.740 ± 0.016 | 0.38 |
+| 3 | **1-hop GNN** | **0.740 ± 0.021** | 0.48 |
+| 4 | 2-hop GNN | 0.683 ± 0.064 | 0.29 |
+
+**Verdict: message passing adds nothing.** The rung 2 → rung 3 delta is 0.000; the 2-hop rung is *worse* (oversmoothing on the dense per-image bicliques). The answer to §1 ("does vulnerability-chain information improve EPSS prediction?") is a clean, measured **no on this corpus**.
+
+This confirms the theory by measurement: (1) the Vector Changers dominate the signal (CWE+impact alone 0.46 → +VCs 0.74, a +0.27 lift); (2) the chain graph is a deterministic function of the VCs; (3) the VCs are already node features; (4) EPSS is a *global* CVE property while the graph is *per-image*, so any structure beyond the node's own features is noise w.r.t. the label. Message passing has nothing non-redundant to add, and doesn't.
+
+Two honest readings: **negative** for the graph hypothesis (chains don't improve EPSS prediction here); **positive** for the VC framework — Vector Changers are the dominant EPSS predictor, and since VCs are *formally a graph feature* (flattened into node features per D2), the flattened graph representation carries the signal while explicit message passing does not enrich it.
+
+Scope: one container-scan corpus, shallow chains (depth ≤ 1, so 1-hop already spans the whole chain — a fair test here), 886 CVEs, imbalanced (`python:latest` dominates). A deeper/more-diverse corpus (§7 option 2) could differ, but the null is consistent and theory-backed.
+
+**Decision gate (GML-2 acceptance):** the GNN does not pay. GML-3/4 (if pursued) ship on the **tabular model** (rung 1 XGBoost — best top-decile) for the residual overlay; the multi-hop GNN is not carried forward as the mainline model. The A-ablations (A1 text, A2 shared_CPE, A4 class-aggregates) are now low-value — the core `enables` relation gave a flat null, so alternative relations/aggregates are unlikely to move it; run them only if the corpus is grown.
+
 ### GML-0.5 findings (2026-08-27) — the structural signal is real
 
 Diagnostics on the corrected per-image corpus (14 images, 1281 node occurrences, **886 unique CVEs**, all graphs DAGs, 0.8 % unreachable). Compare against the earlier *broken* global-closure graph to see why the structure had to be fixed:
@@ -159,7 +181,7 @@ Reordered per D16: experiments first, the serving module only after the gate. Ea
 
 - **Stage GML-0 — Corpus exporter. ✅ DONE (2026-08-27).** `ml/exporter.py` builds one DAG per image (dedup within image, depth-layered chains, contribution edges) via the shared `src/core/chain` primitives; `ml/export_corpus.py` is the CLI; `ml/diagnose.py` reports the structure↔EPSS signal. Verifies every image graph is a DAG. 24 exporter tests + 10 chain tests; backend suite 412 passed. Real corpus: 14 images, 886 unique CVEs, all DAGs. Findings in §6 (GML-0.5). *Acceptance met: deterministic export; DAG verification; diagnostics produced.*
 - **Stage GML-1 — Labels + non-graph baselines.** Download + archive one FIRST daily CSV snapshot (D9); percentile-target join (D15) with model-date stamp; grouped three-way split with leakage sentinel (D22); rung 1 (XGBoost) and rung 2 (0-hop GNN); metrics report (Spearman + top-decile precision, mean±std over seeds). *Acceptance: rungs 1–2 documented with seed variance; split protocol frozen; corpus dump archived with each run (D18).*
-- **Stage GML-2 — Multi-hop GNN experiments.** Plain scripts in `ml/` (no service): PyG directed SAGE (1- and 2-hop rungs, neighbor sampling with biclique cap), ablations A1–A4, local TensorBoard. Label-density stratification report. *Acceptance: ladder table complete; interpretation of A4 vs rung 3 recorded; go/no-go call on the serving investment recorded here.*
+- **Stage GML-2 — Multi-hop GNN experiments. ✅ DONE (2026-08-27).** `ml/gnn.py` — per-image PyG graphs, SAGEConv 1-/2-hop, bidirectional edges, same grouped split as the baselines. Full ladder run (see §6): 1-hop ρ=0.740 (= 0-hop), 2-hop ρ=0.683 (worse). **Verdict: message passing does not pay** — the answer to §1 is a measured no on this corpus. A1–A4 ablations skipped as low-value given the flat null. *Acceptance met: ladder complete; go/no-go recorded (no-go for the GNN as mainline).*
 - **Stage GML-3 — ML service.** (After the gate; ships regardless of the GNN verdict — the overlay is valuable from rung 1–2 up.) `ml/` container, docker-compose entry, Scripts, `/train` + `/predict` + `/model/info`, GridFS artifacts (checkpoint + corpus dump + label snapshot), TensorBoard sidecar. *Acceptance: end-to-end train→persist→predict cycle through the API; a training run visible live in TensorBoard.*
 - **Stage GML-4 — Residual overlay in PAGDrawer.** Frontend: color CVE nodes by residual (diverging palette), tooltip shows predicted vs actual vs model date. Works with whatever the best available rung is. Residual display is gated on magnitude exceeding the seed-ensemble std for that node (don't render noise as insight); the stronger KEV-based sanity check is deferred with D17. *Acceptance: overlay toggling documented in StatisticsModal/DebugOverlay docs; uncertainty gating in place.*
 
