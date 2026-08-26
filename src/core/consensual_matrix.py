@@ -8,7 +8,7 @@ Vector Changer outcomes (privilege/access changes after exploitation).
 The matrix was derived from expert consensus on 22 CVEs.
 """
 
-from typing import Dict, List, Tuple
+from typing import Dict, Iterable, List, Set, Tuple
 from enum import Enum
 
 
@@ -76,6 +76,44 @@ class TechnicalImpact(Enum):
 # Define privilege hierarchy (higher index = more privilege)
 AV_HIERARCHY = {"N": 0, "A": 1, "L": 2, "P": 3}  # Network->Adjacent->Local->Physical
 PR_HIERARCHY = {"N": 0, "L": 1, "H": 2}  # None->Low->High
+
+
+def prereqs_satisfied(
+    prereqs: Iterable[Tuple[str, str]],
+    available_vcs: Set[Tuple[str, str]],
+) -> bool:
+    """Check if all AV/PR prerequisites are met by available Vector Changers.
+
+    A prerequisite (AV or PR) is satisfied when some available VC of the same
+    type reaches at least the required hierarchy level. AC/UI are graph-wide
+    environmental modifiers, not chain prerequisites, and are ignored here.
+
+    This is the single source of truth for the chain-enabling predicate used
+    by both the graph builder (`KnowledgeGraphBuilder._prereqs_satisfied`
+    delegates here) and the Graph-ML `enables` edge exporter. `a enables b`
+    iff `prereqs_satisfied(prereqs(b), outcomes(a))`.
+    """
+    for vc_type, required_value in prereqs:
+        if vc_type == "AV":
+            required_level = AV_HIERARCHY.get(required_value, 0)
+            satisfied = any(
+                AV_HIERARCHY.get(v, 0) >= required_level
+                for t, v in available_vcs if t == "AV"
+            )
+        elif vc_type == "PR":
+            required_level = PR_HIERARCHY.get(required_value, 0)
+            satisfied = any(
+                PR_HIERARCHY.get(v, 0) >= required_level
+                for t, v in available_vcs if t == "PR"
+            )
+        else:
+            # AC/UI and any other type are not chain prerequisites
+            continue
+
+        if not satisfied:
+            return False
+
+    return True
 
 CONSENSUAL_MATRIX: Dict[str, List[Tuple[str, str]]] = {
     # =========================================================================

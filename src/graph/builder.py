@@ -618,33 +618,13 @@ class KnowledgeGraphBuilder:
         prereqs: List[Tuple[str, str]],
         available_vcs: Set[Tuple[str, str]]
     ) -> bool:
-        """Check if all AV/PR prerequisites are met by available VCs (using hierarchy)."""
-        from src.core.consensual_matrix import AV_HIERARCHY, PR_HIERARCHY
+        """Check if all AV/PR prerequisites are met by available VCs (using hierarchy).
 
-        for vc_type, required_value in prereqs:
-            # AC/UI are graph-wide constants, skip them
-            if vc_type not in ("AV", "PR"):
-                continue
-
-            if vc_type == "AV":
-                required_level = AV_HIERARCHY.get(required_value, 0)
-                satisfied = any(
-                    AV_HIERARCHY.get(v, 0) >= required_level
-                    for t, v in available_vcs if t == "AV"
-                )
-            elif vc_type == "PR":
-                required_level = PR_HIERARCHY.get(required_value, 0)
-                satisfied = any(
-                    PR_HIERARCHY.get(v, 0) >= required_level
-                    for t, v in available_vcs if t == "PR"
-                )
-            else:
-                satisfied = True
-
-            if not satisfied:
-                return False
-
-        return True
+        Delegates to the single source of truth in consensual_matrix so the
+        Graph-ML `enables` exporter and the builder share one predicate.
+        """
+        from src.core.consensual_matrix import prereqs_satisfied
+        return prereqs_satisfied(prereqs, available_vcs)
 
     def _build_cve_chain(
         self, entry: Dict
