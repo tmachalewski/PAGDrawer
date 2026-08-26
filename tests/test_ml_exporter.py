@@ -163,3 +163,24 @@ def test_empty_corpus():
     assert corpus.diagnostics.node_count == 0
     assert corpus.diagnostics.isolated_node_share == 0.0
     assert corpus.edges == []
+
+
+# --- diagnostics math (ml/diagnose.py) --------------------------------------
+
+def test_spearman_monotonic_and_ties():
+    from ml.diagnose import spearman
+    # perfect monotone (non-linear) → ρ = 1
+    assert abs(spearman([1, 2, 3, 4], [1, 4, 9, 16]) - 1.0) < 1e-9
+    # perfect anti-monotone → ρ = -1
+    assert abs(spearman([1, 2, 3, 4], [4, 3, 2, 1]) + 1.0) < 1e-9
+    # constant input → nan (undefined)
+    import math
+    assert math.isnan(spearman([1, 1, 1, 1], [1, 2, 3, 4]))
+
+
+def test_eta_squared_separates_groups():
+    from ml.diagnose import eta_squared
+    # fully separated groups → η² = 1
+    assert abs(eta_squared({"a": [1.0, 1.0], "b": [5.0, 5.0]}) - 1.0) < 1e-9
+    # identical group means → η² = 0
+    assert abs(eta_squared({"a": [1.0, 3.0], "b": [1.0, 3.0]})) < 1e-9
