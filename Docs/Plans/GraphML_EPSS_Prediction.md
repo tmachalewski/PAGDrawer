@@ -1,6 +1,6 @@
 # Graph ML: EPSS Prediction over the Vulnerability-Chain Graph
 
-Status: **planned** (post-GD-2026 work). Initial design settled 2026-08-22; amendments D8–D12 on 2026-08-24/25; critique-driven revision D13–D18 on 2026-08-26 (research question reframed, loss chosen, stages reordered experiments-first).
+Status: **GML-0 implemented** (post-GD-2026 work). Initial design settled 2026-08-22; amendments D8–D12 on 2026-08-24/25; critique-driven revision D13–D18 on 2026-08-26; **structural correction D19–D22 on 2026-08-27** (corpus is a set of per-image DAGs, not one global graph). GML-0 exporter + diagnostics built and run; see §8 and the GML-0.5 findings in §6.
 
 ---
 
@@ -25,9 +25,9 @@ These were discussed and settled; do not re-litigate without new evidence.
 |---|----------|-----------|
 | D1 | **Per-date model** (predict EPSS as of a stamped model date), not time-series | PoC simplicity; retrain often. EPSS label MUST carry the FIRST model date. (Amended by D9: labels come from one daily CSV snapshot; the drift study is future work.) |
 | D2 | **CVE-centric graph**, not heterogeneous schema graph | In the hetero graph, VC info is 3 hops from CVE (CVE→CWE→TI→VC); a GNN would need ≥3 layers just to see its own outcomes, and deep GNNs oversmooth on small graphs. Chain attributes are folded into CVE node features instead. (Empirical presumption, not measured — a hetero-GNN ablation is legitimate future work despite this log's header.) |
-| D3 | **Drop HOST entirely; deduplicate to one node per `original_cve`** | EPSS is a global property of the CVE — identical for every copy across hosts/CPEs. Host context is noise w.r.t. this label. Dedup kills the duplicate-leakage problem at the root (no more group-split machinery needed). Environment-dependent features (`chain_depth`, `layer`, host counts) are dropped with it. |
+| D3 | ~~Drop HOST entirely; deduplicate to one node per `original_cve`~~ **Superseded by D19** | Original rationale: EPSS is a global CVE property, so dedup to one global node set. This turned out to destroy the chain structure (see D19) — chains are *within-container*, so host/container context must survive during graph construction. Dedup now happens *within* an image, not globally; `chain_depth` is **kept** (it is the chain signal, not noise). |
 | D4 | **CWE and CPE as node features only**, not edge relations | `shared_CWE` creates near-cliques (CWE-79 alone links thousands of CVEs pairwise → O(n²) edges, oversmoothing, giant components). The class signal lives in the feature; the ablation ladder (§6) will test whether relation variants add anything. |
-| D5 | **Edges = directed `enables` relation from VC matching** | `a → b` iff `outcomes(a) ⊨ prereqs(b)` (consensual matrix). Computable globally from CVE data alone — survives dedup, host-independent like the label, directed (in-neighborhood = "my stepping stones", out-neighborhood = "what I unlock"), and is the semantic core of the project. |
+| D5 | **Edges = directed chain relation from VC matching** (refined by D20) | `a → b` when a's exploitation helps enable b along a real attack chain. Directed (in-neighborhood = "my stepping stones", out-neighborhood = "what I unlock") and the semantic core of the project. **Not** the global pairwise closure of the original D5 wording — see D20 for the depth-layered, contribution-edge definition that keeps each graph a DAG. |
 | D6 | **The ML graph is a separate artifact from the visualization graph** | Built from the deduplicated CVE corpus, not from a scan's rendered graph. PAGDrawer re-enters at the end as the lens: residuals overlaid on a concrete environment's attack graph. |
 | D7 | **Baseline ladder is mandatory** (§6) | The whole thesis is "structure adds signal beyond local features"; without tabular baselines the GNN result is uninterpretable. |
 | D8 | **0-hop GNN is the primary structural baseline** (2026-08-24) | Same architecture / features / optimizer with message passing disabled (an MLP per node). Isolates exactly one variable — edge propagation — which the XGBoost comparison cannot (different model family, capacity, regularization). XGBoost stays as an out-of-family sanity check. |
@@ -41,35 +41,39 @@ These were discussed and settled; do not re-litigate without new evidence.
 | D16 | **Experiments before service** (2026-08-26) | GNN experiments run as plain scripts in `ml/` (local TensorBoard, no container) *before* the serving module is built. The FastAPI service, docker-compose entry, and GridFS registry land only after the experiment gate — no infrastructure for a model that may not survive the ladder. |
 | D17 | **KEV / Metasploit features deferred** (2026-08-26) | Both are strong known exploitation predictors and cheap to ingest (one JSON each), but they are also heavy inputs to EPSS itself — they boost imputation while diluting the structural question. Parked entirely for now; revisit after the ladder results. The KEV-based residual sanity check is deferred with them. |
 | D18 | **Archive the training-corpus dump** (2026-08-26) | The exported corpus (CVE set, features, edges) that participated in each training run is stored alongside the model artifact — not just hashed. A hash can only prove reproduction is impossible after cache mutation; the dump makes it possible. |
+| D19 | **Corpus = set of per-image DAGs, not one global graph** (2026-08-27) | The first exporter built a global pairwise `enables` closure over all deduplicated CVEs. Empirically that graph was **not a DAG** (156k reciprocal edges; a 455-node strongly-connected blob) and had cross-image edges between CVEs that never co-occur — fictional chains. Reality-pruning is done by the container: chains link only CVEs present on the same Docker image. One graph per image; the same CVE appears in several image graphs (kept, not deduped away). Split therefore groups by `original_cve` across image graphs (D22). |
+| D20 | **Depth-layered chains via the builder's logic; contribution edges with layer-skipping** (2026-08-27) | Each image graph is built by the shared `src/core/chain` primitives: attacker baseline `{(AV,N),(PR,N)}` → admit CVEs whose AV/PR prereqs are met → accumulate their **escalating** outcomes (only VCs that strictly raise capability) → advance depth. Monotonic accumulation ⇒ DAG. CVE→CVE edge `a → b` iff `depth(a) < depth(b)` and a's escalating outcomes supply a VC that b's prereqs require — layer-skipping allowed, so a depth-0 CVE can contribute to a depth-2 CVE ("VCs from CVE1 enable CVE3"). The builder and exporter share the same `escalating_outcomes` / `assign_chain_depths` / `contributes` (single source of truth; the builder delegates its escalation filter). |
+| D21 | **Environmental VCs (AC/UI) are categorical node features; scenario fixed maximal** (2026-08-27) | AC (attacker skill) and UI (user cooperation) are the **input scenario**, not attacker state — categorical, never numeric, and they don't gate the AV/PR chain BFS (they're a separate frontend reachability overlay). The CVE's own AC/UI requirement is a per-node feature (one-hot `ac`, `ui`). The scenario is fixed **maximal** (skilled attacker, cooperating user → nothing pruned), so AC/UI vary only per-CVE. The legacy `0.5/0.4` probability weights in `consensual_matrix` are vestigial and unused by topology. |
+| D22 | **Split groups by `original_cve` across image graphs** (2026-08-27) | Duplicate-leakage returns in a new form: a CVE occurring in several image graphs must land entirely in one fold, or its global EPSS label leaks. `GroupKFold` (or grouped shuffle) on `original_cve`; the leakage sentinel asserts empty `original_cve` intersection across folds. |
 
 ## 3. Graph specification
 
-**Nodes** — unique CVEs (deduplicated by `original_cve`).
+**Structure** — the corpus is a **set of per-image DAGs** (D19). One graph per Docker image; nodes are the CVEs present on that image (deduplicated *within* the image). A CVE on N images is N node occurrences across N graphs — kept, not merged (D22 handles the split).
+
+**Nodes** — CVE occurrences. Each carries the same global features/label plus its `chain_depth` in that image's chain.
 
 **Node features:**
 
 | Feature | Encoding | Source |
 |---|---|---|
-| CVSS vector components (AV, AC, PR, UI, C, I, A) | one-hot per component | NVD cache |
+| CVSS state components (AV, PR, plus C, I, A) | one-hot per component | NVD cache |
+| **Environmental VCs (AC, UI)** — attacker-skill / user-cooperation *requirement* of the CVE | one-hot categorical (`AC:L/H`, `UI:N/R`) — never numeric (D21) | NVD cache |
+| `chain_depth` in this image | small int (0 = directly exploitable, ≥1 = chain-dependent) — **the chain-position signal** | `core.chain` |
 | CWE id(s) | learned `nn.Embedding` (multi-hot pooled if several) | NVD cache |
 | CPE / package | hash-embedding of product | Trivy / NVD |
 | Age (days since publication), days since last NVD modification | scalar, log-scaled | NVD cache |
-| Prereq vector + `vc_outcomes` multi-hot (Vector Changers) | multi-hot; same information as the CVE-merge keys, unserialized | VC framework |
-| CVE description text (optional, ablation flag) | sentence-transformer embedding (e.g. MiniLM 384d), computed offline in the exporter and cached in Mongo; PCA-reduce to ~32–64 dims at small corpus sizes | NVD cache (`description` field, already fetched) |
+| Prereq / outcome VC keys | categorical (same equivalence classes as the M22/ACR merge keys) | VC framework |
+| CVE description text (optional, ablation flag) | sentence-transformer embedding (MiniLM), offline + cached, PCA-reduced | NVD cache |
 
-Not included (dropped with D3): `chain_depth`, `layer`, per-host/per-scan context. Deferred (D17): KEV flag, Metasploit module presence. Never included: EPSS itself (label).
+Deferred (D17): KEV flag, Metasploit module presence. Never included: EPSS itself (label).
 
-**VC features play a dual role** — they are node features *and* the predicate that generates `enables` edges. Intentional, but it shapes interpretation: if the multi-hop GNN fails to beat the 0-hop baseline, one candidate explanation is "the VC features already encode what the edges would deliver", since topology is a function of these features.
+**VC features play a dual role** — they are node features *and* the predicate that generates the chain edges. If the multi-hop GNN fails to beat the 0-hop baseline, one candidate explanation is "the VC features already encode what the edges would deliver."
 
-**Text-feature caveat**: EPSS's own model consumes text-derived tags, so description embeddings partially overlap the label's inputs. Fine for imputation quality — but text may absorb structural signal, which is why +text is a separate ablation rung, not part of the base feature set.
+**Edges** — directed CVE→CVE **contribution** edges (D20): `a → b` iff `depth(a) < depth(b)` and a's escalating outcomes supply a Vector Changer b's prereqs require. Built by `src/core/chain` (shared with the graph builder). Every image graph is a DAG by construction; the exporter verifies this (`diagnostics.all_dags`).
 
-**Edges** — directed `enables`: `a → b` iff outcomes(a) satisfy prereqs(b) per the consensual matrix (see `Docs/ConsensualMatrix_TrascribedByHand.md`, chain logic in `src/graph/builder.py`).
+Known structural property (accept and handle — see D13): within an image, all CVEs sharing a (prereq, outcome) VC class have identical structural roles, so the graph is a blow-up of a small quotient over VC classes and dense depth-layer bicliques form. Cap/sample neighbors per class (GraphSAGE-style). The A4 ablation (class-aggregate features) quantifies how much of the GNN's edge this quotient explains.
 
-Known structural property (accept and handle, don't fight — see D13):
-- The relation is a function of (outcome-key, prereq-key) pairs, whose vocabulary is small — the same equivalence classes as the M22/ACR merge keys. The graph is therefore a *blow-up of a small quotient graph* over key classes: all CVEs with the same key pair have identical structural neighborhoods. What the GNN adds over features is **corpus-level statistics of neighbor classes** (which CWEs/packages/labels actually populate "the class that enables me"), which a per-node model cannot see. The A4 ablation quantifies this; the quotient census in GML-0 characterizes it up front.
-- Compatible classes form large bicliques → cap or sample neighbors per class (GraphSAGE-style neighbor sampling; cap is a tuned hyperparameter).
-
-Optional second relation for ablation only: `shared_CPE` — for the PoC corpus built from **scan co-occurrence** (same package in the Trivy scans; trivial to compute). The NVD-configuration variant (parsing applicability statements and match ranges) is real parser work and is future-corpus territory, not A2.
+Optional second relation for ablation only (A2): `shared_CPE` from scan co-occurrence within an image.
 
 ## 4. Task & labels
 
@@ -95,7 +99,7 @@ docker-compose:  mongo  +  backend (FastAPI)  +  ml (NEW container)  +  tensorbo
 ```
 
 - **`ml/` service** — separate FastAPI app with its own image (torch + PyTorch Geometric are heavy; keep them out of the backend image). Endpoints: `POST /train`, `POST /predict`, `GET /model/info` (version, EPSS model date, eval metrics, corpus reference).
-- **Backend** — gains `GET /api/ml/export` (deduplicated CVE corpus + enables edges) and a thin proxy `GET /api/ml/predictions` so the frontend keeps a single origin.
+- **Backend** — gains `GET /api/ml/export` (per-image DAG corpus) and a thin proxy `GET /api/ml/predictions` so the frontend keeps a single origin.
 - **Model artifacts** — MongoDB GridFS: checkpoint + corpus dump + label snapshot (per D18), same provenance discipline as the metrics JSON export. **MLflow** noted as a future consolidation option (tracking + registry in one tool); W&B rejected for PoC (hosted; data leaves the machine).
 - **`/predict` note**: the age feature must be computed relative to the model's **label snapshot date**, not wall-clock now — otherwise a stale model silently shifts its own input distribution.
 - **Scripts** — `Scripts/start-ml.sh` / `kill-ml.sh`, `Scripts/start-tensorboard.sh` / `kill-tensorboard.sh`, same conventions as the rest.
@@ -103,7 +107,23 @@ docker-compose:  mongo  +  backend (FastAPI)  +  ml (NEW container)  +  tensorbo
 
 ## 6. Evaluation protocol
 
-**Split** (per D10): **three-way** — train / validation / test over deduplicated CVE nodes. Hyperparameter tuning reads only validation; test is evaluated **once**, at the end, per model family. At this corpus size, prefer k-fold CV on (train+val) for HP selection, then a final fit and a single test evaluation. Run ≥3 seeds and report mean±std — seed variance at ~1–2k nodes can exceed the deltas between ladder rungs. Keep one **leakage sentinel**: `assert len(train_cves & test_cves) == 0` on `original_cve` sets — one line, catches future regressions if dedup is ever accidentally dropped.
+### GML-0.5 findings (2026-08-27) — the structural signal is real
+
+Diagnostics on the corrected per-image corpus (14 images, 1281 node occurrences, **886 unique CVEs**, all graphs DAGs, 0.8 % unreachable). Compare against the earlier *broken* global-closure graph to see why the structure had to be fixed:
+
+| Signal (Spearman ρ vs EPSS) | Global closure (wrong) | Per-image DAGs (correct) |
+|---|---:|---:|
+| chain-depth ↔ EPSS | ~0 | **−0.45** |
+| out-degree ↔ EPSS | +0.13 | **+0.40** |
+| in-degree ↔ EPSS | −0.03 | **−0.43** |
+
+`chain-depth ↔ EPSS = −0.45` is interpretable: **depth-0 CVEs (directly exploitable from the network) rank higher in EPSS than depth-1 CVEs (chain-dependent)** — attackers in the wild reach for what's directly exploitable. The earlier "no signal" result was an artifact of the wrong graph.
+
+Caveats that shape the ladder: (1) η² is still low (~0.11 full class, ~0.02 depth) — the ρ is a *ranking* signal (which is our task, D15), not large *variance* explained. (2) `chain_depth` is nearly a function of the CVE's own AV/PR prereqs, so a tabular model may capture most of it; the 0-hop → 1-hop delta is what tests whether the **graph** adds beyond node features. (3) The corpus is imbalanced — `python:latest` (746 nodes, 78 k edges) dwarfs the other 13 images; weight by image or treat as an outlier. (4) Chains are shallow here (max depth 1) — 3-CVE chains are supported but this corpus's CVSS→VC mapping saturates capability in one step.
+
+### Split
+
+**Split** (per D10/D22): **three-way** — train / validation / test, grouped by `original_cve` across image graphs (a CVE on several images lands entirely in one fold). Hyperparameter tuning reads only validation; test is evaluated **once**, at the end, per model family. Prefer `GroupKFold` on (train+val) for HP selection, then a final fit and a single test evaluation. Run ≥3 seeds and report mean±std — seed variance at ~900 CVEs can exceed the deltas between ladder rungs. Keep one **leakage sentinel**: `assert` empty `original_cve` intersection across folds.
 
 **Transductive masking**: the full graph participates in message passing; loss and metrics are computed only on the respective split's nodes. Validation/test labels never enter the loss.
 
@@ -113,32 +133,32 @@ docker-compose:  mongo  +  backend (FastAPI)  +  ml (NEW container)  +  tensorbo
 |---|---|---|
 | 1 | XGBoost on own features (CVSS + CWE + CPE + age) | out-of-family sanity check; roughly reproduces "EPSS from static features" |
 | 2 | **GNN 0-hop** — same architecture/features/training, message passing disabled (MLP per node) | anchor of the neural family; everything above is measured against this |
-| 3 | GNN 1-hop on the enables graph | one round of neighbor aggregation — the headline delta for §1's question |
+| 3 | GNN 1-hop on the per-image chain graph | one round of neighbor aggregation — the headline delta for §1's question |
 | 4 | GNN 2-hop | deeper propagation (watch oversmoothing) |
 | A1 | rung 3/4 **+** description-text embedding | text contribution; whether text absorbs structural signal |
 | A2 | rung 3/4 + `shared_CPE` (scan co-occurrence) second relation | product co-location on top of `enables` |
-| A3 | rung 1 + enables-graph centralities (in/out-degree, PageRank) as tabular features | two numbers of structure in a tabular model — cheap robustness check of the structural signal |
+| A3 | rung 1 + chain centralities (in/out-degree, chain-depth, PageRank per image) as tabular features | structure as a few numbers in a tabular model — cheap robustness check; GML-0.5 already shows chain-depth ρ=−0.45, so this rung should move |
 | A4 | rung 2 + **class-aggregate features** (per prereq-class: enabler count, mean CVSS, CWE histogram of enablers) | how much of the GNN's edge the quotient structure explains by itself (diagnostic per D13 — informs interpretation, does not veto the GNN) |
 
 The answer to §1's question is the delta **rung 2 → rung 3/4**, measured within one model family (Spearman and top-decile precision, against seed std). A4's role is interpretive: if A4 ≈ rung 3, the chain signal is class-statistical; if rung 3 > A4, message passing extracts more than class aggregates.
 
 **Additional evaluation regime**:
-- **Label-density stratification**: report test metrics bucketed by fraction of train-labeled neighbors (0% / <50% / ≥50%). Measures how much the transductive setting inflates results vs. the cold-start production case.
+- **Per-image cross-validation**: because each image is a graph sample and the split groups by `original_cve`, the natural generalization test is holding out whole images — measures "predict EPSS for a new image's CVEs." Report alongside the grouped-CVE split.
 
 ## 7. Data / corpus
 
-Because the graph and label are both global (D3, D5), the corpus is **not limited by Trivy scans**. Options in order of scale:
+Since chains are per-image (D19), the corpus **is** the set of scanned images — each image is a graph sample. Options in order of scale:
 
-1. **Scan-derived corpus** (start here, per D11): union of unique CVEs across the 9-image examples corpus (+ any new scans). Small (~1–2k unique CVEs) but the pipeline exists end-to-end today. The `ignore_ttl` rebuild mode (added 2026-08-24) helps here: old scans can be re-ingested offline against the frozen Mongo cache, keeping the feature snapshot stable across ML experiments without refetching. Per D18, the exact corpus dump used by each run is archived with the run.
-2. **Extended scan corpus**: Trivy-scan ~100–200 popular Docker Hub images (automatable; ingest pipeline exists). ~5–15k unique CVEs, same distribution as production use.
-3. **Full NVD corpus**: all CVEs with CVSS v3 vectors (~200k). Only needed if rung-3 results look promising and data-hungry; requires bulk NVD ingest rather than per-CVE fetch.
+1. **Scan-derived corpus** (current, per D11): the existing example scans → **14 image graphs, 886 unique CVEs** (built 2026-08-27). The `ignore_ttl` rebuild mode reuses the frozen Mongo cache offline, keeping the feature snapshot stable across experiments. Per D18 the exact corpus dump is archived with each run. More images ⇒ more graph samples (the natural way to grow this corpus, since each image is one sample).
+2. **Extended scan corpus**: Trivy-scan ~100–200 popular Docker Hub images (automatable; ingest pipeline exists). More, more-diverse graphs — the right lever for a GNN that learns across image samples.
+3. **Full NVD corpus**: only if a scan-derived study proves promising; note that "all of NVD" is not one image, so it needs a different graph-definition (e.g. synthetic co-occurrence) — future territory, not a drop-in.
 
 ## 8. Stages
 
 Reordered per D16: experiments first, the serving module only after the gate. Each stage lands independently with tests.
 
-- **Stage GML-0 — Corpus exporter.** Backend: dedup by `original_cve`, assemble features, compute enables edges from VC matching, emit versioned JSON. Also emits **diagnostics**: degree histograms, quotient-class census (how many (prereq, outcome)-key classes, membership distribution), isolated-node share. Unit tests on a synthetic mini-corpus (known keys → known edges). *Acceptance: export is deterministic (stable hash) for a fixed cache state; diagnostics report produced.*
-- **Stage GML-1 — Labels + non-graph baselines.** Download + archive one FIRST daily CSV snapshot (D9); percentile-target join (D15) with model-date stamp; three-way split with leakage sentinel (D10); rung 1 (XGBoost) and rung 2 (0-hop GNN); metrics report (Spearman + top-decile precision, mean±std over seeds). *Acceptance: rungs 1–2 documented with seed variance; split protocol frozen; corpus dump archived with each run (D18).*
+- **Stage GML-0 — Corpus exporter. ✅ DONE (2026-08-27).** `ml/exporter.py` builds one DAG per image (dedup within image, depth-layered chains, contribution edges) via the shared `src/core/chain` primitives; `ml/export_corpus.py` is the CLI; `ml/diagnose.py` reports the structure↔EPSS signal. Verifies every image graph is a DAG. 24 exporter tests + 10 chain tests; backend suite 412 passed. Real corpus: 14 images, 886 unique CVEs, all DAGs. Findings in §6 (GML-0.5). *Acceptance met: deterministic export; DAG verification; diagnostics produced.*
+- **Stage GML-1 — Labels + non-graph baselines.** Download + archive one FIRST daily CSV snapshot (D9); percentile-target join (D15) with model-date stamp; grouped three-way split with leakage sentinel (D22); rung 1 (XGBoost) and rung 2 (0-hop GNN); metrics report (Spearman + top-decile precision, mean±std over seeds). *Acceptance: rungs 1–2 documented with seed variance; split protocol frozen; corpus dump archived with each run (D18).*
 - **Stage GML-2 — Multi-hop GNN experiments.** Plain scripts in `ml/` (no service): PyG directed SAGE (1- and 2-hop rungs, neighbor sampling with biclique cap), ablations A1–A4, local TensorBoard. Label-density stratification report. *Acceptance: ladder table complete; interpretation of A4 vs rung 3 recorded; go/no-go call on the serving investment recorded here.*
 - **Stage GML-3 — ML service.** (After the gate; ships regardless of the GNN verdict — the overlay is valuable from rung 1–2 up.) `ml/` container, docker-compose entry, Scripts, `/train` + `/predict` + `/model/info`, GridFS artifacts (checkpoint + corpus dump + label snapshot), TensorBoard sidecar. *Acceptance: end-to-end train→persist→predict cycle through the API; a training run visible live in TensorBoard.*
 - **Stage GML-4 — Residual overlay in PAGDrawer.** Frontend: color CVE nodes by residual (diverging palette), tooltip shows predicted vs actual vs model date. Works with whatever the best available rung is. Residual display is gated on magnitude exceeding the seed-ensemble std for that node (don't render noise as insight); the stronger KEV-based sanity check is deferred with D17. *Acceptance: overlay toggling documented in StatisticsModal/DebugOverlay docs; uncertainty gating in place.*
@@ -147,15 +167,18 @@ Reordered per D16: experiments first, the serving module only after the gate. Ea
 
 ## 9. Risks & open questions
 
-- **Quotient dominance** — if the census (GML-0) shows a handful of key classes covering most nodes, and A4 matches rung 3, the honest interpretation is "class-statistical signal, not topological" — the GNN still stands as the representation (D13), but the writeup must say which it is.
-- **Corpus size at stage 1** (~1–2k CVEs) is small for embeddings (CWE/CPE) — freeze embedding dims small (8–16) or defer hash-embeddings to corpus option 2.
-- **CVEs without CVSS v3 vectors** have no prereq/outcome keys → isolated nodes. Report their share (GML-0 diagnostic); they still work in tabular rungs.
-- **Open**: exact satisfaction semantics of `outcomes(a) ⊨ prereqs(b)` for edge construction — reuse the backend chain-building predicate from `src/graph/builder.py` verbatim (single source of truth), do not re-derive in the exporter.
+- **Quotient dominance** — the GML-0.5 census confirms it (3 classes cover 50 % of CVEs; η² ≈ 0.11). If A4 matches rung 3, the honest interpretation is "class-statistical signal, not topological" — the GNN still stands as the representation (D13), but the writeup must say which it is.
+- **Corpus imbalance** — `python:latest` dominates (746 of 886 CVEs). Weight per image, or hold it out, so one graph doesn't drive the result.
+- **Corpus size** (~886 unique CVEs) is small for embeddings (CWE/CPE) — freeze embedding dims small (8–16) or grow the corpus (more images, §7 option 2).
+- **Shallow chains** — this corpus tops out at depth 1, so 1-hop message passing already sees the whole chain; depth-2 GNN may add nothing here. A deeper/more-diverse corpus (option 2) is where multi-hop could matter.
+- **Resolved**: the chain predicate is shared — `src/core/chain` (`prereqs_satisfied` / `escalating_outcomes` / `assign_chain_depths` / `contributes`) is the single source of truth; the builder delegates to it, the exporter imports it.
 
 ## 10. Cross-references
 
+- **Implementation**: `ml/exporter.py` (per-image DAG builder), `ml/export_corpus.py` (CLI), `ml/diagnose.py` (signal analysis), `ml/README.md`.
+- **Shared chain primitives (single source of truth)**: `src/core/chain.py` — `escalating_outcomes`, `assign_chain_depths`, `contributes`; predicate in `src/core/consensual_matrix.py` (`prereqs_satisfied`).
 - VC framework & consensual matrix: `Docs/VC_Framework_Paper.md`, `Docs/ConsensualMatrix_TrascribedByHand.md`
 - Chain construction: `Docs/Plans/Chain_Depth_Aware_Attack_Stages.md`, `src/graph/builder.py`
-- Merge keys (same equivalence classes as the enables quotient): `frontend/js/features/mergeKeys.ts`, `Docs/_domains/PaperAlgorithms.md` §3
+- Merge keys (same equivalence classes as the VC quotient): `frontend/js/features/mergeKeys.ts`, `Docs/_domains/PaperAlgorithms.md` §3
 - EPSS fetching & caching: `src/data/loaders/nvd_fetcher.py`, `Docs/_domains/MongoDBPersistence.md`
 - Staging pattern this plan imitates: `Docs/Plans/Master_Implementation_Roadmap.md`
