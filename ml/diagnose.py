@@ -100,65 +100,89 @@ def _pagerank_numpy(G: "nx.DiGraph", ids: Sequence[str], alpha: float = 0.85,
 
 
 def analyze(corpus: Dict[str, Any]) -> None:
-    nodes = corpus["nodes"]
-    edges = corpus["edges"]
-    ids = [n["cve_id"] for n in nodes]
-    epss = {n["cve_id"]: (n.get("epss_score") or 0.0) for n in nodes}
-    okey = {n["cve_id"]: n["outcome_key"] for n in nodes}
-    pkey = {n["cve_id"]: n["prereq_key"] for n in nodes}
+    graphs = corpus["graphs"]
 
-    G = nx.DiGraph()
-    G.add_nodes_from(ids)
-    G.add_edges_from((e["source"], e["target"]) for e in edges)
+    # Flatten node occurrences; aggregate degree per (image, cve) then reduce
+    # to per-unique-CVE for the EPSS-signal questions (a CVE's label is global).
+    per_cve_epss: Dict[str, float] = {}
+    per_cve_okey: Dict[str, str] = {}
+    per_cve_pkey: Dict[str, str] = {}
+    per_cve_depths: Dict[str, List[int]] = defaultdict(list)
+    per_cve_indeg: Dict[str, int] = defaultdict(int)
+    per_cve_outdeg: Dict[str, int] = defaultdict(int)
 
-    print(f"=== {len(ids)} nodes, {G.number_of_edges()} edges "
-          f"(density {nx.density(G):.3f}) ===\n")
+    total_nodes = 0
+    total_edges = 0
+    for g in graphs:
+        deg_in: Dict[str, int] = defaultdict(int)
+        deg_out: Dict[str, int] = defaultdict(int)
+        for e in g["edges"]:
+            deg_out[e["source"]] += 1
+            deg_in[e["target"]] += 1
+            total_edges += 1
+        for n in g["nodes"]:
+            total_nodes += 1
+            cid = n["cve_id"]
+            per_cve_epss[cid] = n.get("epss_score") or 0.0
+            per_cve_okey[cid] = n["outcome_key"]
+            per_cve_pkey[cid] = n["prereq_key"]
+            if n["chain_depth"] is not None:
+                per_cve_depths[cid].append(n["chain_depth"])
+            per_cve_indeg[cid] += deg_in.get(cid, 0)
+            per_cve_outdeg[cid] += deg_out.get(cid, 0)
+
+    ids = list(per_cve_epss.keys())
+    print(f"=== {len(graphs)} image graphs | {total_nodes} node-occurrences | "
+          f"{len(ids)} unique CVEs | {total_edges} edges ===\n")
+
+    y = np.array([per_cve_epss[c] for c in ids])
 
     # --- 1. structure vs EPSS -------------------------------------------------
-    y = np.array([epss[c] for c in ids])
-    indeg = np.array([G.in_degree(c) for c in ids], dtype=float)
-    outdeg = np.array([G.out_degree(c) for c in ids], dtype=float)
+    indeg = np.array([per_cve_indeg[c] for c in ids], dtype=float)
+    outdeg = np.array([per_cve_outdeg[c] for c in ids], dtype=float)
+    # modal chain depth per CVE (0 if only ever depth 0; skip unreachable-only)
+    depth_ids = [c for c in ids if per_cve_depths[c]]
+    depth_vals = np.array([np.mean(per_cve_depths[c]) for c in depth_ids])
+    depth_y = np.array([per_cve_epss[c] for c in depth_ids])
     print("[1] Structure vs EPSS (Spearman ρ):")
-    print(f"    in-degree   ↔ EPSS : {spearman(indeg, y):+.3f}")
-    print(f"    out-degree  ↔ EPSS : {spearman(outdeg, y):+.3f}")
-    prv = _pagerank_numpy(G, ids)
-    print(f"    PageRank    ↔ EPSS : {spearman(prv, y):+.3f}")
+    print(f"    in-degree    ↔ EPSS : {spearman(indeg, y):+.3f}")
+    print(f"    out-degree   ↔ EPSS : {spearman(outdeg, y):+.3f}")
+    print(f"    chain-depth  ↔ EPSS : {spearman(depth_vals, depth_y):+.3f}   "
+          f"(depth 1 = chain-dependent vs depth 0 = directly exploitable)")
     print("    (|ρ| near 0 ⇒ this structural feature carries little EPSS signal)\n")
 
     # --- 2. quotient class vs EPSS -------------------------------------------
     by_class: Dict[Tuple[str, str], List[float]] = defaultdict(list)
     for c in ids:
-        by_class[(pkey[c], okey[c])].append(epss[c])
-    e2_full = eta_squared(by_class)
+        by_class[(per_cve_pkey[c], per_cve_okey[c])].append(per_cve_epss[c])
     by_outcome: Dict[str, List[float]] = defaultdict(list)
     for c in ids:
-        by_outcome[okey[c]].append(epss[c])
-    e2_out = eta_squared(by_outcome)
-    print("[2] Does class membership explain EPSS? (η², 0..1):")
-    print(f"    full (prereq,outcome) class : {e2_full:.3f}")
-    print(f"    outcome class only          : {e2_out:.3f}")
-    print("    (low η² ⇒ EPSS varies mostly WITHIN classes; the enables graph,")
-    print("     being a function of these classes, then can't explain EPSS)\n")
+        by_outcome[per_cve_okey[c]].append(per_cve_epss[c])
+    by_depth: Dict[Any, List[float]] = defaultdict(list)
+    for c in depth_ids:
+        by_depth[round(float(np.mean(per_cve_depths[c])))].append(per_cve_epss[c])
+    print("[2] Does membership explain EPSS? (η², 0..1):")
+    print(f"    full (prereq,outcome) class : {eta_squared(by_class):.3f}")
+    print(f"    outcome class only          : {eta_squared(by_outcome):.3f}")
+    print(f"    chain depth                 : {eta_squared(by_depth):.3f}")
+    print("    (low η² ⇒ EPSS varies mostly WITHIN these groups; the graph,")
+    print("     being a function of them, then can't explain EPSS)\n")
 
     # --- 3. class coverage skew ----------------------------------------------
-    sizes = sorted(Counter((pkey[c], okey[c]) for c in ids).values(), reverse=True)
+    sizes = sorted(Counter((per_cve_pkey[c], per_cve_okey[c]) for c in ids).values(), reverse=True)
     cum = np.cumsum(sizes) / len(ids)
     n_for_50 = int(np.searchsorted(cum, 0.50) + 1)
     n_for_90 = int(np.searchsorted(cum, 0.90) + 1)
     print("[3] Class coverage skew:")
     print(f"    {len(sizes)} classes total; "
-          f"{n_for_50} class(es) cover 50% of nodes, {n_for_90} cover 90%\n")
+          f"{n_for_50} class(es) cover 50% of unique CVEs, {n_for_90} cover 90%\n")
 
-    # --- 4. escalating vs lateral edges --------------------------------------
-    lateral = sum(1 for e in edges if okey[e["source"]] == okey[e["target"]])
-    total = len(edges)
-    print("[4] Edge character:")
-    print(f"    lateral/redundant (same outcome class) : {lateral}/{total} "
-          f"({lateral/total:.1%})" if total else "    (no edges)")
-    print(f"    potentially escalating                 : {total - lateral}/{total} "
-          f"({(total-lateral)/total:.1%})" if total else "")
-    print("    (high lateral share ⇒ a narrower escalation-only `enables`")
-    print("     would prune many edges without losing capability lift)")
+    # --- 4. per-image density -------------------------------------------------
+    print("[4] Per-image graphs (nodes → edges):")
+    for g in sorted(graphs, key=lambda g: -len(g["nodes"]))[:8]:
+        nn, ne = len(g["nodes"]), len(g["edges"])
+        dens = ne / (nn * (nn - 1)) if nn > 1 else 0.0
+        print(f"    {g['image'][:34]:34s} {nn:4d} → {ne:6d}  (density {dens:.2f})")
 
 
 def main(argv: List[str] | None = None) -> int:

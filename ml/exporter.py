@@ -1,24 +1,31 @@
 """GML-0 — Corpus exporter for the Graph-ML EPSS prediction task.
 
-Turns a list of enriched CVE dicts (the output of the Trivy/deployment
-loaders) into the ML corpus described in
-`Docs/Plans/GraphML_EPSS_Prediction.md` §3:
+Builds the ML corpus described in `Docs/Plans/GraphML_EPSS_Prediction.md`,
+revised 2026-08-26 to match the confirmed vision:
 
-  * nodes   — unique CVEs (deduplicated by CVE id, per D3)
-  * features— raw, encoding-agnostic (CVSS vector, CWE ids, technical
-              impacts, description, age); tensor encoding happens later in
-              the training script, so the export stays deterministic
-  * edges   — directed ``enables`` relation, ``a -> b`` iff outcomes(a)
-              satisfy prereqs(b), using the single-source-of-truth predicate
-              ``consensual_matrix.prereqs_satisfied`` (per D5 / §9)
-  * label   — EPSS score kept on the node but flagged as label, NEVER a
-              feature (per D3)
-  * diagnostics — degree histograms, quotient-class census, isolated-node
-              share (per D13 / GML-0 acceptance)
+  * The corpus is a **set of per-Docker-image DAGs** — one graph per scanned
+    image. Chaining happens ONLY between vulnerabilities that co-occur on the
+    same image (reality-pruning). The same CVE may appear in several image
+    graphs; that is expected and handled by a group-wise train/val/test split
+    on ``original_cve``.
+  * Each image graph is built with the builder's chain logic
+    (``core.chain.assign_chain_depths``): the attacker starts from the
+    baseline Vector Changers, prerequisites gate reachability, escalating
+    outcomes accumulate, depth increases → a Directed Acyclic Graph.
+  * **Fixed maximal scenario**: attacker skill and user interaction are set so
+    every CVE that can ever chain is reachable (the AV/PR baseline BFS already
+    does this; the AC/UI scenario gate is a separate frontend overlay and is
+    NOT applied here). AC/UI therefore stay as per-node *features*.
+  * **Edges** are CVE->CVE contribution edges: ``a -> b`` when depth(a) <
+    depth(b) and a's escalating outcomes supply a Vector Changer that b's
+    prerequisites require (layer-skipping allowed — a depth-0 CVE can
+    contribute to a depth-2 CVE, matching "VCs from CVE1 enable CVE3").
+  * **Features** are raw/categorical per CVE (CVSS components incl. AC/UI,
+    CWE, technical impacts, description, age); EPSS rides along as the label,
+    never a feature.
 
-The core (`build_corpus`) is pure: it takes plain dicts and returns plain
-data, so it is unit-testable on a synthetic mini-corpus without Mongo, a
-network, or a Cytoscape/graph instance.
+The core (`build_corpus`) is pure: plain dicts in, plain data out — unit
+tested on synthetic mini-corpora without Mongo, network, or a graph instance.
 """
 
 from __future__ import annotations
@@ -27,28 +34,24 @@ from collections import Counter
 from dataclasses import dataclass, field, asdict
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
-from src.core.consensual_matrix import (
-    extract_prerequisites,
-    get_post_exploitation_vcs,
-    prereqs_satisfied,
+from src.core.consensual_matrix import extract_prerequisites, get_post_exploitation_vcs
+from src.core.chain import (
+    assign_chain_depths,
+    escalating_outcomes,
+    contributes,
+    DEFAULT_INITIAL_VCS,
 )
 
-# Bump only on breaking changes to the exported JSON shape (renamed/removed
-# keys). Adding fields is non-breaking and stays at this version.
-SCHEMA_VERSION = 1
+# Bump only on breaking changes to the exported JSON shape.
+SCHEMA_VERSION = 2  # v2: per-image DAGs (v1 was the flat global closure)
 
 
 # =============================================================================
-# VC helpers — outcomes / prereqs / quotient keys
+# VC / CVSS helpers
 # =============================================================================
 
 def outcomes_of(technical_impacts: Sequence[str]) -> Set[Tuple[str, str]]:
-    """Union of Vector-Changer outcomes over a CVE's technical impacts.
-
-    Mirrors how the graph builder accumulates a CVE's post-exploitation VCs:
-    each technical impact maps through the consensual matrix, and a CVE that
-    lists several impacts grants the union of their outcomes.
-    """
+    """Union of Vector-Changer outcomes over a CVE's technical impacts."""
     out: Set[Tuple[str, str]] = set()
     for impact in technical_impacts or []:
         out.update(get_post_exploitation_vcs(impact))
@@ -60,30 +63,14 @@ def prereqs_of(cvss_vector: str) -> List[Tuple[str, str]]:
     return extract_prerequisites(cvss_vector)
 
 
-def _canon_pairs(pairs: Set[Tuple[str, str]] | List[Tuple[str, str]]) -> str:
-    """Deterministic string key for a set/list of (type, value) VC pairs."""
-    if not pairs:
-        return "none"
-    return ",".join(f"{t}:{v}" for t, v in sorted(set(pairs)))
-
-
-def prereq_key(cvss_vector: str) -> str:
-    """Quotient key for a CVE's prerequisites (the 'in' side of enables)."""
-    return _canon_pairs(prereqs_of(cvss_vector))
-
-
-def outcome_key(technical_impacts: Sequence[str]) -> str:
-    """Quotient key for a CVE's outcomes (the 'out' side of enables)."""
-    return _canon_pairs(outcomes_of(technical_impacts))
-
-
-def enables(a_outcomes: Set[Tuple[str, str]], b_prereqs: List[Tuple[str, str]]) -> bool:
-    """``a enables b`` — do a's outcomes satisfy b's prerequisites?
-
-    Thin wrapper over the single source of truth so the exporter never
-    re-derives the predicate (§9).
-    """
-    return prereqs_satisfied(b_prereqs, a_outcomes)
+def parse_cvss_components(cvss_vector: str) -> Dict[str, str]:
+    """Split a CVSS vector into its component map (AV, AC, PR, UI, C, I, A…)."""
+    comps: Dict[str, str] = {}
+    for part in (cvss_vector or "").split("/"):
+        if ":" in part:
+            k, v = part.split(":", 1)
+            comps[k] = v
+    return comps
 
 
 # =============================================================================
@@ -92,20 +79,26 @@ def enables(a_outcomes: Set[Tuple[str, str]], b_prereqs: List[Tuple[str, str]]) 
 
 @dataclass
 class CorpusNode:
-    """One deduplicated CVE in the ML corpus.
+    """One CVE occurrence inside one image graph.
 
-    Feature fields are raw (encoding happens in the training script). The
-    label (`epss_score`) rides along but is flagged, never fed as a feature.
+    The same ``cve_id`` may appear as a node in multiple image graphs; the
+    global label/features are identical, only ``chain_depth`` (its role in
+    that image's chain) can differ.
     """
     cve_id: str
-    # --- features (raw) ---
+    image: str
+    chain_depth: Optional[int]
+    # --- features (raw / categorical) ---
     cvss_vector: str
-    cwe_ids: List[str]
-    technical_impacts: List[str]
+    av: str = ""          # Attack Vector (state VC prereq)
+    pr: str = ""          # Privileges Required (state VC prereq)
+    ac: str = ""          # Attack Complexity (environmental — attacker skill)
+    ui: str = ""          # User Interaction (environmental — user cooperation)
+    cwe_ids: List[str] = field(default_factory=list)
+    technical_impacts: List[str] = field(default_factory=list)
     description: str = ""
-    age_days: Optional[int] = None          # days since publication
-    modified_age_days: Optional[int] = None  # days since last NVD modification
-    # --- derived quotient keys ---
+    age_days: Optional[int] = None
+    modified_age_days: Optional[int] = None
     prereq_key: str = ""
     outcome_key: str = ""
     # --- label (never a feature) ---
@@ -117,45 +110,54 @@ class CorpusNode:
 
 @dataclass
 class CorpusEdge:
-    """A directed ``enables`` edge: source's outcomes satisfy target's prereqs."""
-    source: str  # cve_id of the enabler
-    target: str  # cve_id of the enabled
+    source: str  # cve_id of the contributor (lower depth)
+    target: str  # cve_id it helps enable (higher depth)
 
     def to_dict(self) -> Dict[str, str]:
         return {"source": self.source, "target": self.target}
 
 
 @dataclass
-class CorpusDiagnostics:
-    """GML-0 diagnostics — characterize the graph before any GNN is written."""
-    node_count: int
-    edge_count: int
-    self_loop_count: int
-    isolated_node_count: int
-    isolated_node_share: float
-    # quotient census: how many distinct (prereq_key, outcome_key) classes,
-    # and the membership sizes of the largest few
-    quotient_class_count: int
-    largest_quotient_classes: List[Tuple[str, int]]
-    # degree histograms {degree: how many nodes have it}
-    in_degree_histogram: Dict[int, int]
-    out_degree_histogram: Dict[int, int]
-    # CVEs with no prereqs and/or no outcomes (structural sources/sinks)
-    no_prereq_count: int
-    no_outcome_count: int
+class ImageGraph:
+    """A single per-image DAG."""
+    image: str
+    nodes: List[CorpusNode]
+    edges: List[CorpusEdge]
+    reachable_count: int          # nodes with a finite chain_depth
+    unreachable_count: int        # nodes never reachable in the scenario
+    max_depth: int
 
     def to_dict(self) -> Dict[str, Any]:
-        d = asdict(self)
-        # tuples -> lists for clean JSON
-        d["largest_quotient_classes"] = [list(t) for t in self.largest_quotient_classes]
-        return d
+        return {
+            "image": self.image,
+            "reachable_count": self.reachable_count,
+            "unreachable_count": self.unreachable_count,
+            "max_depth": self.max_depth,
+            "nodes": [n.to_dict() for n in self.nodes],
+            "edges": [e.to_dict() for e in self.edges],
+        }
+
+
+@dataclass
+class CorpusDiagnostics:
+    image_count: int
+    total_nodes: int              # node occurrences across all image graphs
+    unique_cves: int              # distinct original_cve
+    total_edges: int
+    all_dags: bool                # every image graph is acyclic (must be True)
+    depth_histogram: Dict[int, int]      # chain_depth → node occurrences
+    nodes_per_image: Dict[str, int]
+    edges_per_image: Dict[str, int]
+    unreachable_share: float
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
 
 
 @dataclass
 class Corpus:
     schema_version: int
-    nodes: List[CorpusNode]
-    edges: List[CorpusEdge]
+    graphs: List[ImageGraph]
     diagnostics: CorpusDiagnostics
     meta: Dict[str, Any] = field(default_factory=dict)
 
@@ -164,8 +166,7 @@ class Corpus:
             "schema_version": self.schema_version,
             "meta": self.meta,
             "diagnostics": self.diagnostics.to_dict(),
-            "nodes": [n.to_dict() for n in self.nodes],
-            "edges": [e.to_dict() for e in self.edges],
+            "graphs": [g.to_dict() for g in self.graphs],
         }
 
 
@@ -173,16 +174,24 @@ class Corpus:
 # Build
 # =============================================================================
 
-def _dedupe_by_cve(cve_dicts: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """One entry per CVE id (per D3). First occurrence wins; later copies of
-    the same CVE are identical in the label-relevant fields (EPSS/CVSS/CWE are
-    per-CVE globals), so any deterministic choice is fine. We keep first-seen
-    order for stable output.
-    """
+def _canon_pairs(pairs) -> str:
+    if not pairs:
+        return "none"
+    return ",".join(f"{t}:{v}" for t, v in sorted(set(pairs)))
+
+
+def _norm_cve_id(raw: str) -> str:
+    return (raw or "").split("@")[0].upper()
+
+
+def _dedupe_within_image(cve_dicts: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """One entry per CVE id within a single image (a CVE can be reported on
+    several packages of the same image; the label-relevant fields are equal,
+    so first occurrence wins)."""
     seen: Set[str] = set()
     out: List[Dict[str, Any]] = []
     for c in cve_dicts:
-        cid = (c.get("id") or "").split("@")[0].upper()
+        cid = _norm_cve_id(c.get("id", ""))
         if not cid or cid in seen:
             continue
         seen.add(cid)
@@ -190,112 +199,147 @@ def _dedupe_by_cve(cve_dicts: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return out
 
 
-def _histogram(values: Sequence[int]) -> Dict[int, int]:
-    return dict(sorted(Counter(values).items()))
-
-
-def build_corpus(
+def build_image_graph(
+    image: str,
     cve_dicts: Sequence[Dict[str, Any]],
-    *,
-    include_self_loops: bool = False,
-    meta: Optional[Dict[str, Any]] = None,
-) -> Corpus:
-    """Build the ML corpus from enriched CVE dicts.
+    initial_vcs: Optional[Set[Tuple[str, str]]] = None,
+) -> ImageGraph:
+    """Build one per-image DAG from that image's enriched CVE dicts."""
+    deduped = _dedupe_within_image(cve_dicts)
 
-    Args:
-        cve_dicts: enriched CVE records (loader output). Required keys per
-            record: ``id``, ``cvss_vector``; optional: ``cwe_ids``,
-            ``technical_impacts``, ``description``, ``epss_score``,
-            ``age_days``, ``modified_age_days``.
-        include_self_loops: whether a CVE that enables itself (its own
-            outcomes satisfy its own prereqs) gets a self-edge. Default False
-            — self-loops carry no chain information and complicate the GNN.
-        meta: free-form provenance (label snapshot date, git SHA, corpus
-            source) copied into the export verbatim.
-
-    Returns:
-        A ``Corpus`` with deduped nodes, ``enables`` edges, and diagnostics.
-    """
-    deduped = _dedupe_by_cve(cve_dicts)
-
-    nodes: List[CorpusNode] = []
-    # precompute per-node outcomes/prereqs once
-    node_outcomes: Dict[str, Set[Tuple[str, str]]] = {}
-    node_prereqs: Dict[str, List[Tuple[str, str]]] = {}
-
+    # precompute prereqs / raw outcomes / escalating outcomes per CVE
+    prereqs: Dict[str, List[Tuple[str, str]]] = {}
+    raw_out: Dict[str, Set[Tuple[str, str]]] = {}
+    esc_out: Dict[str, Set[Tuple[str, str]]] = {}
+    order: List[str] = []
     for c in deduped:
-        cid = c["id"].split("@")[0].upper()
-        cvss = c.get("cvss_vector", "") or ""
-        impacts = list(c.get("technical_impacts", []) or [])
-        outs = outcomes_of(impacts)
-        pres = prereqs_of(cvss)
-        node_outcomes[cid] = outs
-        node_prereqs[cid] = pres
+        cid = _norm_cve_id(c["id"])
+        p = prereqs_of(c.get("cvss_vector", "") or "")
+        o = outcomes_of(c.get("technical_impacts", []) or [])
+        prereqs[cid] = p
+        raw_out[cid] = o
+        esc_out[cid] = escalating_outcomes(p, o)
+        order.append(cid)
 
+    # depth-layered BFS (shared with the builder)
+    entries = [{"prereqs": prereqs[cid], "outcomes": raw_out[cid]} for cid in order]
+    depth_by_idx = assign_chain_depths(entries, initial_vcs=initial_vcs)
+    depth: Dict[str, Optional[int]] = {order[i]: depth_by_idx[i] for i in range(len(order))}
+
+    # nodes
+    nodes: List[CorpusNode] = []
+    by_id: Dict[str, Dict[str, Any]] = {_norm_cve_id(c["id"]): c for c in deduped}
+    for cid in order:
+        c = by_id[cid]
+        comps = parse_cvss_components(c.get("cvss_vector", "") or "")
         nodes.append(CorpusNode(
             cve_id=cid,
-            cvss_vector=cvss,
+            image=image,
+            chain_depth=depth[cid],
+            cvss_vector=c.get("cvss_vector", "") or "",
+            av=comps.get("AV", ""),
+            pr=comps.get("PR", ""),
+            ac=comps.get("AC", ""),
+            ui=comps.get("UI", ""),
             cwe_ids=list(c.get("cwe_ids", []) or []),
-            technical_impacts=impacts,
+            technical_impacts=list(c.get("technical_impacts", []) or []),
             description=c.get("description", "") or "",
             age_days=c.get("age_days"),
             modified_age_days=c.get("modified_age_days"),
-            prereq_key=_canon_pairs(pres),
-            outcome_key=_canon_pairs(outs),
+            prereq_key=_canon_pairs(prereqs[cid]),
+            outcome_key=_canon_pairs(raw_out[cid]),
             epss_score=c.get("epss_score"),
         ))
 
-    ids = [n.cve_id for n in nodes]
-
-    # enables edges: a -> b iff outcomes(a) satisfy prereqs(b)
+    # contribution edges: a -> b when depth(a) < depth(b) and a's escalating
+    # outcomes supply a VC that b's prereqs require. Layer-skipping allowed.
     edges: List[CorpusEdge] = []
-    self_loops = 0
-    in_deg: Counter = Counter()
-    out_deg: Counter = Counter()
-    for a in ids:
-        outs = node_outcomes[a]
-        if not outs:
-            continue  # a grants nothing -> enables nobody
-        for b in ids:
-            if not node_prereqs[b]:
-                # b has no AV/PR prereqs -> trivially enabled by anyone with
-                # outcomes; treat as an edge only when a actually grants
-                # something (outs is non-empty, checked above)
-                pass
-            if enables(outs, node_prereqs[b]):
-                if a == b:
-                    self_loops += 1
-                    if not include_self_loops:
-                        continue
+    reachable = [cid for cid in order if depth[cid] is not None]
+    for b in reachable:
+        db = depth[b]
+        if db == 0:
+            continue  # depth-0 CVEs are sources (met by baseline)
+        for a in reachable:
+            if depth[a] is None or depth[a] >= db:
+                continue
+            if contributes(esc_out[a], prereqs[b]):
                 edges.append(CorpusEdge(source=a, target=b))
-                out_deg[a] += 1
-                in_deg[b] += 1
 
-    # diagnostics
-    isolated = [cid for cid in ids if in_deg[cid] == 0 and out_deg[cid] == 0]
-    quotient = Counter((n.prereq_key, n.outcome_key) for n in nodes)
-    largest = [
-        (f"{pk} => {ok}", cnt)
-        for (pk, ok), cnt in quotient.most_common(10)
-    ]
-    diagnostics = CorpusDiagnostics(
-        node_count=len(nodes),
-        edge_count=len(edges),
-        self_loop_count=self_loops,
-        isolated_node_count=len(isolated),
-        isolated_node_share=(len(isolated) / len(nodes)) if nodes else 0.0,
-        quotient_class_count=len(quotient),
-        largest_quotient_classes=largest,
-        in_degree_histogram=_histogram([in_deg[c] for c in ids]),
-        out_degree_histogram=_histogram([out_deg[c] for c in ids]),
-        no_prereq_count=sum(1 for n in nodes if not node_prereqs[n.cve_id]),
-        no_outcome_count=sum(1 for n in nodes if not node_outcomes[n.cve_id]),
-    )
-
-    return Corpus(
-        schema_version=SCHEMA_VERSION,
+    depths_finite = [d for d in depth.values() if d is not None]
+    return ImageGraph(
+        image=image,
         nodes=nodes,
         edges=edges,
+        reachable_count=len(reachable),
+        unreachable_count=len(order) - len(reachable),
+        max_depth=max(depths_finite) if depths_finite else 0,
+    )
+
+
+def build_corpus(
+    images: Dict[str, Sequence[Dict[str, Any]]],
+    *,
+    initial_vcs: Optional[Set[Tuple[str, str]]] = None,
+    meta: Optional[Dict[str, Any]] = None,
+) -> Corpus:
+    """Build the full corpus — one DAG per image.
+
+    Args:
+        images: mapping ``image_name -> [enriched CVE dicts]``. Each CVE dict
+            needs ``id`` and ``cvss_vector``; optional ``technical_impacts``,
+            ``cwe_ids``, ``description``, ``epss_score``, ``age_days``,
+            ``modified_age_days``.
+        initial_vcs: attacker baseline (default: network reach, no privileges —
+            the fixed maximal scenario for AV/PR).
+        meta: provenance copied verbatim into the export.
+    """
+    graphs = [
+        build_image_graph(name, cves, initial_vcs=initial_vcs)
+        for name, cves in images.items()
+    ]
+
+    # diagnostics
+    total_nodes = sum(len(g.nodes) for g in graphs)
+    total_edges = sum(len(g.edges) for g in graphs)
+    unique = {n.cve_id for g in graphs for n in g.nodes}
+    depth_hist: Counter = Counter()
+    unreachable = 0
+    for g in graphs:
+        for n in g.nodes:
+            if n.chain_depth is None:
+                unreachable += 1
+            else:
+                depth_hist[n.chain_depth] += 1
+
+    # acyclicity check (contribution edges have strictly increasing depth, so
+    # this must hold; we verify rather than assume)
+    all_dags = _verify_all_dags(graphs)
+
+    diagnostics = CorpusDiagnostics(
+        image_count=len(graphs),
+        total_nodes=total_nodes,
+        unique_cves=len(unique),
+        total_edges=total_edges,
+        all_dags=all_dags,
+        depth_histogram=dict(sorted(depth_hist.items())),
+        nodes_per_image={g.image: len(g.nodes) for g in graphs},
+        edges_per_image={g.image: len(g.edges) for g in graphs},
+        unreachable_share=(unreachable / total_nodes) if total_nodes else 0.0,
+    )
+    return Corpus(
+        schema_version=SCHEMA_VERSION,
+        graphs=graphs,
         diagnostics=diagnostics,
         meta=meta or {},
     )
+
+
+def _verify_all_dags(graphs: Sequence[ImageGraph]) -> bool:
+    """Confirm every image graph is acyclic via depth monotonicity of edges."""
+    for g in graphs:
+        depth = {n.cve_id: n.chain_depth for n in g.nodes}
+        for e in g.edges:
+            ds, dt = depth.get(e.source), depth.get(e.target)
+            if ds is None or dt is None or ds >= dt:
+                return False
+    return True

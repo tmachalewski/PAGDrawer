@@ -286,22 +286,14 @@ class KnowledgeGraphBuilder:
                         edge_type="HAS_IMPACT"
                     )
 
-            # Create outcome VCs connected FROM TI (only for escalations)
+            # Create outcome VCs connected FROM TI (only for escalations).
+            # Escalation filter is the single source of truth in core.chain.
+            from src.core.chain import escalating_outcomes
+            escalating = escalating_outcomes(
+                transformation["prerequisites"], transformation["outcomes"]
+            )
             for vc_type, vc_value in transformation["outcomes"]:
-                is_escalation = True
-
-                if vc_type == "AV":
-                    outcome_level = AV_HIERARCHY.get(vc_value, 0)
-                    prereq_level = prereq_levels.get("AV", 0)
-                    is_escalation = outcome_level > prereq_level
-                elif vc_type == "PR":
-                    outcome_level = PR_HIERARCHY.get(vc_value, 0)
-                    prereq_level = prereq_levels.get("PR", 0)
-                    is_escalation = outcome_level > prereq_level
-                elif vc_type == "EX":
-                    is_escalation = True
-
-                if is_escalation:
+                if (vc_type, vc_value) in escalating:
                     # Determine VC ID based on config with chain depth
                     if self.config.should_include_context("VC", "TI"):
                         vc_node_id = f"VC:{vc_type}:{vc_value}{depth_suffix}@{ti_id}"

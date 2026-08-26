@@ -26,8 +26,11 @@ from typing import Any, Dict, List
 from ml.exporter import build_corpus
 
 
-def _load_cves(paths: List[str], enrich: bool, ignore_ttl: bool) -> List[Dict[str, Any]]:
-    """Load + enrich CVEs from Trivy scan files via the existing loader."""
+def _load_images(paths: List[str], enrich: bool, ignore_ttl: bool) -> Dict[str, List[Dict[str, Any]]]:
+    """Load + enrich CVEs per Trivy scan file, keyed by image name.
+
+    One scan file = one Docker image = one graph in the corpus.
+    """
     from src.data.loaders.trivy_loader import TrivyDataLoader
 
     # Enrichment reads the NVD/EPSS/CWE Mongo caches; the standalone CLI must
@@ -36,7 +39,7 @@ def _load_cves(paths: List[str], enrich: bool, ignore_ttl: bool) -> List[Dict[st
         from src.data.mongo_client import init_mongo
         init_mongo()
 
-    all_cves: List[Dict[str, Any]] = []
+    images: Dict[str, List[Dict[str, Any]]] = {}
     for path in paths:
         with open(path, "r", encoding="utf-8") as fh:
             trivy_json = json.load(fh)
@@ -44,6 +47,7 @@ def _load_cves(paths: List[str], enrich: bool, ignore_ttl: bool) -> List[Dict[st
         if not (trivy_json.get("Results") or trivy_json.get("results")):
             print(f"  skip (not a Trivy report): {path}", file=sys.stderr)
             continue
+        image = trivy_json.get("ArtifactName") or os.path.splitext(os.path.basename(path))[0]
         loader = TrivyDataLoader(
             source=trivy_json,
             enrich_from_nvd=enrich,
@@ -51,9 +55,13 @@ def _load_cves(paths: List[str], enrich: bool, ignore_ttl: bool) -> List[Dict[st
             ignore_ttl=ignore_ttl,
         )
         data = loader.load()
-        all_cves.extend(data.cves)
-        print(f"  {os.path.basename(path)}: {len(data.cves)} CVEs", file=sys.stderr)
-    return all_cves
+        if not data.cves:
+            print(f"  skip (0 CVEs): {os.path.basename(path)}", file=sys.stderr)
+            continue
+        # If two files map to the same image name, merge their CVEs.
+        images.setdefault(image, []).extend(data.cves)
+        print(f"  {image}: {len(data.cves)} CVEs", file=sys.stderr)
+    return images
 
 
 def _expand(patterns: List[str]) -> List[str]:
@@ -77,21 +85,21 @@ def main(argv: List[str] | None = None) -> int:
     ap.add_argument("-o", "--out", default="ml/out/corpus.json", help="output JSON path")
     ap.add_argument("--no-enrich", action="store_true", help="skip NVD/CWE enrichment")
     ap.add_argument("--ignore-ttl", action="store_true", help="accept cached NVD/EPSS/CWE regardless of age")
-    ap.add_argument("--self-loops", action="store_true", help="keep enables self-loops")
     ap.add_argument("--label-date", default=None, help="EPSS label snapshot date (YYYY-MM-DD) for provenance")
     args = ap.parse_args(argv)
 
     paths = _expand(args.scans)
     print(f"Loading {len(paths)} file(s)...", file=sys.stderr)
-    cves = _load_cves(paths, enrich=not args.no_enrich, ignore_ttl=args.ignore_ttl)
-    print(f"Total CVE records before dedup: {len(cves)}", file=sys.stderr)
+    images = _load_images(paths, enrich=not args.no_enrich, ignore_ttl=args.ignore_ttl)
+    print(f"Images with CVEs: {len(images)}", file=sys.stderr)
 
     meta = {
         "source_files": [os.path.basename(p) for p in paths],
         "enriched": not args.no_enrich,
         "label_snapshot_date": args.label_date,
+        "scenario": "maximal (AV:N,PR:N baseline; AC/UI unfiltered)",
     }
-    corpus = build_corpus(cves, include_self_loops=args.self_loops, meta=meta)
+    corpus = build_corpus(images, meta=meta)
 
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     with open(args.out, "w", encoding="utf-8") as fh:
@@ -99,13 +107,10 @@ def main(argv: List[str] | None = None) -> int:
 
     d = corpus.diagnostics
     print(f"\nWrote {args.out}", file=sys.stderr)
-    print(f"  nodes={d.node_count} edges={d.edge_count} "
-          f"isolated={d.isolated_node_count} ({d.isolated_node_share:.1%})", file=sys.stderr)
-    print(f"  quotient classes={d.quotient_class_count} "
-          f"(largest: {d.largest_quotient_classes[0] if d.largest_quotient_classes else 'n/a'})",
-          file=sys.stderr)
-    print(f"  no-prereq={d.no_prereq_count} no-outcome={d.no_outcome_count} "
-          f"self-loops={d.self_loop_count}", file=sys.stderr)
+    print(f"  images={d.image_count}  node-occurrences={d.total_nodes}  "
+          f"unique CVEs={d.unique_cves}  edges={d.total_edges}", file=sys.stderr)
+    print(f"  all DAGs? {d.all_dags}   unreachable share={d.unreachable_share:.1%}", file=sys.stderr)
+    print(f"  depth histogram (depth: nodes): {d.depth_histogram}", file=sys.stderr)
     return 0
 
 
