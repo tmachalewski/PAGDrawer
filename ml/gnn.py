@@ -191,6 +191,10 @@ def main(argv: List[str] | None = None) -> int:
     ap.add_argument("--seeds", type=int, default=5)
     ap.add_argument("--epochs", type=int, default=400)
     ap.add_argument("--directed", action="store_true", help="use directed edges (default: bidirectional)")
+    ap.add_argument("--drop-vc", action="store_true",
+                    help="hide the Vector Changers from node features (structure only via edges)")
+    ap.add_argument("--drop-structural", action="store_true",
+                    help="hide chain_depth + degree from node features")
     ap.add_argument("--no-tensorboard", action="store_true")
     args = ap.parse_args(argv)
 
@@ -206,9 +210,15 @@ def main(argv: List[str] | None = None) -> int:
     print(f"EPSS {snapshot.score_date} ({snapshot.model_version}); "
           f"coverage {report.coverage:.1%}", file=sys.stderr)
 
-    ds = build_dataset(corpus)
+    ds = build_dataset(corpus, drop_structural=args.drop_structural, drop_vc=args.drop_vc)
     batch = build_pyg_batch(ds, corpus, bidirectional=not args.directed)
-    print(f"Dataset {len(ds)} rows × {ds.X.shape[1]} feats; "
+    feat_note = []
+    if args.drop_vc:
+        feat_note.append("no VCs")
+    if args.drop_structural:
+        feat_note.append("no depth/degree")
+    tag = ", ".join(feat_note) if feat_note else "all features"
+    print(f"Dataset {len(ds)} rows × {ds.X.shape[1]} feats [{tag}]; "
           f"batch {batch.num_nodes} nodes, {batch.num_edges} edges "
           f"({'directed' if args.directed else 'bidirectional'}); hops={args.hops}\n",
           file=sys.stderr)
