@@ -30,6 +30,12 @@ def _load_cves(paths: List[str], enrich: bool, ignore_ttl: bool) -> List[Dict[st
     """Load + enrich CVEs from Trivy scan files via the existing loader."""
     from src.data.loaders.trivy_loader import TrivyDataLoader
 
+    # Enrichment reads the NVD/EPSS/CWE Mongo caches; the standalone CLI must
+    # initialize the connection itself (the backend does this on startup).
+    if enrich:
+        from src.data.mongo_client import init_mongo
+        init_mongo()
+
     all_cves: List[Dict[str, Any]] = []
     for path in paths:
         with open(path, "r", encoding="utf-8") as fh:
