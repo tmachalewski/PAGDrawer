@@ -39,8 +39,8 @@ try:
 except Exception:
     pass
 
-RESULTS_PATH = "ml/out/compare_results.json"
-FIG_PATH = "ml/out/model_comparison"
+RUNS_DIR = "ml/out/compare_runs"          # each run archived in its own subfolder
+LATEST_LINK = "ml/out/compare_latest.json"  # convenience pointer to the newest run
 
 # (key, label, model, hops, drop_vc, drop_structural, feature_set)
 CONFIGS = [
@@ -190,7 +190,7 @@ def render(bundle: Dict, out: str) -> None:
         Line2D([0], [0], color=colors["full"], lw=6, alpha=0.5,
                label="full features (VCs flattened in)"),
     ]
-    ax.legend(handles=legend, loc="lower right", fontsize=8, framealpha=0.9)
+    ax.legend(handles=legend, loc="upper left", fontsize=8, framealpha=0.9)
 
     if shared:
         note = "; ".join("=".join(g) + " share a parameter count (same architecture)" for g in shared)
@@ -205,22 +205,41 @@ def render(bundle: Dict, out: str) -> None:
     plt.close(fig)
 
 
+def _latest_run() -> str:
+    """Path to the results.json of the most recent archived run."""
+    if not os.path.isdir(RUNS_DIR):
+        raise FileNotFoundError(f"No runs in {RUNS_DIR}")
+    runs = sorted(d for d in os.listdir(RUNS_DIR) if os.path.isdir(os.path.join(RUNS_DIR, d)))
+    if not runs:
+        raise FileNotFoundError(f"No runs in {RUNS_DIR}")
+    return os.path.join(RUNS_DIR, runs[-1], "results.json")
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="Model comparison figure (params vs Spearman).")
-    ap.add_argument("corpus")
-    ap.add_argument("--label-date", required=True)
+    ap.add_argument("corpus", nargs="?")
+    ap.add_argument("--label-date", default=None)
     ap.add_argument("--snapshot", default=None)
     ap.add_argument("--seeds", type=int, default=20)
     ap.add_argument("--epochs", type=int, default=400)
-    ap.add_argument("--render-only", action="store_true", help="re-render from cached results JSON")
-    ap.add_argument("--out", default=FIG_PATH)
+    ap.add_argument("--tag", default=None, help="optional label appended to the run-folder name")
+    ap.add_argument("--render-only", action="store_true",
+                    help="re-render a cached run instead of training")
+    ap.add_argument("--from", dest="from_run", default=None,
+                    help="results.json (or run folder) to render; default: latest run")
     args = ap.parse_args(argv)
 
     if args.render_only:
-        with open(RESULTS_PATH, "r", encoding="utf-8") as fh:
+        src = args.from_run or _latest_run()
+        if os.path.isdir(src):
+            src = os.path.join(src, "results.json")
+        with open(src, "r", encoding="utf-8") as fh:
             bundle = json.load(fh)
-        render(bundle, args.out)
+        render(bundle, os.path.join(os.path.dirname(src), "model_comparison"))
         return 0
+
+    if not args.corpus or not args.label_date:
+        ap.error("corpus and --label-date are required for a training run")
 
     with open(args.corpus, "r", encoding="utf-8") as fh:
         corpus = json.load(fh)
@@ -230,11 +249,24 @@ def main(argv=None) -> int:
     attach_labels(corpus, load_snapshot(snap_path))
 
     bundle = run_all(corpus, args.label_date, args.seeds, args.epochs)
-    os.makedirs(os.path.dirname(os.path.abspath(RESULTS_PATH)), exist_ok=True)
-    with open(RESULTS_PATH, "w", encoding="utf-8") as fh:
+
+    # archive this run in its own timestamped folder — never overwrite prior runs
+    from datetime import datetime
+    stamp = f"{datetime.now():%Y%m%d-%H%M%S}_{args.seeds}seeds"
+    if args.tag:
+        stamp += f"_{args.tag}"
+    run_dir = os.path.join(RUNS_DIR, stamp)
+    os.makedirs(run_dir, exist_ok=True)
+    bundle["run_dir"] = run_dir
+    results_path = os.path.join(run_dir, "results.json")
+    with open(results_path, "w", encoding="utf-8") as fh:
         json.dump(bundle, fh, indent=2)
-    print(f"Wrote {RESULTS_PATH}", file=sys.stderr)
-    render(bundle, args.out)
+    # convenience pointer to the newest run
+    with open(LATEST_LINK, "w", encoding="utf-8") as fh:
+        json.dump({"latest": results_path}, fh, indent=2)
+    print(f"Archived run: {run_dir}", file=sys.stderr)
+
+    render(bundle, os.path.join(run_dir, "model_comparison"))
     return 0
 
 

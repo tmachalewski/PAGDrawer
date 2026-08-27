@@ -122,15 +122,16 @@ Ladder A — full features (structure baked into features):
 
 Here message passing adds nothing — but only because the VC signal is already in the features (a confounded, uninformative test of the graph).
 
-Ladder B — **minimal features (CWE + impact only); structure reaches the model ONLY through edges** (the correct test of "do the connections testify to exploitability"):
+Ladder B — **minimal features (CWE + impact only); structure reaches the model ONLY through edges** (the correct test of "do the connections testify to exploitability"). 20-seed run (`ml/compare.py`):
 
-| Rung | Model | Spearman ρ |
+| Model | features | Spearman ρ |
 |---|---|---:|
-| — | 0-hop (no message passing) | 0.371 ± 0.110 |
-| **graph** | **1-hop GNN** | **0.657 ± 0.053** |
-| — | 2-hop GNN | 0.464 ± 0.205 |
+| A — XGBoost | minimal | 0.412 ± 0.076 |
+| B — GNN 0-hop | minimal | 0.340 ± 0.080 |
+| **C — GNN 1-hop** | **minimal + edges** | **0.633 ± 0.096** |
+| D — GNN 0-hop | full (with VCs) | 0.703 ± 0.089 |
 
-**Verdict: the connections carry the exploitability signal.** With the structure removed from features, 1-hop message passing lifts Spearman **+0.29** (0.37 → 0.66), recovering ~78 % of the way to the full VC-feature baseline (0.74) **from topology alone**. The answer to §1 is **yes on this corpus** — vulnerability-chain structure improves EPSS prediction; it just has to be accessed through edges, not pre-flattened into features.
+**Verdict: the connections carry the exploitability signal.** With the structure removed from features, 1-hop message passing lifts Spearman **+0.29** (B 0.34 → C 0.63) — recovering ~90 % of the full VC-feature model (D 0.70) **from topology alone**. The answer to §1 is **yes on this corpus** — vulnerability-chain structure improves EPSS prediction; it just has to be accessed through edges, not pre-flattened into features. The comparison figure (`ml/compare.py` → `ml/out/compare_runs/<ts>/`) plots this as quality-vs-parameters with per-seed spread; B and D share a parameter count (same architecture) so the difference is purely *how the structure is supplied*.
 
 **On hops vs chain depth.** The corpus maxes at chain depth 1, so **1-hop spans the entire real chain relation** (enabler ↔ enabled) and is the right model. 2-hop does *not* reach deeper in the chain (there is no depth 2); with bidirectional edges it aggregates same-layer siblings that share an enabler — the dense per-image bicliques then oversmooth, dropping ρ to 0.464 (±0.205). General rule: useful hops ≈ max chain depth (with directed edges, strictly). **Report 1-hop as the graph result.**
 
