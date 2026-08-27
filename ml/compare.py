@@ -124,7 +124,27 @@ def run_all(corpus, label_date, seeds, epochs) -> Dict:
     return {"label_date": label_date, "seeds": seeds, "epochs": epochs, "results": results}
 
 
-def render(bundle: Dict, out: str) -> None:
+def _draw_violin(ax, x, vals, color):
+    """Manual violin on a log-x axis: KDE evaluated over y, drawn as a filled
+    polygon whose half-width is symmetric in log space (so it isn't skewed by
+    xscale='log'). Falls back to a thin bar if KDE is degenerate."""
+    import numpy as np
+    try:
+        from scipy.stats import gaussian_kde
+        kde = gaussian_kde(vals)
+        pad = 0.05 * (vals.max() - vals.min() + 1e-6)
+        ygrid = np.linspace(vals.min() - pad, vals.max() + pad, 200)
+        dens = kde(ygrid)
+        hw = 0.13 * dens / dens.max()          # max half-width in log units
+        ax.fill_betweenx(ygrid, x * np.exp(-hw), x * np.exp(hw),
+                         color=color, alpha=0.30, lw=0, zorder=2)
+        ax.plot(x * np.exp(hw), ygrid, color=color, lw=0.8, alpha=0.6, zorder=2)
+        ax.plot(x * np.exp(-hw), ygrid, color=color, lw=0.8, alpha=0.6, zorder=2)
+    except Exception:
+        ax.plot([x, x], [vals.min(), vals.max()], color=color, lw=8, alpha=0.3, zorder=2)
+
+
+def render(bundle: Dict, out: str, style: str = "candle") -> None:
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -157,13 +177,18 @@ def render(bundle: Dict, out: str) -> None:
         c = colors[r["feature_set"]]
         lo, hi = vals.min(), vals.max()
         q1, med, q3 = np.percentile(vals, [25, 50, 75])
-        ax.plot([x, x], [lo, hi], color=c, lw=1.2, zorder=2)
-        ax.plot([x, x], [q1, q3], color=c, lw=9, alpha=0.28, zorder=2, solid_capstyle="butt")
-        ax.plot([x * 0.90, x * 1.10], [med, med], color=c, lw=2.4, zorder=4)
-        # seed dots sit at the EXACT parameter count (no horizontal jitter —
-        # all seeds of a model have identical params). Overplotting shows as
-        # density via alpha; a hair of x-offset only to lift dots off the line.
-        ax.scatter(np.full(len(vals), x * 0.93), vals, s=18, color=c, alpha=0.55,
+        if style == "violin":
+            _draw_violin(ax, x, vals, c)
+            ax.plot([x * 0.90, x * 1.10], [med, med], color=c, lw=2.4, zorder=4)
+            dot_x = x * 0.87
+        else:  # candlestick
+            ax.plot([x, x], [lo, hi], color=c, lw=1.2, zorder=2)
+            ax.plot([x, x], [q1, q3], color=c, lw=9, alpha=0.28, zorder=2, solid_capstyle="butt")
+            ax.plot([x * 0.90, x * 1.10], [med, med], color=c, lw=2.4, zorder=4)
+            dot_x = x * 0.93
+        # seed dots sit at a fixed x (all seeds of a model have identical
+        # params); spread is purely vertical (per-seed Spearman).
+        ax.scatter(np.full(len(vals), dot_x), vals, s=18, color=c, alpha=0.55,
                    edgecolor="white", lw=0.3, zorder=5)
         # key letter above the candle; model name below it
         ax.annotate(r["key"], (x, hi), textcoords="offset points", xytext=(0, 10),
@@ -223,6 +248,8 @@ def main(argv=None) -> int:
     ap.add_argument("--seeds", type=int, default=20)
     ap.add_argument("--epochs", type=int, default=400)
     ap.add_argument("--tag", default=None, help="optional label appended to the run-folder name")
+    ap.add_argument("--style", choices=["candle", "violin"], default="candle",
+                    help="spread style: candlestick (default) or violin")
     ap.add_argument("--render-only", action="store_true",
                     help="re-render a cached run instead of training")
     ap.add_argument("--from", dest="from_run", default=None,
@@ -235,7 +262,8 @@ def main(argv=None) -> int:
             src = os.path.join(src, "results.json")
         with open(src, "r", encoding="utf-8") as fh:
             bundle = json.load(fh)
-        render(bundle, os.path.join(os.path.dirname(src), "model_comparison"))
+        suffix = "_violin" if args.style == "violin" else ""
+        render(bundle, os.path.join(os.path.dirname(src), f"model_comparison{suffix}"), style=args.style)
         return 0
 
     if not args.corpus or not args.label_date:
@@ -266,7 +294,7 @@ def main(argv=None) -> int:
         json.dump({"latest": results_path}, fh, indent=2)
     print(f"Archived run: {run_dir}", file=sys.stderr)
 
-    render(bundle, os.path.join(run_dir, "model_comparison"))
+    render(bundle, os.path.join(run_dir, "model_comparison"), style=args.style)
     return 0
 
 
