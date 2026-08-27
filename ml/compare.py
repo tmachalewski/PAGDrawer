@@ -158,17 +158,20 @@ def render(bundle: Dict, out: str) -> None:
         lo, hi = vals.min(), vals.max()
         q1, med, q3 = np.percentile(vals, [25, 50, 75])
         ax.plot([x, x], [lo, hi], color=c, lw=1.2, zorder=2)
-        ax.plot([x, x], [q1, q3], color=c, lw=8, alpha=0.30, zorder=2, solid_capstyle="butt")
+        ax.plot([x, x], [q1, q3], color=c, lw=9, alpha=0.28, zorder=2, solid_capstyle="butt")
         ax.plot([x * 0.90, x * 1.10], [med, med], color=c, lw=2.4, zorder=4)
-        jitter = x * (1 + 0.07 * (np.random.default_rng(0).random(len(vals)) - 0.5))
-        ax.scatter(jitter, vals, s=20, color=c, alpha=0.65, edgecolor="white", lw=0.4, zorder=5)
+        # seed dots sit at the EXACT parameter count (no horizontal jitter —
+        # all seeds of a model have identical params). Overplotting shows as
+        # density via alpha; a hair of x-offset only to lift dots off the line.
+        ax.scatter(np.full(len(vals), x * 0.93), vals, s=18, color=c, alpha=0.55,
+                   edgecolor="white", lw=0.3, zorder=5)
         # key letter above the candle; model name below it
         ax.annotate(r["key"], (x, hi), textcoords="offset points", xytext=(0, 10),
                     ha="center", fontsize=12, fontweight="bold", color=c, zorder=6)
         ax.annotate(r["label"], (x, lo), textcoords="offset points", xytext=(0, -30),
                     ha="center", fontsize=8, color="#333", zorder=6)
-        ax.annotate(f"ρ̄={r['spearman_mean']:.2f}", (x, med), textcoords="offset points",
-                    xytext=(0, 6), ha="center", fontsize=7.5, color=c, zorder=6)
+        ax.annotate(f"ρ̄={r['spearman_mean']:.2f}", (x * 1.11, med), textcoords="offset points",
+                    xytext=(3, 0), ha="left", va="center", fontsize=7.5, color=c, zorder=6)
 
     ax.set_xscale("log")
     ax.set_xlabel("model parameters (log scale;  XGBoost = tree-node count)")
