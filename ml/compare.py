@@ -154,25 +154,25 @@ def render(bundle: Dict, out: str, style: str = "candle") -> None:
 
     fig, ax = plt.subplots(figsize=(8.5, 5.4))
 
-    # spread configs that share a parameter count (same architecture) so their
-    # candlesticks don't overlap; note it as an honest annotation.
+    # Models that share a parameter count (same architecture) sit at the SAME
+    # x — their vertical separation keeps them from overlapping. For each such
+    # group, the top model gets its name above, the others below, so labels
+    # don't collide. `label_above` marks the upper model of a shared group.
     from collections import defaultdict
     groups = defaultdict(list)
     for i, r in enumerate(results):
         groups[r["n_params"]].append(i)
-    xpos = {}
+    label_above, label_below = set(), set()
     shared = []
     for p, idxs in groups.items():
-        if len(idxs) == 1:
-            xpos[idxs[0]] = p
-        else:
-            factors = np.linspace(0.90, 1.10, len(idxs))
-            for f, i in zip(factors, idxs):
-                xpos[i] = p * f
+        if len(idxs) > 1:
             shared.append([results[i]["key"] for i in idxs])
+            order = sorted(idxs, key=lambda j: np.nanmedian(results[j]["spearman"]))
+            label_below.add(order[0])   # lower model: labels go below
+            label_above.add(order[-1])  # upper model: labels go above
 
     for i, r in enumerate(results):
-        x = max(xpos[i], 1)
+        x = max(r["n_params"], 1)
         vals = np.array([v for v in r["spearman"] if not np.isnan(v)])
         c = colors[r["feature_set"]]
         lo, hi = vals.min(), vals.max()
@@ -190,11 +190,24 @@ def render(bundle: Dict, out: str, style: str = "candle") -> None:
         # params); spread is purely vertical (per-seed Spearman).
         ax.scatter(np.full(len(vals), dot_x), vals, s=18, color=c, alpha=0.55,
                    edgecolor="white", lw=0.3, zorder=5)
-        # key letter above the candle; model name below it
-        ax.annotate(r["key"], (x, hi), textcoords="offset points", xytext=(0, 10),
-                    ha="center", fontsize=12, fontweight="bold", color=c, zorder=6)
-        ax.annotate(r["label"], (x, lo), textcoords="offset points", xytext=(0, -30),
-                    ha="center", fontsize=8, color="#333", zorder=6)
+        # Labels. For a shared-x pair the lower model keeps everything below
+        # its candle and the upper model everything above, so the two don't
+        # collide. Non-shared models: key above, name below (default).
+        if i in label_below:
+            ax.annotate(r["key"], (x, lo), textcoords="offset points", xytext=(0, -12),
+                        ha="center", va="top", fontsize=12, fontweight="bold", color=c, zorder=6)
+            ax.annotate(r["label"], (x, lo), textcoords="offset points", xytext=(0, -28),
+                        ha="center", va="top", fontsize=8, color="#333", zorder=6)
+        elif i in label_above:
+            ax.annotate(r["key"], (x, hi), textcoords="offset points", xytext=(0, 24),
+                        ha="center", fontsize=12, fontweight="bold", color=c, zorder=6)
+            ax.annotate(r["label"], (x, hi), textcoords="offset points", xytext=(0, 8),
+                        ha="center", fontsize=8, color="#333", zorder=6)
+        else:
+            ax.annotate(r["key"], (x, hi), textcoords="offset points", xytext=(0, 10),
+                        ha="center", fontsize=12, fontweight="bold", color=c, zorder=6)
+            ax.annotate(r["label"], (x, lo), textcoords="offset points", xytext=(0, -30),
+                        ha="center", fontsize=8, color="#333", zorder=6)
         ax.annotate(f"ρ̄={r['spearman_mean']:.2f}", (x * 1.11, med), textcoords="offset points",
                     xytext=(3, 0), ha="left", va="center", fontsize=7.5, color=c, zorder=6)
 
@@ -230,6 +243,12 @@ def render(bundle: Dict, out: str, style: str = "candle") -> None:
     plt.close(fig)
 
 
+def render_both(bundle: Dict, out_dir: str) -> None:
+    """Render both the candlestick and the violin figure into out_dir."""
+    render(bundle, os.path.join(out_dir, "model_comparison"), style="candle")
+    render(bundle, os.path.join(out_dir, "model_comparison_violin"), style="violin")
+
+
 def _latest_run() -> str:
     """Path to the results.json of the most recent archived run."""
     if not os.path.isdir(RUNS_DIR):
@@ -248,8 +267,6 @@ def main(argv=None) -> int:
     ap.add_argument("--seeds", type=int, default=20)
     ap.add_argument("--epochs", type=int, default=400)
     ap.add_argument("--tag", default=None, help="optional label appended to the run-folder name")
-    ap.add_argument("--style", choices=["candle", "violin"], default="candle",
-                    help="spread style: candlestick (default) or violin")
     ap.add_argument("--render-only", action="store_true",
                     help="re-render a cached run instead of training")
     ap.add_argument("--from", dest="from_run", default=None,
@@ -262,8 +279,7 @@ def main(argv=None) -> int:
             src = os.path.join(src, "results.json")
         with open(src, "r", encoding="utf-8") as fh:
             bundle = json.load(fh)
-        suffix = "_violin" if args.style == "violin" else ""
-        render(bundle, os.path.join(os.path.dirname(src), f"model_comparison{suffix}"), style=args.style)
+        render_both(bundle, os.path.dirname(src))
         return 0
 
     if not args.corpus or not args.label_date:
@@ -294,7 +310,7 @@ def main(argv=None) -> int:
         json.dump({"latest": results_path}, fh, indent=2)
     print(f"Archived run: {run_dir}", file=sys.stderr)
 
-    render(bundle, os.path.join(run_dir, "model_comparison"), style=args.style)
+    render_both(bundle, run_dir)
     return 0
 
 
