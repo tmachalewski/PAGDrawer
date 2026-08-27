@@ -225,8 +225,20 @@ def main(argv: List[str] | None = None) -> int:
 
     writer = None
     if not args.no_tensorboard:
+        from datetime import datetime
         from torch.utils.tensorboard import SummaryWriter
-        writer = SummaryWriter(log_dir=f"ml/runs/gml2_h{args.hops}_{args.label_date}")
+        # Unique, descriptive dir per invocation — otherwise repeated runs write
+        # to the same log dir and TensorBoard overlays them on one chart.
+        parts = [f"h{args.hops}"]
+        if args.drop_vc:
+            parts.append("novc")
+        if args.drop_structural:
+            parts.append("nostruct")
+        if args.directed:
+            parts.append("dir")
+        run_name = f"gml2_{'_'.join(parts)}_{datetime.now():%Y%m%d-%H%M%S}"
+        writer = SummaryWriter(log_dir=f"ml/runs/{run_name}")
+        print(f"TensorBoard run: ml/runs/{run_name}", file=sys.stderr)
 
     res: List[Dict[str, float]] = []
     for seed in range(args.seeds):

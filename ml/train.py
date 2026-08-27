@@ -170,8 +170,17 @@ def main(argv: List[str] | None = None) -> int:
 
     writer = None
     if not args.no_tensorboard:
+        from datetime import datetime
         from torch.utils.tensorboard import SummaryWriter
-        writer = SummaryWriter(log_dir=f"ml/runs/gml1_{args.label_date}")
+        parts = []
+        if args.drop_vc:
+            parts.append("novc")
+        if args.drop_structural:
+            parts.append("nostruct")
+        suffix = ("_" + "_".join(parts)) if parts else ""
+        run_name = f"gml1{suffix}_{datetime.now():%Y%m%d-%H%M%S}"
+        writer = SummaryWriter(log_dir=f"ml/runs/{run_name}")
+        print(f"TensorBoard run: ml/runs/{run_name}", file=sys.stderr)
 
     xgb_res: List[Dict[str, float]] = []
     mlp_res: List[Dict[str, float]] = []
