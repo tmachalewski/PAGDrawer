@@ -1,80 +1,120 @@
-# Graph-ML: EPSS prediction (experiment phase)
+# Graph-ML: EPSS prediction
 
-Implements the experiment stages of
-[`Docs/Plans/GraphML_EPSS_Prediction.md`](../Docs/Plans/GraphML_EPSS_Prediction.md).
-Per **D16**, this phase is plain scripts — no container, no FastAPI service.
-The serving module (GML-3) is built only after the experiment gate.
+Predicts EPSS (exploit-probability percentile) for CVEs from the
+vulnerability-chain graph. Implements the plan in
+[`Docs/Plans/GraphML_EPSS_Prediction.md`](../Docs/Plans/GraphML_EPSS_Prediction.md)
+(decision log D1–D22 + results). Experiment phase — plain scripts, GPU, no
+service container (per D16).
+
+## Headline result (2026-08-27)
+
+The research question (§1 of the plan) — *does vulnerability-chain information
+improve EPSS prediction?* — is answered **yes**, but only when the graph is
+tested fairly. Full 20-seed ladder (grouped split by `original_cve`):
+
+| Model | features | Spearman ρ |
+|---|---|---:|
+| A — XGBoost | minimal (CWE + impact) | 0.412 ± 0.076 |
+| B — GNN 0-hop | minimal | 0.340 ± 0.080 |
+| **C — GNN 1-hop** | **minimal + edges** | **0.633 ± 0.096** |
+| D — GNN 0-hop | full (with VCs) | 0.703 ± 0.089 |
+
+- **B → C = +0.29**: with structure hidden from features, 1-hop message passing
+  over the chain edges recovers ~90 % of the full VC-feature model **from
+  topology alone** → *the connections carry the exploitability signal*.
+- **A/B → D = +0.28**: the Vector Changers are the dominant EPSS predictor
+  (CWE+impact 0.46 → +VCs 0.70).
+- VCs are *formally a graph feature* (schema nodes flattened into node features
+  per D2), so both readings agree: the exploitability signal lives in the
+  chain structure.
+- **Hops ≈ max chain depth.** This corpus maxes at depth 1, so 1-hop spans the
+  whole chain; 2-hop oversmooths the dense bicliques (ρ drops to ~0.46). Don't
+  read the earlier "message passing doesn't pay" note — that was a *confounded*
+  ladder (structure given as features AND edges); see plan §6 Ladders A/B.
 
 ## Layout
 
 | File | Stage | Role |
 |------|-------|------|
-| `../src/core/chain.py` | shared | Single-source chain primitives: `escalating_outcomes`, `assign_chain_depths`, `contributes`. The builder and the exporter both use these. |
+| `../src/core/chain.py` | shared | Single-source chain primitives: `escalating_outcomes`, `assign_chain_depths`, `contributes`. Builder + exporter both use these (predicate `prereqs_satisfied` in `consensual_matrix.py`). |
 | `exporter.py` | GML-0 | Pure corpus builder: **per-image DAGs**, depth-layered chains, contribution edges, diagnostics. No Mongo/network. |
-| `export_corpus.py` | GML-0 | CLI: load Trivy scans → enrich → write `corpus.json` (set of image graphs). |
+| `export_corpus.py` | GML-0 | CLI: load Trivy scans → enrich → write `corpus.json` (set of image graphs). Needs Mongo caches. |
 | `diagnose.py` | GML-0.5 | Structure↔EPSS analysis (Spearman of degree/depth, η² of classes, per-image density). |
-| (next) `labels.py` | GML-1 | Join a FIRST daily EPSS snapshot as the percentile target. |
-| (next) `train.py` | GML-1/2 | XGBoost + GNN rungs, TensorBoard logging. |
+| `labels.py` | GML-1 | Download/parse a FIRST daily EPSS snapshot; join the percentile target by CVE; provenance stamp. |
+| `dataset.py` | GML-1 | Feature matrix (CVSS one-hot incl. categorical AC/UI, chain_depth, degree, hashed CWE) + grouped split by `original_cve` (D22). `--drop-vc`/`--drop-structural` ablations. |
+| `metrics.py` | GML-1 | Spearman + top-decile precision + MAE (pure numpy). |
+| `train.py` | GML-1 | Rung 1 (XGBoost) + rung 2 (0-hop MLP, GPU), multi-seed, TensorBoard. |
+| `gnn.py` | GML-2 | Rungs 3/4 (1-/2-hop SAGEConv) on per-image PyG graphs; same grouped split; `--drop-vc`/`--drop-structural`. |
+| `compare.py` | figure | Runs models A/B/C/D over N seeds → archives each run in `out/compare_runs/<ts>/` (results.json + candlestick + violin). |
 
-## Data structure — set of per-image DAGs
+## The graph (per-image DAGs)
 
-The corpus is **one directed acyclic graph per Docker image** (confirmed
-vision, 2026-08-26). Chaining happens ONLY between CVEs that co-occur on the
-same image — reality-pruning by the container. The same CVE appears in several
-image graphs; that is expected and the train/val/test split must group by
-`original_cve` so a CVE never straddles folds.
+One directed acyclic graph **per Docker image** (chains link only CVEs on the
+same image — reality-pruning). Built by `core.chain`: attacker baseline
+`{(AV,N),(PR,N)}` → admit CVEs whose AV/PR prereqs are met → accumulate their
+**escalating** outcomes → advance depth (monotonic ⇒ DAG). CVE→CVE
+**contribution** edges: `a → b` iff `depth(a) < depth(b)` and a's escalating
+outcomes supply a VC b's prereqs need (layer-skipping allowed). The same CVE
+appears in several image graphs → the split groups by `original_cve` (D22).
 
-Each image graph is built by the builder's chain logic (`core.chain`):
-- **Baseline**: the attacker starts from `{(AV,N),(PR,N)}` — network reach, no
-  privileges (the fixed **maximal scenario** for AV/PR).
-- **Depth-layered BFS**: admit every CVE whose AV/PR prereqs are met, accumulate
-  their **escalating** outcomes (only VCs that strictly raise capability), advance
-  a depth. Capability is never lost → the graph is a DAG.
-- **Edges** are CVE→CVE *contribution* edges: `a → b` when `depth(a) < depth(b)`
-  and a's escalating outcomes supply a Vector Changer b's prereqs require.
-  Layer-skipping is allowed (a depth-0 CVE can contribute to a depth-2 CVE —
-  "VCs from CVE1 enable CVE3").
+**Vector Changers**: state VCs (AV, PR, EX) build topology; environmental VCs
+(AC, UI) are the fixed input scenario — categorical node features, not state
+(D21). Scenario is fixed **maximal** (AC:H, UI:R → nothing pruned).
 
-## Vector Changers
+## Environment (GPU)
 
-- **State VCs (AV, PR, EX)** — gate reachability (prereqs) and accumulate
-  (outcomes). They build the graph topology.
-- **Environmental VCs (AC, UI)** — the **input scenario**: AC = attacker skill,
-  UI = whether the user cooperates. Categorical, not numeric; they don't change
-  along the chain and don't gate the AV/PR BFS. Here they are per-node
-  **features** (`ac`, `ui`), and the scenario is fixed maximal.
-
-## Build a corpus
-
-Pure (no Mongo) — for tests or your own CVE dicts, keyed by image:
-
-```python
-from ml.exporter import build_corpus
-corpus = build_corpus({"nginx:...": cve_dicts, "redis:...": more_dicts})
-corpus.to_dict()                          # JSON-ready
-```
-
-From Trivy scans (needs the NVD/EPSS/CWE Mongo caches; start Mongo with
-`bash Scripts/start-mongo.sh`):
+torch is installed from the **CUDA 12.8** index (Blackwell / RTX 50xx = sm_120
+needs cu128; Python 3.14 wheels exist as of torch 2.11):
 
 ```bash
-python -m ml.export_corpus "examples/*.json" \
-    --ignore-ttl --label-date 2026-08-21 -o ml/out/corpus.json
-python -m ml.diagnose ml/out/corpus.json
+pip install torch --index-url https://download.pytorch.org/whl/cu128
+pip install scikit-learn xgboost torch-geometric tensorboard matplotlib
 ```
 
-`--ignore-ttl` reuses an aged cache offline (see MongoDBPersistence.md).
+Note: XGBoost's DLL is blocked by an Application Control policy inside the
+Claude Code agent sandbox (WinError 4551) — XGBoost runs must be launched from
+a normal user terminal. torch/PyG work in both.
 
-## Diagnostics
+## Reproduce
 
-`export_corpus` prints per-image node/edge counts, the depth histogram, and
-**verifies every image graph is a DAG**. `diagnose.py` then reports the
-structure↔EPSS signal (Spearman of in/out-degree and chain-depth vs EPSS),
-η² of the quotient classes, and per-image density — the numbers that decide
-how much GNN effort the ladder warrants.
+```bash
+bash Scripts/start-mongo.sh                    # caches for enrichment
+
+# GML-0: build the per-image DAG corpus (--ignore-ttl reuses an aged cache)
+python -m ml.export_corpus "examples/*.json" --ignore-ttl \
+    --label-date 2026-08-21 -o ml/out/corpus_v2.json
+python -m ml.diagnose ml/out/corpus_v2.json    # structure↔EPSS signal
+
+# GML-1: labels + tabular/0-hop baselines (downloads the EPSS snapshot)
+python -m ml.train ml/out/corpus_v2.json --label-date 2026-08-21 --seeds 20
+#   ablations: --drop-vc  --drop-structural
+
+# GML-2: graph rungs (structure only via edges = the fair test)
+python -m ml.gnn ml/out/corpus_v2.json --label-date 2026-08-21 \
+    --hops 1 --drop-vc --drop-structural --seeds 20
+
+# Comparison figure A/B/C/D (both candlestick + violin, archived per run)
+python -m ml.compare ml/out/corpus_v2.json --label-date 2026-08-21 \
+    --seeds 20 --tag baseline
+python -m ml.compare --render-only            # re-render latest without training
+```
+
+EPSS labels come from one FIRST daily snapshot
+(`https://epss.empiricalsecurity.com/epss_scores-YYYY-MM-DD.csv.gz`) — it
+carries the `percentile` column (the D15 target) and a model-date header.
 
 ## Tests
 
 ```bash
-PAGDRAWER_SKIP_MONGO=1 venv/Scripts/python.exe -m pytest tests/test_ml_exporter.py -q
+PAGDRAWER_SKIP_MONGO=1 venv/Scripts/python.exe -m pytest \
+    tests/test_chain.py tests/test_ml_exporter.py tests/test_ml_gml1.py -q
 ```
+
+## Next (not done)
+
+- **A4 ablation**: does 1-hop beat class-aggregate features (is the signal
+  topological or just class-statistical)?
+- **Grow the corpus** (§7 option 2: 100+ images) → deeper chains where
+  multi-hop could matter.
+- **GML-3/4**: serving container + residual overlay in PAGDrawer (colour CVE
+  nodes by predicted−actual EPSS) — can ship on the tabular or the GNN model.
